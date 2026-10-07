@@ -1,0 +1,38 @@
+{
+  "name": "@kalypso/core",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Shared rules for Kalypso: USDC amounts, Stellar addresses, payroll CSV import and key derivation.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "@stellar/stellar-sdk": "16.3.1",
+    "stellar-confidential-token-sdk": "0.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "@vitest/coverage-v8": "5.0.3",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "overrides": {
+    "axios": "1.20.0"
+  }
+}

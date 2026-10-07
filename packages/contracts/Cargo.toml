@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["auditor", "payroll"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Pinned to the soroban-sdk the deployed confidential token was built with (contract meta rssdkver 27.0.5).
+soroban-sdk = "=27.0.5"
+# The 31 Jul 2026 confidential token revision. Branch-only commit, fetched by full rev.
+stellar-tokens = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "98090b3e59785454f55b3617992c2f84250c7173" }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

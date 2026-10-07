@@ -1,0 +1,28 @@
+{
+  "comment": "Pinned key derivation outputs. If any value here has to change, every existing Kalypso user loses their keys.",
+  "keyVersion": "kalypso/v1",
+  "prfEvalSaltHex": "2fb16eab4badf059da2bc83f598ced9db864e7f82f2c4c6eb15883af8d9a15dc",
+  "wallet": {
+    "domain": "kalypso-payroll.vercel.app",
+    "network": "testnet",
+    "token": "CBFOJTALVTO3LPZZHEXDD44K7RQKQJGAASF6XOKP5FWZD6WYKV4WN7HF",
+    "account": "GCRSRMULTDNJDZQ336DZELYL4GORNMZGYPDRYW3EAZRNMT46SMDP2UJV",
+    "message": "Kalypso private payroll key (kalypso/v1)\n\nOnly sign this on https://kalypso-payroll.vercel.app. If any other site shows you this message, do not sign it.\n\nSigning creates the key that keeps your pay private on Kalypso. It does not move funds or approve a transaction.\n\nDomain: kalypso-payroll.vercel.app\nNetwork: testnet\nToken: CBFOJTALVTO3LPZZHEXDD44K7RQKQJGAASF6XOKP5FWZD6WYKV4WN7HF\nAccount: GCRSRMULTDNJDZQ336DZELYL4GORNMZGYPDRYW3EAZRNMT46SMDP2UJV",
+    "signatureHex": "51e575554570028e075ec54be2db7d29bd1d4ead0ce98d5fa8215cff8438daf407e410c92ce4866e0a526abb08c149602a466d6bff204b0d06faa73b4c1b510a",
+    "addrF": "0x20e885da82423ed95023163afd8aacd45ba9120a9165212b4393a5191d2b5544",
+    "acctF": "0x204a03abc79ce8ca2050ded870f088747bce2fc3454068e4e964be164023e8a8",
+    "Y": "1da8b38c9a12ffaa21006fea27738651850b7dd67aa4b64d0aff554b398f939a234d2cbfeffa1bd4c5ec10b4449615482729fa9b20f9c158d3e2a64324a9e2cb",
+    "PVK": "1bbc595e7597f8d51218df64421ba3e13303337df5ab77d9c565c911d051b0a30dc3dacd19b1cdf7d29c75b730290396caca56cbfe0f42803cb9cc6c9dcca7fe"
+  },
+  "prf": {
+    "token": "CBFOJTALVTO3LPZZHEXDD44K7RQKQJGAASF6XOKP5FWZD6WYKV4WN7HF",
+    "account": "CB6BSQ3PXPCF7EM3HGUXBWJBQCLZ3GVYV3C5QH5LKFEDNAHC7URRS6NL",
+    "prfOutputHex": "ee23727c790b175e1cb858b5bda6e62f68a58a30d8152c554fe57f861e192f22",
+    "addrF": "0x20e885da82423ed95023163afd8aacd45ba9120a9165212b4393a5191d2b5544",
+    "acctF": "0x2f78d4157c13207e24baf2d7961a70f0b7adf4fbee43aa977affe11133cae322",
+    "Y": "29ec05c27e6b6142cfcb88d7c37003eee5e40f54fe5b3712a8f718454dc332c11b3323328c59dde9564ae8bda94d1f54a990fef4604e087d5d5fcf2954d92884",
+    "PVK": "0e6937e7fbcfc74da0bce613fb6abe498a73073da39817f5201c54a7a2ba34660c33bfe294963fe5a790209b80f694b00bf624a6e2e93c9cb0ba8c3114fd9eb6",
+    "cashoutSeedHex": "c536bc1c9b89199a8d104014ae2213f6547414627d8d69f98075fced49f9f709",
+    "cashoutPublicKey": "GBWRC4MYGEANOOC2BRNGOC5KTEAWDVAAM27UC27TSAHHCIEWSUG734GD"
+  }
+}
