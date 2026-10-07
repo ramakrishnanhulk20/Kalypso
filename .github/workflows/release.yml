@@ -1,0 +1,100 @@
+name: Release
+
+# A v* tag builds both contracts on GitHub's runner and attests each wasm (SEP-55). Testnet
+# deploys use these exact files, so `stellar contract info build --id <C...> --network testnet`
+# leads from a live contract back to this repo, the tag and the commit.
+#
+# Mirrors stellar-expert/soroban-build-workflow except its POST to stellar.expert: the maintainer
+# called that validation service deprecated on 5 Oct 2026, and the attestation alone is what the
+# CLI and Stellar Lab read.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/contracts
+    env:
+      SOURCE_REPO: github:ramakrishnanhulk20/Kalypso
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # No build cache here on purpose: an attested build must not start from files a previous
+      # run left behind.
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.99.0
+          targets: wasm32v1-none
+
+      - uses: stellar/stellar-cli@v28.1.0
+
+      - name: Test contracts
+        run: |
+          cargo test -p kalypso-payroll --locked
+          cargo test -p kalypso-auditor --locked
+
+      - name: Build contracts
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          for pkg in kalypso-payroll kalypso-auditor; do
+            stellar contract build --package "$pkg" --meta source_repo="$SOURCE_REPO"
+            wasm="${pkg//-/_}.wasm"
+            cp "target/wasm32v1-none/release/$wasm" "$out/$wasm"
+            # Without source_repo in the wasm, the CLI cannot find the attestation for a deployed
+            # contract, so refuse to release rather than publish an unverifiable build.
+            stellar contract info meta --wasm "$out/$wasm" | grep -F "$SOURCE_REPO"
+          done
+
+      - name: Compute checksums
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          sha256sum kalypso_payroll.wasm kalypso_auditor.wasm > SHA256SUMS
+          cat SHA256SUMS
+
+      # One attestation per wasm: SEP-55 verifiers check subject[0] of the attestation against the
+      # on-chain hash, so a single attestation covering both files would fail for the second one.
+      # Attesting before the release exists means no release is ever published unattested.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ runner.temp }}/release/kalypso_payroll.wasm
+
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ runner.temp }}/release/kalypso_auditor.wasm
+
+      - name: Create release
+        working-directory: ${{ runner.temp }}/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Kalypso contracts built by GitHub Actions from commit ${GITHUB_SHA}, Stellar CLI 28.1.0."
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+            echo
+            echo "Check a file: \`gh attestation verify kalypso_payroll.wasm --repo ${GITHUB_REPOSITORY}\`"
+            echo "Check a deployed contract: \`stellar contract info build --id <contract id> --network testnet\`"
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            kalypso_payroll.wasm kalypso_auditor.wasm SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag

@@ -1,0 +1,167 @@
+{
+  "network": "testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "deployer": {
+    "publicKey": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC",
+    "explorer": "https://stellar.expert/explorer/testnet/account/GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC"
+  },
+  "verificationKeys": {
+    "register": {
+      "circuitType": 0,
+      "sha256": "e01ba8729578e9ec4ea982801e2d806028246eeafe1a2e551e1f9cdef69a7268",
+      "bytes": 1760,
+      "source": "stellar-confidential-token-sdk@0.1.9 circuits/vks/register.vk.bin"
+    },
+    "withdraw": {
+      "circuitType": 1,
+      "sha256": "d800122c23d7216ead4f3d7c70c84fd39db37d4f7743659b7d6bf05674ce5c09",
+      "bytes": 1760,
+      "source": "stellar-confidential-token-sdk@0.1.9 circuits/vks/withdraw.vk.bin"
+    },
+    "transfer": {
+      "circuitType": 2,
+      "sha256": "b9c6d437368efc5343d33be20b3455840b0b66ae7ad430bebc75c93a172b173c",
+      "bytes": 1760,
+      "source": "stellar-confidential-token-sdk@0.1.9 circuits/vks/transfer.vk.bin"
+    }
+  },
+  "contracts": {
+    "verifier": {
+      "id": "CD4BAMXJTLM2ZBTPBKABN3DTI5MFCLOCMMHAR5765JQXOTW3Y22EGWGR",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CD4BAMXJTLM2ZBTPBKABN3DTI5MFCLOCMMHAR5765JQXOTW3Y22EGWGR",
+      "wasmHash": "93db2afdcfa45ad0ced0dcd90dd2fc2743227b786e89b2dd4c74fe6cf184957f",
+      "wasmSource": "fixtures/confidential_verifier.wasm",
+      "salt": "d208da3ac16d54d048fb5663a6d7284f7ff505a7c885592f72dd32bea99b265c",
+      "constructor": {
+        "admin": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC",
+        "manager": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC"
+      },
+      "deployTx": {
+        "hash": "bceb0a711f9c3e2665ac779211eee63e0edfc70d709baaf8cd27f75183e57ef5",
+        "ledger": 5073492,
+        "feeStroops": 436557,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/bceb0a711f9c3e2665ac779211eee63e0edfc70d709baaf8cd27f75183e57ef5"
+      },
+      "keyRegistrations": {
+        "register": {
+          "hash": "d319687f0474b4b652727c42da05e1eeaa6a68d2183e131bcf195cc5d7a87fd2",
+          "ledger": 5073493,
+          "feeStroops": 1928588,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/d319687f0474b4b652727c42da05e1eeaa6a68d2183e131bcf195cc5d7a87fd2"
+        },
+        "withdraw": {
+          "hash": "bf1a1584a216444860921cc9c28b1bf03817d489687f446e34fe84ea40315504",
+          "ledger": 5073494,
+          "feeStroops": 984065,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/bf1a1584a216444860921cc9c28b1bf03817d489687f446e34fe84ea40315504"
+        },
+        "transfer": {
+          "hash": "84aaa2874f9c656774b96602bc4393dec0ddafd34cf1aa6303b8af08c27ec2a3",
+          "ledger": 5073495,
+          "feeStroops": 985659,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/84aaa2874f9c656774b96602bc4393dec0ddafd34cf1aa6303b8af08c27ec2a3"
+        }
+      },
+      "lockdown": {
+        "before": {
+          "calls": {
+            "getAdmin": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC",
+            "hasRoleDeployerManager": "0",
+            "managerMemberCount": 1
+          },
+          "ledger": {
+            "instanceAdminEntry": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC",
+            "otherInstanceKeys": [
+              "[Admin]"
+            ],
+            "pendingAdminEntry": null,
+            "managerCountEntry": 1,
+            "deployerHasRoleEntry": "0",
+            "managerMember0Entry": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC",
+            "existingRolesEntry": [
+              "manager"
+            ]
+          }
+        },
+        "renounceManagerTx": {
+          "hash": "286e15830951019f82ba1b2d2002eb5ccefb6d2eaaab1727aed97cdd89ff7bca",
+          "ledger": 5073497,
+          "feeStroops": 665854,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/286e15830951019f82ba1b2d2002eb5ccefb6d2eaaab1727aed97cdd89ff7bca"
+        },
+        "renounceAdminTx": {
+          "hash": "9994421bf0bdbc9a9bd39c804fcdc22d0a219f183ea696738177845618a15776",
+          "ledger": 5073499,
+          "feeStroops": 12045,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/9994421bf0bdbc9a9bd39c804fcdc22d0a219f183ea696738177845618a15776"
+        },
+        "after": {
+          "calls": {
+            "getAdmin": null,
+            "hasRoleDeployerManager": null,
+            "managerMemberCount": 0
+          },
+          "ledger": {
+            "instanceAdminEntry": null,
+            "otherInstanceKeys": [],
+            "pendingAdminEntry": null,
+            "managerCountEntry": 0,
+            "deployerHasRoleEntry": null,
+            "managerMember0Entry": null,
+            "existingRolesEntry": []
+          }
+        }
+      }
+    },
+    "auditorRegistry": {
+      "id": "CDHGEYEDQRZFDKN6APVEB6LNDX2OJORVZIBHC5Y4NWU4R5IEHLBLOEFW",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CDHGEYEDQRZFDKN6APVEB6LNDX2OJORVZIBHC5Y4NWU4R5IEHLBLOEFW",
+      "wasmHash": "63067366b49f96bd0a55c3768ddf2b8859c55b398378ca913b309303c6aa1982",
+      "wasmSource": "kalypso_auditor.wasm",
+      "salt": "96edfc4f551c593a433edb4a41e33ab66818ed82275e2266e0630698d7231151",
+      "constructor": null,
+      "deployTx": {
+        "hash": "08cfa3a324cb05a7131440e953c02360e3c9ac2511ae7caf9cbc46bc539a4222",
+        "ledger": 5073501,
+        "feeStroops": 64014,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/08cfa3a324cb05a7131440e953c02360e3c9ac2511ae7caf9cbc46bc539a4222"
+      }
+    },
+    "token": {
+      "id": "CB3OUG5O6U5R6YWKLUER42U7OEZICLBOC4FE4TAO2JBYH57YBTEX7BID",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CB3OUG5O6U5R6YWKLUER42U7OEZICLBOC4FE4TAO2JBYH57YBTEX7BID",
+      "wasmHash": "c77ac818ab3af1a2b9cdbc54964d68070f106fb72c9172ba4fff186995704cfd",
+      "wasmSource": "fixtures/confidential_token.wasm",
+      "salt": "ec7cae36d62b867c3770bd1ba1f6f40319412150e1c3877c19f9decd0d95d238",
+      "constructor": {
+        "underlyingAsset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+        "verifier": "CD4BAMXJTLM2ZBTPBKABN3DTI5MFCLOCMMHAR5765JQXOTW3Y22EGWGR",
+        "auditor": "CDHGEYEDQRZFDKN6APVEB6LNDX2OJORVZIBHC5Y4NWU4R5IEHLBLOEFW"
+      },
+      "deployTx": {
+        "hash": "645f94a921814a685873a575894452d5ccdae7430b2ec3074598d612e5aab8fb",
+        "ledger": 5073502,
+        "feeStroops": 223545,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/645f94a921814a685873a575894452d5ccdae7430b2ec3074598d612e5aab8fb"
+      }
+    },
+    "payroll": {
+      "id": "CAWWWCKWNOV4O2OR2VRAY3TBQQIGTMFMDIFCZHP3JFWOQUD5NOFNNY63",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CAWWWCKWNOV4O2OR2VRAY3TBQQIGTMFMDIFCZHP3JFWOQUD5NOFNNY63",
+      "wasmHash": "f98c894bf9ca04042b2e1009b85649d3d7024672b3577d4feaebe8ddba6d3698",
+      "wasmSource": "kalypso_payroll.wasm",
+      "salt": "46565a8f4ad5dbc77debbd4c62b594ead30feaba5846c410c1e303dd9096c60e",
+      "constructor": {
+        "token": "CB3OUG5O6U5R6YWKLUER42U7OEZICLBOC4FE4TAO2JBYH57YBTEX7BID"
+      },
+      "deployTx": {
+        "hash": "8c8efbefcec1d73aea11d6c565c4ced0de874061befa8050bd9f558b311c5b48",
+        "ledger": 5073503,
+        "feeStroops": 404967,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/8c8efbefcec1d73aea11d6c565c4ced0de874061befa8050bd9f558b311c5b48"
+      }
+    }
+  },
+  "uploads": {}
+}

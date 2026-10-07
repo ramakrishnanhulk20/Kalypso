@@ -1,0 +1,22 @@
+{
+  "name": "kalypso-contract-scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deploys the Kalypso contracts to Stellar testnet and checks on chain that nobody holds an admin key.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "deploy:testnet": "node deploy.mjs",
+    "check:testnet": "node check.mjs"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.3.1",
+    "stellar-confidential-token-sdk": "0.1.9"
+  },
+  "overrides": {
+    "axios": "1.20.0"
+  }
+}
