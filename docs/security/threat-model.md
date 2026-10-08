@@ -128,6 +128,20 @@ Each line is an outcome the code must uphold, followed by how a test shows it.
 - **C27** The anchor flow signs nothing the SDK's SEP-10 challenge checker rejects (sequence 0, the server key from the toml, the home domain, time bounds, the network). Popup messages are accepted only from the anchor's exact origin, compared with `URL().origin` on both sides. The cash-out destination, memo and amount come only from the anchor's authenticated transaction record and are shown to the worker before signing. Show: a challenge with sequence 1 or a payment operation is refused; a message from another origin is ignored.
 - **C28** Pages that hold key material load no third-party scripts and run under a Content Security Policy with no inline scripts. Every dependency that touches keys or proving is pinned to an exact version with lockfile integrity, and proving code is served from our own origin. Show: a header check for the policy, and a CI check that fails on any lockfile drift.
 
+### Added at the backend gate review (8 Oct 2026)
+
+The reviewer attacked section C against the code as built and named what it missed. These are part of the definition of done from here on.
+
+- **C29** A balance opening saved for a submitted pay is never overwritten or deleted until that transaction is final, and an in-flight transaction is resolved before any new proof is built. Show: a pay accepted but not yet applied, then a resume, then the pay landing; the run finishes with every row paid once and the treasury still opens.
+- **C30** Every amount shown, summed or exported equals the payload of the transaction its event names. The transaction hash is recomputed from the envelope, and every ciphertext field in the event must equal the payload's. Show: an archive that serves a re-encrypted transfer makes that payslip undecryptable, not a different number.
+- **C31** The sponsor pays only when every contract the call can execute is ours, USDC's, the verifier, or a wallet whose code is the pinned passkey wallet wasm. Checked on the simulation footprint, not on the authorization tree alone. Show: a self-deployed wallet whose check touches a third-party contract is refused.
+- **C32** A run survives a key rotation. Keys are re-read from chain on a failed proof, and a batch that still fails marks only its own rows failed while later batches pay. Show: a worker rotating their auditor key mid-run does not stop the other workers' pay.
+- **C33** A worker's auditor id is permanent once registered, so the app defaults to a new id the worker owns and shows who owns any other id before the worker signs. (Strengthens C10.)
+- **C34** No real payroll encrypts to the published demo accountant key. Show: the run engine refuses a company or worker bound to the demo auditor id before any transaction.
+- **C35** The archive ingests on a schedule that does not depend on visitors, and its alarm reaches a person: health answers 503 on a gap or a stale ingest so an external check fails visibly.
+- **C36** No log line joins a client IP with a transaction hash.
+- **C37** A workflow that can write build attestations pins every third-party action by commit, not by tag.
+
 ### General standards
 
 1. **Primitives over lists.** Each check says what it covers and what it does not.

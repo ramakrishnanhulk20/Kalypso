@@ -12,6 +12,8 @@ on:
     tags:
       - "v*"
 
+# Third-party actions are pinned by commit, not tag: this workflow can write attestations, so a
+# moved tag must not be able to change what runs here.
 permissions:
   id-token: write
   contents: write
@@ -26,18 +28,18 @@ jobs:
     env:
       SOURCE_REPO: github:ramakrishnanhulk20/Kalypso
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       # No build cache here on purpose: an attested build must not start from files a previous
       # run left behind.
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: 1.99.0
           targets: wasm32v1-none
 
-      - uses: stellar/stellar-cli@v28.1.0
+      - uses: stellar/stellar-cli@c0f4d0da891bbf214c08b8c5035ae6db80e9a3bd # v28.1.0
 
       - name: Test contracts
         run: |
@@ -68,11 +70,11 @@ jobs:
       # One attestation per wasm: SEP-55 verifiers check subject[0] of the attestation against the
       # on-chain hash, so a single attestation covering both files would fail for the second one.
       # Attesting before the release exists means no release is ever published unattested.
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: ${{ runner.temp }}/release/kalypso_payroll.wasm
 
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: ${{ runner.temp }}/release/kalypso_auditor.wasm
 

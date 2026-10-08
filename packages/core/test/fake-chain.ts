@@ -1,16 +1,34 @@
 // An in-memory model of the payroll contract, the confidential token and the auditor registry,
 // behind the same ChainPort the live RPC uses. It reads envelopes with the XDR types directly
 // and answers reads with independently built XDR. What it does NOT model: real proof
-// verification (the fake proof carries the commitment it was built on, and the fake token
-// checks that against the stored balance, as the verifier reads C_spend), fees, or rent.
+// verification (the fake proof carries the commitment and the three keys it was built on, and
+// the fake token checks them against the stored balance, the recipient's viewing key and both
+// auditor keys, as the verifier reads its public inputs from chain), fees, or rent. Its ledger
+// clock only moves when a caller waits for a transaction the network has not settled.
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { Address, Keypair, SorobanDataBuilder, StrKey, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk/base';
 import { G, pointFromBytes, type Point } from 'stellar-confidential-token-sdk';
 import { ContractCallError, SubmitRejectedError, type ChainPort, type SimResult } from '../src/chain/ports.js';
+import { RpcTimeoutError } from '../src/chain/rpc-port.js';
 import { PASSPHRASE, accountStruct, pointBytes, raw } from './independent-xdr.js';
 
-/** What happens to the next submitted transaction. OK applies it normally. */
-export type SubmitMode = 'OK' | 'FAILED' | 'DROPPED' | 'LOST_STATUS' | 'CRASH' | 'TAMPER' | 'REJECTED' | 'LYING_SUCCESS';
+/**
+ * What happens to the next submitted transaction. OK applies it normally. HELD accepts it
+ * without applying it or moving the sequence on until land(); while held, waiting on it throws
+ * and further submits from its source are refused. TIMEOUT_AFTER_ACCEPT applies it, then the
+ * submit throws as if the reply was lost.
+ */
+export type SubmitMode =
+  | 'OK'
+  | 'FAILED'
+  | 'DROPPED'
+  | 'LOST_STATUS'
+  | 'CRASH'
+  | 'TAMPER'
+  | 'REJECTED'
+  | 'LYING_SUCCESS'
+  | 'HELD'
+  | 'TIMEOUT_AFTER_ACCEPT';
 
 type WorkerState = 'Invited' | 'Active' | 'Removed';
 interface CompanyState {
@@ -74,7 +92,12 @@ export class FakeChain implements ChainPort {
   simulationFailures = 0;
   violations: string[] = [];
   timeline: string[] = [];
+  /** Close time of the latest ledger, Unix seconds. */
+  closeTime = Math.floor(Date.now() / 1000);
+  /** False models an RPC that gives no close time with NOT_FOUND. */
+  reportsCloseTime = true;
   private pending: string | undefined;
+  private held: Transaction | undefined;
   private modes: SubmitMode[] = [];
   private results = new Map<string, { status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; crash?: boolean }>();
 
@@ -88,6 +111,15 @@ export class FakeChain implements ChainPort {
   /** The network finished with whatever was in flight, as it would while a crashed app is closed. */
   settle(): void {
     this.pending = undefined;
+    for (const result of this.results.values()) result.crash = false;
+  }
+
+  /** The network finally applies the held transaction. */
+  land(): void {
+    const tx = this.held;
+    if (tx === undefined) throw new Error('no transaction is held');
+    this.held = undefined;
+    this.include(tx, bytesToHex(tx.hash()), 'OK');
   }
 
   async read(contractId: string, method: string, args: xdr.ScVal[]): Promise<xdr.ScVal> {
@@ -136,6 +168,7 @@ export class FakeChain implements ChainPort {
     if (tx.signatures.length !== 1 || !signature || !Keypair.fromPublicKey(tx.source).verify(tx.hash(), signature.signature())) {
       throw new SubmitRejectedError('ERROR', 'txBadAuth');
     }
+    if (this.held?.source === tx.source) throw new SubmitRejectedError('TRY_AGAIN_LATER');
     const sequence = BigInt(tx.sequence);
     if (sequence !== (this.sequences.get(tx.source) ?? 0n) + 1n) throw new SubmitRejectedError('ERROR', 'txBadSeq');
     if (tx.toEnvelope().v1().tx().ext().switch() !== 1) throw new SubmitRejectedError('ERROR', 'txMalformed');
@@ -154,11 +187,36 @@ export class FakeChain implements ChainPort {
       this.results.set(hash, { status: 'SUCCESS', ledger: this.ledger });
       return { hash };
     }
-    this.sequences.set(tx.source, sequence);
+    if (mode === 'HELD') {
+      this.held = tx;
+      return { hash };
+    }
+    this.include(tx, hash, mode);
+    if (mode === 'TIMEOUT_AFTER_ACCEPT') throw new RpcTimeoutError('sendTransaction');
+    return { hash };
+  }
+
+  async waitFor(hash: string, timeoutMs: number): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; closeTime?: number }> {
+    if (this.held !== undefined && bytesToHex(this.held.hash()) === hash) throw new Error('the RPC stopped answering about this transaction');
+    const result = this.results.get(hash) ?? { status: 'NOT_FOUND' as const };
+    if (result.crash) throw new Error('connection lost while waiting for the transaction');
+    if (this.pending === hash) this.pending = undefined;
+    if (result.status === 'NOT_FOUND') {
+      // Rounded down, so the clock tends to fall a little short of the caller's own estimate,
+      // as it does when the last ledger closed just before the deadline.
+      this.closeTime += Math.floor(timeoutMs / 1000);
+      return this.reportsCloseTime ? { status: 'NOT_FOUND', closeTime: this.closeTime } : { status: 'NOT_FOUND' };
+    }
+    return result.ledger === undefined ? { status: result.status } : { status: result.status, ledger: result.ledger };
+  }
+
+  /** Puts a transaction in a ledger: moves the source's sequence on, then applies it or fails it. */
+  private include(tx: Transaction, hash: string, mode: SubmitMode): void {
+    this.sequences.set(tx.source, BigInt(tx.sequence));
     this.ledger++;
     if (mode === 'FAILED') {
       this.results.set(hash, { status: 'FAILED', ledger: this.ledger });
-      return { hash };
+      return;
     }
     const before = this.snapshot();
     try {
@@ -168,7 +226,7 @@ export class FakeChain implements ChainPort {
       // A failing call undoes everything it did, as on chain.
       this.restore(before);
       this.results.set(hash, { status: 'FAILED', ledger: this.ledger });
-      return { hash };
+      return;
     }
     if (mode === 'TAMPER') {
       const treasury = this.accounts.get(tx.source) as AccountState;
@@ -179,14 +237,6 @@ export class FakeChain implements ChainPort {
       ledger: this.ledger,
       crash: mode === 'CRASH',
     });
-    return { hash };
-  }
-
-  async waitFor(hash: string): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number }> {
-    const result = this.results.get(hash) ?? { status: 'NOT_FOUND' as const };
-    if (result.crash) throw new Error('connection lost while waiting for the transaction');
-    if (this.pending === hash) this.pending = undefined;
-    return result.ledger === undefined || result.status === 'NOT_FOUND' ? { status: result.status } : { status: result.status, ledger: result.ledger };
   }
 
   private answer(contractId: string, method: string, args: xdr.ScVal[]): xdr.ScVal {
@@ -274,7 +324,13 @@ export class FakeChain implements ChainPort {
     const recipient = this.accounts.get(to);
     if (!sender || !recipient) throw contractError(3501);
     const d = readTransferData(data);
-    if (!pointFromBytes(d.proof.subarray(0, 64)).equals(sender.spendable)) throw contractError(3506);
+    const audR = this.auditorKeys.get(recipient.auditorId);
+    const audS = this.auditorKeys.get(sender.auditorId);
+    const bound = (i: number) => pointFromBytes(d.proof.subarray(64 * i, 64 * (i + 1)));
+    if (d.proof.length !== 256 || !audR || !audS) throw contractError(3506);
+    if (!bound(0).equals(sender.spendable) || !bound(1).equals(audR) || !bound(2).equals(audS) || !bound(3).equals(recipient.pvk)) {
+      throw contractError(3506);
+    }
     sender.spendable = d.cSpendNew;
     recipient.receiving = recipient.receiving.add(d.cTransfer);
     this.transfersTo.set(to, (this.transfersTo.get(to) ?? 0) + 1);

@@ -8,20 +8,26 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { Networks } from "@stellar/stellar-sdk";
 import { dailyFeeSpent, type Db } from "../../src/archive/db.ts";
 import { createLogger } from "../../src/log.ts";
-import { clientBucket } from "../../src/sponsor/client-ip.ts";
+import { clientBucket, ipTag } from "../../src/sponsor/client-ip.ts";
 import { DEDUPE_WINDOW_MS, sponsorHandler, sponsorStatusHandler, type SponsorContext } from "../../src/sponsor/handler.ts";
 import { INCLUSION_FEE_ALLOWANCE_STROOPS, type SimulateFn } from "../../src/sponsor/validate.ts";
-import { API_KEY, DB_API, DB_INGEST, STRANGER, TOKEN, testConfig } from "../helpers.ts";
+import { API_KEY, CRON_SECRET, DB_API, DB_INGEST, LOG_SALT, STRANGER, TOKEN, testConfig } from "../helpers.ts";
 import { clearTables, freshDb } from "../db.ts";
 import { fakeSimulation } from "./fake-rpc.ts";
 import {
   addr,
   b64,
+  codeKey,
+  contractAccountEntry,
   createContractOperation,
   depositTree,
   envelope,
+  fakeCode,
   hostCall,
+  instanceKey,
   mergeFuncAuth,
+  passkeyMergeFootprint,
+  passkeyWallet,
   paymentOperation,
   signedEntry,
   thirdPartyOperation,
@@ -109,11 +115,22 @@ function context(overrides: Partial<SponsorContext> = {}, env: Record<string, st
 
 const at = (ms: number) => () => new Date(NOW.getTime() + ms);
 
+/** Every client IP this file sends, as sent and as its rate-limit bucket, for the log sweep at the end. */
+const sentIps = new Set<string>();
+function noteIp(value: string | undefined) {
+  if (!value) return;
+  sentIps.add(value.trim().toLowerCase());
+  const bucket = clientBucket(value);
+  if (bucket) sentIps.add(bucket);
+}
+
 async function send(body: unknown, ctx: SponsorContext, headers: Record<string, string> = {}) {
+  const all = { "content-type": "application/json", "x-real-ip": "203.0.113.7", ...headers };
+  noteIp(all["x-real-ip"]);
   const res = await sponsorHandler(
     new Request("https://kalypso.test/api/sponsor", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-real-ip": "203.0.113.7", ...headers },
+      headers: all,
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
     ctx,
@@ -124,6 +141,7 @@ async function send(body: unknown, ctx: SponsorContext, headers: Record<string, 
 }
 
 async function status(query: string, ctx: SponsorContext, headers: Record<string, string> = { "x-real-ip": "203.0.113.7" }, method = "GET") {
+  noteIp(headers["x-real-ip"]);
   const res = await sponsorStatusHandler(new Request("https://kalypso.test/api/sponsor/status" + query, { method, headers }), ctx);
   const text = await res.text();
   responses.push(text);
@@ -149,6 +167,38 @@ describe("POST /api/sponsor relays a valid worker action", () => {
     const xdr = envelope();
     expect((await send({ xdr }, context())).status).toBe(200);
     expect(seen[0]!.body).toEqual({ params: { xdr, skipWait: true } });
+  });
+});
+
+describe("POST /api/sponsor and passkey wallets (C20)", () => {
+  const walletMerge = () => ({
+    func: b64(hostCall(TOKEN, "merge", [addr(passkeyWallet)])),
+    auth: [b64(contractAccountEntry({ contract: TOKEN, fn: "merge", args: [addr(passkeyWallet)] }))],
+  });
+
+  it("relays a passkey worker's merge when the wallet runs the pinned wallet code", async () => {
+    const body = walletMerge();
+    const res = await send(body, context({ rpc: fakeSimulation({ footprint: passkeyMergeFootprint() }) }));
+    expect(res).toMatchObject({ status: 200, body: { status: "pending" } });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.body).toEqual({ params: { ...body, skipWait: true } });
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE);
+  });
+
+  it("refuses a self-deployed wallet and a wallet whose check touches a third-party contract, relaying and paying nothing", async () => {
+    const otherCode = fakeSimulation({
+      footprint: passkeyMergeFootprint(),
+      code: (c) => (c === passkeyWallet ? "ab".repeat(32) : fakeCode(c)),
+    });
+    expect(await send(walletMerge(), context({ rpc: otherCode }))).toEqual({ status: 400, body: { error: "unknown_wallet_code" } });
+    const touching = passkeyMergeFootprint();
+    touching.readOnly.push(instanceKey(STRANGER), codeKey(fakeCode(STRANGER)!));
+    expect(await send(walletMerge(), context({ rpc: fakeSimulation({ footprint: touching }) }))).toEqual({
+      status: 400,
+      body: { error: "foreign_contract_in_footprint" },
+    });
+    expect(seen).toHaveLength(0);
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(0n);
   });
 });
 
@@ -362,13 +412,60 @@ describe("Channels failures stay contained", () => {
   });
 });
 
+describe("what the logs say about callers", () => {
+  it("logs a relay with its transaction id and hash, and nothing derived from the caller's IP", async () => {
+    const relayedHash = "b".repeat(64);
+    nextReply = () => ({ status: 200, body: { success: true, data: { transactionId: "tx_hashed", hash: relayedHash, status: "submitted" } } });
+    expect((await send(await mergeFuncAuth(), context())).status).toBe(200);
+    const line = logs.find((l) => l.includes('"event":"sponsor_relayed"') && l.includes("tx_hashed"))!;
+    expect(line).toContain('"hash":"' + relayedHash + '"');
+    expect(line).not.toContain("ipTag");
+    expect(line).not.toContain("203.0.113.7");
+  });
+
+  it("logs a rate-limit refusal with the salted tag of the IP bucket, never the IP itself", async () => {
+    const ctx = context({}, { PER_IP_LIMIT_PER_HOUR: "1" });
+    expect((await send(await mergeFuncAuth(), ctx, { "x-real-ip": "2001:db8:9:9::1" })).status).toBe(200);
+    expect((await send(await mergeFuncAuth(), ctx, { "x-real-ip": "2001:db8:9:9::2" })).body).toEqual({ error: "rate_limited" });
+    const line = logs.at(-1)!;
+    expect(line).toContain('"code":"rate_limited"');
+    expect(line).toContain('"ipTag":"' + ipTag("2001:db8:9:9::/64", LOG_SALT) + '"');
+    expect(line).not.toMatch(/2001:db8/i);
+  });
+});
+
 describe("no secret in any response or log line (C23)", () => {
-  it("found none of the API key or database URLs across every request in this file", () => {
+  it("found none of the API key, database URLs, cron secret or log salt across every request in this file", () => {
     expect(responses.length).toBeGreaterThan(30);
-    for (const secret of [API_KEY, DB_INGEST, DB_API, "ingest-pass-7Hq2", "reader-pass-K9z4"]) {
+    for (const secret of [API_KEY, DB_INGEST, DB_API, "ingest-pass-7Hq2", "reader-pass-K9z4", CRON_SECRET, LOG_SALT]) {
       expect(responses.join("\n")).not.toContain(secret);
       expect(logs.join("\n")).not.toContain(secret);
     }
+  });
+});
+
+describe("no log line ties a caller's IP to a transaction", () => {
+  it("no captured log line contains both an IP string and a 64-hex hash", () => {
+    const hex64 = /(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])/;
+    const ipv4 = /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])/;
+    const hasIp = (line: string) => ipv4.test(line) || [...sentIps].some((ip) => line.toLowerCase().includes(ip));
+    // The sweep means something only if this file sent many IPs and logged hashes.
+    expect(sentIps.size).toBeGreaterThan(8);
+    expect(logs.filter((line) => hex64.test(line)).length).toBeGreaterThan(3);
+    expect(logs.filter((line) => line.includes('"ipTag":"')).length).toBeGreaterThan(20);
+    expect(logs.filter((line) => hex64.test(line) && hasIp(line))).toEqual([]);
+    // Stronger than the rule, and true of this handler: no line carries a raw IP at all.
+    expect(logs.filter(hasIp)).toEqual([]);
+  });
+});
+
+describe("ipTag", () => {
+  it("is 16 hex characters, stable for one bucket and salt, and different for another bucket or salt", () => {
+    const tag = ipTag("203.0.113.7", LOG_SALT);
+    expect(tag).toMatch(/^[0-9a-f]{16}$/);
+    expect(ipTag("203.0.113.7", LOG_SALT)).toBe(tag);
+    expect(ipTag("203.0.113.8", LOG_SALT)).not.toBe(tag);
+    expect(ipTag("203.0.113.7", LOG_SALT + "x")).not.toBe(tag);
   });
 });
 

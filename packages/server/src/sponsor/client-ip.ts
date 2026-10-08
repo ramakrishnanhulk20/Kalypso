@@ -1,4 +1,20 @@
+import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
+
+/**
+ * What stands in for a caller's IP in log lines: an HMAC of the rate-limit
+ * bucket keyed with LOG_SALT, cut to 16 hex characters. One caller always
+ * gets the same tag, so abuse can be followed across lines, but a log
+ * reader without the salt cannot turn a tag back into an IP. At 16
+ * characters it can never be mistaken for a 64-character transaction hash.
+ *
+ * Does not cover: anyone holding the salt, who can tag every IPv4 address
+ * and match. That is why the salt is a secret and why lines that carry a
+ * transaction id or hash carry no tag at all.
+ */
+export function ipTag(bucket: string, salt: string): string {
+  return createHmac("sha256", salt).update(bucket).digest("hex").slice(0, 16);
+}
 
 /**
  * The rate-limit key for a request, from the value of the platform's trusted

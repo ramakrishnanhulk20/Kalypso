@@ -1,5 +1,6 @@
 import {
   Account,
+  Address,
   Keypair,
   Operation,
   StrKey,
@@ -13,8 +14,8 @@ import {
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Config } from "../config.ts";
-import type { RpcClient } from "../rpc.ts";
-import { contractIdOfScAddress, decodeCanonicalBase64 } from "../stellar.ts";
+import { RpcError, type RpcClient } from "../rpc.ts";
+import { canonicalContractId, contractIdOfScAddress, decodeCanonicalBase64 } from "../stellar.ts";
 
 /*
  * The sponsor rule (threat model C20), decided on the exact bytes that will be
@@ -25,6 +26,13 @@ import { contractIdOfScAddress, decodeCanonicalBase64 } from "../stellar.ts";
  *   auth tree;
  * - every call in every auth tree goes into payroll, token, auditor or the
  *   USDC contract;
+ * - every contract-account (C) signer, delegates included, is deployed with
+ *   the pinned passkey wallet wasm, read from its on-chain instance, because
+ *   the host runs that contract's own __check_auth on our fee;
+ * - every contract-data and contract-code entry the call can touch, in the
+ *   simulated footprint and in an envelope's declared one, belongs to
+ *   payroll, token, auditor, USDC, the verifier or one of those signing
+ *   wallets and the pinned wallet code;
  * - signatures we can check offline verify for the testnet network id;
  * - the declared and simulated fees stay under FEE_CAP_STROOPS;
  * - auth entries expire within 1,000 ledgers;
@@ -35,11 +43,13 @@ import { contractIdOfScAddress, decodeCanonicalBase64 } from "../stellar.ts";
  *   record-mode simulation reports them: none missing and none unused,
  *   because an unused signed entry passes enforce mode and proves nothing.
  *
- * What it covers: which contracts can be reached, that someone authorised the
+ * What it covers: which code can run on our fee, that someone authorised the
  * state change, and what that can cost us. What it does not cover: valid,
  * signed but pointless writes into our own contracts (the per-IP limit and
- * the daily budget bound those), and whether a passkey wallet's signature is
- * valid, which only its own __check_auth can decide during simulation.
+ * the daily budget bound those); whether a passkey wallet's signature is
+ * valid, which only its own __check_auth can decide during simulation; and a
+ * wallet whose stored state changes between our simulation and the one
+ * Channels runs before it submits a func request.
  */
 
 export const MAX_AUTH_ENTRIES = 16;
@@ -81,6 +91,8 @@ export type SponsorRefusalCode =
   | "simulation_needs_restore"
   | "read_only_call"
   | "unused_auth"
+  | "unknown_wallet_code"
+  | "foreign_contract_in_footprint"
   | "rpc_unavailable";
 
 export interface Refusal {
@@ -344,15 +356,20 @@ export type SimulationVerdict =
 export type SimulateFn = (
   cfg: Config,
   request: SponsorRequest,
-  rpc: Pick<RpcClient, "simulateTransaction">,
+  rpc: Pick<RpcClient, "simulateTransaction" | "getLedgerEntries">,
 ) => Promise<SimulationVerdict>;
 
 /**
- * Simulates the request twice against RPC and applies the checks that need
- * the chain.
+ * Reads the chain and simulates the request twice, applying the checks that
+ * need the chain.
  *
+ * First, one getLedgerEntries call reads the instances of our payroll,
+ * token, auditor and verifier and of every contract-account signer. Each
+ * signer must run PASSKEY_WALLET_WASM_HASH, or the request is refused
+ * before any simulation.
  * Enforce mode, with the supplied auth entries: must succeed with no restore
- * needed, and its footprint must hold at least one read-write entry.
+ * needed, its footprint must hold at least one read-write entry, and that
+ * footprint (and an envelope's declared one) must pass the footprint rule.
  * Record mode, with the auth entries removed: the entries it reports the call
  * needs must be exactly the supplied ones, matched on who authorises and on
  * the exact invocation tree.
@@ -364,6 +381,16 @@ export type SimulateFn = (
  * Returns the fee to reserve from the daily budget.
  */
 export const simulate: SimulateFn = async (cfg, request, rpc) => {
+  const signers = signersOf(request);
+  let code;
+  try {
+    code = await contractCodeOf(rpc, [...ourCodeOwners(cfg), ...signers.contracts]);
+  } catch {
+    return refuse("rpc_unavailable");
+  }
+  if (signers.contracts.some((id) => code.get(id) !== cfg.PASSKEY_WALLET_WASM_HASH)) return refuse("unknown_wallet_code");
+  const scope = footprintScope(cfg, code, signers);
+
   let enforced;
   try {
     enforced = await rpc.simulateTransaction(enforceEnvelope(request, cfg), "enforce");
@@ -377,6 +404,10 @@ export const simulate: SimulateFn = async (cfg, request, rpc) => {
   const footprint = footprintOf(enforced.transactionData);
   if (footprint === null) return refuse("simulation_failed");
   if (footprint.readWrite().length === 0) return refuse("read_only_call");
+  if (!inScope(footprint, scope)) return refuse("foreign_contract_in_footprint");
+  // The network holds an envelope to the footprint it declares, so that is
+  // the bound on what it can touch if the chain changes after our simulation.
+  if (request.kind === "xdr" && !inScope(declaredFootprintOf(request), scope)) return refuse("foreign_contract_in_footprint");
 
   let recorded;
   try {
@@ -411,6 +442,163 @@ function footprintOf(transactionData: string | undefined): xdr.LedgerFootprint |
   } catch {
     return null;
   }
+}
+
+/** Validation already required the envelope to carry Soroban data, so this cannot miss. */
+function declaredFootprintOf(request: XdrSponsorRequest): xdr.LedgerFootprint {
+  return xdr.TransactionEnvelope.fromXDR(request.xdr, "base64").v1().tx().ext().sorobanData().resources().footprint();
+}
+
+interface Signers {
+  /** Contract accounts whose __check_auth the host runs: each entry's own address and every delegate under it. */
+  contracts: string[];
+  /** Classic accounts that sign an address credential, so the host stores their nonce. */
+  accounts: string[];
+}
+
+function signersOf(request: SponsorRequest): Signers {
+  const contracts = new Set<string>();
+  const accounts = new Set<string>();
+  for (const entry of request.authEntries) {
+    const info = inspectAuthEntry(entry);
+    for (const signer of info.signers) {
+      const id = canonicalContractId(signer.address);
+      if (id !== null) contracts.add(id);
+    }
+    if (info.address !== null && StrKey.isValidEd25519PublicKey(info.address)) accounts.add(info.address);
+  }
+  return { contracts: [...contracts], accounts: [...accounts] };
+}
+
+/** USDC is left out: it is the built-in asset contract, which has no wasm to read. */
+const ourCodeOwners = (cfg: Config) => [cfg.PAYROLL_CONTRACT_ID, cfg.TOKEN_CONTRACT_ID, cfg.AUDITOR_CONTRACT_ID, cfg.VERIFIER_CONTRACT_ID];
+
+function instanceKey(contractId: string): xdr.LedgerKey {
+  return xdr.LedgerKey.contractData(
+    new xdr.LedgerKeyContractData({
+      contract: new Address(contractId).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: xdr.ContractDataDurability.persistent(),
+    }),
+  );
+}
+
+/**
+ * The wasm hash (lower-case hex) each contract's instance runs, read from
+ * chain in one getLedgerEntries call. A contract with no instance, or one
+ * whose executable is not plain wasm (the built-in asset contract, a
+ * reference to another contract's code), maps to null.
+ *
+ * Throws RpcError when the reply holds an entry that is not the instance of
+ * a contract we asked for, or two entries for one contract: a reply we
+ * cannot read whole is not trusted in part.
+ */
+export async function contractCodeOf(
+  rpc: Pick<RpcClient, "getLedgerEntries">,
+  contractIds: readonly string[],
+): Promise<Map<string, string | null>> {
+  const asked = new Set(contractIds);
+  const reply = await rpc.getLedgerEntries([...asked].map((id) => instanceKey(id).toXDR("base64")));
+  const code = new Map<string, string | null>();
+  for (const entry of reply.entries) {
+    const found = instanceCodeOf(entry.xdr);
+    if (found === null || !asked.has(found.contract) || code.has(found.contract)) {
+      throw new RpcError("bad_reply", "getLedgerEntries sent an entry we did not ask for");
+    }
+    code.set(found.contract, found.wasm);
+  }
+  for (const id of asked) if (!code.has(id)) code.set(id, null);
+  return code;
+}
+
+function instanceCodeOf(base64: string): { contract: string; wasm: string | null } | null {
+  const bytes = decodeCanonicalBase64(base64);
+  if (bytes === null) return null;
+  let data: xdr.LedgerEntryData;
+  try {
+    data = xdr.LedgerEntryData.fromXDR(bytes);
+  } catch {
+    return null;
+  }
+  if (data.switch().name !== "contractData") return null;
+  const entry = data.contractData();
+  const contract = contractIdOfScAddress(entry.contract());
+  if (
+    contract === null ||
+    entry.key().switch().name !== "scvLedgerKeyContractInstance" ||
+    entry.durability().name !== "persistent" ||
+    entry.val().switch().name !== "scvContractInstance"
+  ) {
+    return null;
+  }
+  const executable = entry.val().instance().executable();
+  return { contract, wasm: executable.switch().name === "contractExecutableWasm" ? executable.wasmHash().toString("hex") : null };
+}
+
+interface FootprintScope {
+  contracts: Set<string>;
+  code: Set<string>;
+  nonceAccounts: Set<string>;
+}
+
+/**
+ * Who may own what the call touches: our contracts, USDC, the verifier and
+ * the signing wallets own contract data; the wasm our contracts run, and the
+ * pinned wallet wasm only when a wallet signs, are the contract code.
+ */
+function footprintScope(cfg: Config, code: Map<string, string | null>, signers: Signers): FootprintScope {
+  const ourCode = ourCodeOwners(cfg)
+    .map((id) => code.get(id) ?? null)
+    .filter((hex): hex is string => hex !== null);
+  return {
+    contracts: new Set([...ourCodeOwners(cfg), cfg.USDC_SAC_ID, ...signers.contracts]),
+    code: new Set(signers.contracts.length > 0 ? [...ourCode, cfg.PASSKEY_WALLET_WASM_HASH] : ourCode),
+    nonceAccounts: new Set(signers.accounts),
+  };
+}
+
+/**
+ * The footprint rule. Running any contract reads its instance (contract data
+ * it owns) and its wasm (contract code), so no contract outside the scope
+ * can run, whoever calls it: our code, a wallet's __check_auth or anything
+ * nested under them.
+ *
+ * Classic account and trustline entries pass: they hold the balances USDC
+ * moves and run no code. Contract data owned by a classic account passes
+ * only as that account's own nonce, which the host stores there when the
+ * account signs an address credential in this request. Any other entry type
+ * is refused.
+ */
+function inScope(footprint: xdr.LedgerFootprint, scope: FootprintScope): boolean {
+  for (const key of [...footprint.readOnly(), ...footprint.readWrite()]) {
+    switch (key.switch().name) {
+      case "account":
+      case "trustline":
+        break;
+      case "contractCode":
+        if (!scope.code.has(key.contractCode().hash().toString("hex"))) return false;
+        break;
+      case "contractData": {
+        const data = key.contractData();
+        const owner = data.contract();
+        const contract = contractIdOfScAddress(owner);
+        if (contract !== null) {
+          if (!scope.contracts.has(contract)) return false;
+          break;
+        }
+        const isOwnNonce =
+          owner.switch().name === "scAddressTypeAccount" &&
+          data.key().switch().name === "scvLedgerKeyNonce" &&
+          data.durability().name === "temporary" &&
+          scope.nonceAccounts.has(Address.fromScAddress(owner).toString());
+        if (!isOwnNonce) return false;
+        break;
+      }
+      default:
+        return false;
+    }
+  }
+  return true;
 }
 
 function decodeAll(entries: readonly string[]): xdr.SorobanAuthorizationEntry[] | null {

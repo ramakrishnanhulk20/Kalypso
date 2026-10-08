@@ -16,6 +16,7 @@ export {
   type SponsorRefusalCode,
 } from "./sponsor/validate.ts";
 export { archiveHandler, type ArchiveContext } from "./archive/api.ts";
+export { ingestCronHandler, INGEST_CRON_DEADLINE_MS, type IngestCronContext } from "./archive/cron.ts";
 export { ingestOnce, UpstreamDataError, type IngestOptions, type IngestResult } from "./archive/ingest.ts";
 export { applySchema, connectPostgres, pgliteDb, postgresDb, schemaSql, type Db } from "./archive/db.ts";
 export { SCHEMA_SQL } from "./archive/schema.ts";

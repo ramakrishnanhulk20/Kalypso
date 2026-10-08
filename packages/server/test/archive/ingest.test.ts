@@ -216,6 +216,7 @@ describe("ingestOnce", () => {
     const rpc: RpcClient = {
       getHealth: (signal) => chain.getHealth(signal),
       simulateTransaction: () => chain.simulateTransaction(),
+      getLedgerEntries: () => chain.getLedgerEntries(),
       getEvents: async () => (calls++ === 0 ? page : { ...page, events: [] }),
     };
     await expect(ingestOnce(db, rpc, cfg, { startLedger: 100, pageLimit: 2 })).rejects.toThrow(/did not advance/);

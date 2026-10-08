@@ -132,6 +132,19 @@ describe('fetchAccountHistory from the RPC', () => {
     expect(new Set(result.events.map((e) => e.id)).size).toBe(result.events.length);
   });
 
+  it("treats the token's four config events as touching no account, so history from its deploy ledger stays complete", async () => {
+    const s = scenario();
+    const read = () => fetchAccountHistory({ port: s.ledger.rpc(), contracts: CONTRACTS, account: s.treasury, fromLedger: s.fromLedger });
+    s.ledger.tx((emit) => {
+      for (const name of ['underlying_asset_set', 'verifier_set', 'auditor_set', 'address_as_field_set']) emit('token', [sym(name)], { value: raw.address(CONTRACTS.auditor) });
+    });
+    const result = await read();
+    expect(result.complete).toBe(true);
+    expect(kinds(result.events)).toEqual(['register', 'deposit', 'merge', 'transfer', 'transfer']);
+    s.ledger.tx((emit) => emit('token', [sym('auditor_set'), raw.u32(1)], {}));
+    expect((await read()).complete).toBe(false);
+  });
+
   it('marks history incomplete when an event of ours cannot be attributed to anyone', async () => {
     const s = scenario();
     s.ledger.tx((emit) => emit('token', [sym('transfer'), raw.u32(1), raw.u32(2)], {}));

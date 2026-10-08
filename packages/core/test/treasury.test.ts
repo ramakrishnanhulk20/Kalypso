@@ -2,12 +2,14 @@
 // and saves the result); this file only covers checking a saved opening against the chain.
 import { commit, scalarMul, H } from 'stellar-confidential-token-sdk';
 import { describe, expect, it } from 'vitest';
-import { ContractCallError, type ChainPort, type OpeningStore, type SavedOpening } from '../src/chain/ports.js';
+import { ContractCallError, type ChainPort, type InFlightPay, type OpeningStore, type SavedOpening } from '../src/chain/ports.js';
 import { TokenErrorCode } from '../src/chain/token.js';
 import {
   HistoryIncompleteError,
   batchOpeningKey,
+  inFlightKey,
   loadTreasuryOpening,
+  readInFlight,
   readSavedOpening,
   toSavedOpening,
   treasuryOpeningKey,
@@ -18,6 +20,7 @@ const TOKEN = testContract(6);
 const PAYROLL = testContract(7);
 const treasury = testAccount('treasury').publicKey();
 const worker = testAccount('treasury test worker').publicKey();
+const HASH = 'c0ffee'.padEnd(64, '0');
 
 function chainWithSpendable(spendable: ReturnType<typeof commit> | 'unregistered'): ChainPort {
   return {
@@ -28,9 +31,9 @@ function chainWithSpendable(spendable: ReturnType<typeof commit> | 'unregistered
   } as unknown as ChainPort;
 }
 
-function memoryStore(entries: Record<string, SavedOpening> = {}): OpeningStore & { data: Map<string, SavedOpening> } {
+function memoryStore(entries: Record<string, SavedOpening | InFlightPay> = {}): OpeningStore & { data: Map<string, SavedOpening | InFlightPay> } {
   const data = new Map(Object.entries(entries));
-  return { data, get: async (key) => data.get(key), put: async (key, value) => void data.set(key, value) };
+  return { data, get: async (key) => data.get(key), put: async (key, value) => void data.set(key, value), delete: async (key) => void data.delete(key) };
 }
 
 async function reasonOf(work: Promise<unknown>) {
@@ -54,12 +57,36 @@ describe('saved openings', () => {
     expect(readSavedOpening(null as unknown as SavedOpening)).toBeUndefined();
   });
 
-  it('builds store keys from decoded addresses only', () => {
+  it('builds store keys from decoded addresses only, one batch key per attempt', () => {
     expect(treasuryOpeningKey(TOKEN, ` ${treasury}`)).toBe(`kalypso/v1/opening/${TOKEN}/${treasury}`);
-    expect(batchOpeningKey({ payroll: PAYROLL, companyId: 4n, runId: 5n, firstWorker: worker })).toBe(
-      `kalypso/v1/batch/${PAYROLL}/4/5/${worker}`,
+    expect(batchOpeningKey({ payroll: PAYROLL, companyId: 4n, runId: 5n, firstWorker: worker, txHash: HASH })).toBe(
+      `kalypso/v1/batch/${PAYROLL}/4/5/${worker}/${HASH}`,
     );
+    expect(inFlightKey(TOKEN, treasury)).toBe(`kalypso/v1/inflight/${TOKEN}/${treasury}`);
     expect(() => treasuryOpeningKey(treasury, treasury)).toThrow();
+    expect(() => inFlightKey(treasury, treasury)).toThrow();
+    for (const txHash of [HASH.toUpperCase(), HASH.slice(1), `${HASH}/x`, 7 as unknown as string]) {
+      expect(() => batchOpeningKey({ payroll: PAYROLL, companyId: 4n, runId: 5n, firstWorker: worker, txHash })).toThrow(TypeError);
+    }
+  });
+
+  it('reads an in-flight record only when every field has the shape the engine writes', () => {
+    const batchKey = batchOpeningKey({ payroll: PAYROLL, companyId: 1n, runId: 2n, firstWorker: worker, txHash: HASH });
+    const record = { hash: HASH, maxTime: 1_791_460_800, batchKey };
+    expect(readInFlight(record)).toEqual(record);
+    for (const bad of [
+      { ...record, batchKey: `kalypso/v1/batch/${'x'.repeat(200)}/${HASH}` },
+      { ...record, hash: HASH.toUpperCase() },
+      { ...record, maxTime: 0 },
+      { ...record, maxTime: 1.5 },
+      { ...record, maxTime: '1791460800' },
+      { ...record, batchKey: treasuryOpeningKey(TOKEN, treasury) },
+      { ...record, batchKey: batchKey.replace(HASH, 'f'.repeat(64)) },
+      toSavedOpening(1n, 1n),
+      null,
+    ]) {
+      expect(readInFlight(bad)).toBeUndefined();
+    }
   });
 });
 
@@ -73,11 +100,23 @@ describe('loadTreasuryOpening', () => {
   });
 
   it('falls back to a pending batch opening when the treasury record is one batch behind', async () => {
-    const pendingKey = batchOpeningKey({ payroll: PAYROLL, companyId: 1n, runId: 1n, firstWorker: worker });
+    const pendingKey = batchOpeningKey({ payroll: PAYROLL, companyId: 1n, runId: 1n, firstWorker: worker, txHash: HASH });
     const store = memoryStore({ [treasuryOpeningKey(TOKEN, treasury)]: toSavedOpening(900n, 1n), [pendingKey]: opening });
     const port = chainWithSpendable(onChain);
     await expect(loadTreasuryOpening({ port, store, token: TOKEN, treasury, pendingKeys: [pendingKey] })).resolves.toEqual(opening);
     expect(await reasonOf(loadTreasuryOpening({ port, store, token: TOKEN, treasury }))).toBe('DOES_NOT_OPEN');
+  });
+
+  it('counts the opening of the pay in flight as a candidate, since it can land before it is settled', async () => {
+    const batchKey = batchOpeningKey({ payroll: PAYROLL, companyId: 1n, runId: 1n, firstWorker: worker, txHash: HASH });
+    const store = memoryStore({
+      [treasuryOpeningKey(TOKEN, treasury)]: toSavedOpening(900n, 1n),
+      [inFlightKey(TOKEN, treasury)]: { hash: HASH, maxTime: 1_791_460_800, batchKey },
+      [batchKey]: opening,
+    });
+    await expect(loadTreasuryOpening({ port: chainWithSpendable(onChain), store, token: TOKEN, treasury })).resolves.toEqual(opening);
+    store.data.set(inFlightKey(TOKEN, treasury), { hash: HASH, maxTime: 0, batchKey });
+    expect(await reasonOf(loadTreasuryOpening({ port: chainWithSpendable(onChain), store, token: TOKEN, treasury }))).toBe('DOES_NOT_OPEN');
   });
 
   it('says history incomplete when nothing is saved, nothing matches, or the stored hex alone matches', async () => {

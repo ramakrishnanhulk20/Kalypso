@@ -75,6 +75,10 @@ export class FakeChain implements RpcClient {
     throw new Error("not used by the archive");
   }
 
+  async getLedgerEntries(): Promise<never> {
+    throw new Error("not used by the archive");
+  }
+
   private async wait(signal?: AbortSignal) {
     if (this.delayMs === 0) return;
     await new Promise<void>((resolve, reject) => {

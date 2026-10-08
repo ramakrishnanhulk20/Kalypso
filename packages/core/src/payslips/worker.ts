@@ -3,12 +3,13 @@ import { workerStatus } from '../chain/payroll.js';
 import type { ChainPort } from '../chain/ports.js';
 import { requireAccount, requireU64 } from '../chain/scval.js';
 import { confidentialBalance, type ConfidentialAccountView } from '../chain/token.js';
-import { fetchAccountHistory, type HistoryResult, type HistorySource } from '../history/events.js';
+import { fetchAccountHistory, reachesLedger, type HistoryResult, type HistorySource } from '../history/events.js';
+import { bindTransferToTransaction, oncePerHash, type TxSourcePort } from '../history/tx-binding.js';
 import type { KalypsoKeys } from '../keys.js';
 import type { Opening } from '../run/treasury.js';
-import { chainChecks, isMoney, readCompanyPayslips, transferInTx } from './company.js';
+import { bindsAsPayslip, chainChecks, isMoney, readCompanyPayslips, transferInTx } from './company.js';
 
-/** One payment a worker can show as pay: it passed every C18 check. */
+/** One payment a worker can show as pay: it passed every C18 check and is bound to its transaction. */
 export interface Payslip {
   companyId: bigint;
   runId: bigint;
@@ -19,8 +20,14 @@ export interface Payslip {
 }
 
 /**
- * What a worker sees. complete is false when any history was incomplete or unreadable, or the
- * rebuilt balance did not open the on-chain commitment; then no balance is given at all.
+ * What a worker sees.
+ *
+ * complete is false when any history was incomplete or unreadable, a payslip could not be
+ * matched to its transfer or bound to its transaction, or the rebuilt balance did not open the
+ * on-chain commitment. spendable and receiving are given only when the balance itself opened the
+ * chain (C16). payslips may be listed while complete is false: each one listed passed every
+ * check, including the binding, but the list may be missing some, so the UI must say history is
+ * incomplete and never present the list as the full record.
  */
 export interface WorkerView {
   complete: boolean;
@@ -75,8 +82,10 @@ function checkContracts(contracts: { payroll: string; token: string }) {
 /**
  * Rebuilds the worker's spendable and receiving balances from the token history with the SDK's
  * StateEngine, then checks both against confidential_balance on chain (threat model C16). The
- * openings are returned only when the history is complete, every event in it could be read,
- * both commitments open, and both values are money. A withdraw is proved only from these.
+ * openings are returned only when the history is complete, reaches to within
+ * INGEST_TOLERANCE_LEDGERS of the RPC's newest ledger as read after the balance, every event in
+ * it could be read, both commitments open, and both values are money. A withdraw is proved only
+ * from these.
  *
  * @throws WorkerViewError NOT_REGISTERED, KEYS_MISMATCH (the keys' viewing key is not the one on
  *   chain), INVALID_INPUT; or the port's or history's own errors.
@@ -102,6 +111,7 @@ export async function loadWorkerBalance(input: BalanceInput): Promise<WorkerBala
   const account = await confidentialBalance(port, contracts.token, worker);
   if (account === null) throw new WorkerViewError('NOT_REGISTERED');
   if (!account.pvk.equals(keys.PVK)) throw new WorkerViewError('KEYS_MISMATCH');
+  const { latestLedger } = await source.rpc.ledgerWindow();
 
   const engine = new StateEngine({ address: worker, keys });
   engine.ingestEvents(history.events.flatMap((e) => (e.kind === 'token' ? [e.event] : [])));
@@ -109,7 +119,12 @@ export async function loadWorkerBalance(input: BalanceInput): Promise<WorkerBala
   const spendable = engine.spendable();
   const receiving = engine.receiving();
   const complete =
-    history.complete && !history.events.some((e) => e.kind === 'undecodable') && check.ok && isMoney(spendable.v) && isMoney(receiving.v);
+    history.complete &&
+    reachesLedger(history.ingestedThrough, latestLedger) &&
+    !history.events.some((e) => e.kind === 'undecodable') &&
+    check.ok &&
+    isMoney(spendable.v) &&
+    isMoney(receiving.v);
   if (!complete) return { complete: false, history, account };
   return {
     complete: true,
@@ -123,23 +138,30 @@ export async function loadWorkerBalance(input: BalanceInput): Promise<WorkerBala
 /**
  * A worker's own payslips and verified balances.
  *
- * A payslip is listed only when every one of these holds (threat model C18): a PayslipIssued
- * event from our payroll contract for this worker, in a company the worker is or was a member
- * of on chain; exactly one transfer event from our token in the same transaction, from the
- * account that was the company's treasury at that moment, to this worker; is_paid on chain for
- * (company, run, worker); and the amount, decrypted with the worker's own keys, in [0, 2^63).
- * Direct transfers and deposits have no payslip event, so they never become payslips.
+ * A payslip is listed only when every one of these holds (threat model C18, C19): a
+ * PayslipIssued event from our payroll contract for this worker, in a company the worker is or
+ * was a member of on chain; exactly one transfer event from our token in the same transaction,
+ * from the account that was the company's treasury at that moment, to this worker; is_paid on
+ * chain for (company, run, worker); the transfer bound to its transaction by
+ * bindTransferToTransaction, which must be our payroll's pay for that company and run; the
+ * amount, decrypted with the worker's own keys, in [0, 2^63); and that amount and its blinding
+ * opening the transaction's c_transfer. Direct transfers and deposits have no payslip event and
+ * bind as no pay call, so they never become payslips.
  *
  * Balances are given only when loadWorkerBalance says complete (C16). A candidate payslip that
- * fails a check because history is missing or unreadable makes the view incomplete; one the
- * chain says was not paid is simply not a payslip.
+ * fails a check because history is missing, unreadable or unbound makes the view incomplete and
+ * is never shown; one the chain says was not paid is simply not a payslip. A company history
+ * that ends more than INGEST_TOLERANCE_LEDGERS before the RPC's newest ledger, read after every
+ * chain read, makes the view incomplete too (C17).
  *
  * @param companyIds the companies whose invites the worker accepted, as the app recorded them.
  *   Each is confirmed with worker_status first, and a company the worker never joined is ignored.
+ * @param txSource where each payslip's transaction envelope is read from (createTxSourcePort).
  * @throws WorkerViewError, or the port's or history's own errors.
  */
-export async function loadWorkerView(input: BalanceInput & { companyIds: bigint[] }): Promise<WorkerView> {
+export async function loadWorkerView(input: BalanceInput & { companyIds: bigint[]; txSource: TxSourcePort }): Promise<WorkerView> {
   if (!Array.isArray(input.companyIds) || input.companyIds.length > MAX_WORKER_COMPANIES) throw new WorkerViewError('INVALID_INPUT');
+  if (typeof input.txSource?.transaction !== 'function') throw new WorkerViewError('INVALID_INPUT');
   let companyIds: bigint[];
   try {
     companyIds = [...new Set(input.companyIds.map((id) => requireU64(id, 'companyId')))];
@@ -151,14 +173,17 @@ export async function loadWorkerView(input: BalanceInput & { companyIds: bigint[
   const contracts = checkContracts(input.contracts);
   const { port, history } = input;
   const checks = chainChecks(port, contracts.payroll);
+  const txSource = oncePerHash(input.txSource);
   const engine = new StateEngine({ address: worker, keys: input.keys });
   let complete = balance.complete;
   const payslips: Payslip[] = [];
+  const companyHistoryEnds: number[] = [];
 
   for (const companyId of companyIds) {
     if ((await workerStatus(port, contracts.payroll, companyId, worker)) === null) continue;
     const company = await readCompanyPayslips({ port, history, contracts, companyId, worker });
     complete &&= company.complete;
+    companyHistoryEnds.push(company.ingestedThrough);
     for (const candidate of company.candidates) {
       const found = transferInTx(balance.history.events, candidate.meta.txHash, candidate.treasury, worker);
       if ('problem' in found) {
@@ -166,10 +191,17 @@ export async function loadWorkerView(input: BalanceInput & { companyIds: bigint[
         continue;
       }
       if (!(await checks.isPaid(companyId, candidate.runId, worker))) continue;
-      const { rE, vTilde, sigma } = found.transfer.event;
-      const amount = engine.decryptIncoming(rE, vTilde, sigma).vTx;
+      const transfer = found.transfer.event;
+      const binding = await bindTransferToTransaction({ txSource, txHash: candidate.meta.txHash, event: transfer, contracts });
+      if (!bindsAsPayslip(binding, candidate)) {
+        complete = false;
+        continue;
+      }
+      const { vTx: amount, rTx } = engine.decryptIncoming(transfer.rE, transfer.vTilde, transfer.sigma);
       const periodLabel = await checks.periodLabel(companyId, candidate.runId);
-      if (!isMoney(amount) || periodLabel === null) {
+      // Only the recipient can make this check: what its keys decrypt must open the commitment the
+      // transaction moved, so a payload the circuit did not tie to this worker never shows a number.
+      if (!isMoney(amount) || !commit(amount, rTx).equals(binding.payload.cTransfer) || periodLabel === null) {
         complete = false;
         continue;
       }
@@ -177,6 +209,8 @@ export async function loadWorkerView(input: BalanceInput & { companyIds: bigint[
     }
   }
 
+  const { latestLedger } = await history.rpc.ledgerWindow();
+  if (!companyHistoryEnds.every((through) => reachesLedger(through, latestLedger))) complete = false;
   payslips.sort((a, b) => a.ledger - b.ledger);
   if (!balance.complete || balance.spendable === undefined || balance.receiving === undefined) return { complete: false, payslips };
   return { complete, spendable: balance.spendable.v, receiving: balance.receiving.v, payslips };

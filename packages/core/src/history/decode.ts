@@ -39,19 +39,25 @@ export type HistoryEvent = EventMeta &
 
 const MAX_TOPICS = 6;
 
+/**
+ * The token's configuration events (OZ mod.rs:872-920). Each carries only its name as a topic
+ * and names no account, so no account's history depends on it.
+ */
+export const TOKEN_CONFIG_EVENTS: ReadonlySet<string> = new Set(['underlying_asset_set', 'verifier_set', 'auditor_set', 'address_as_field_set']);
+
 export function eventId(position: EventPosition, txHash: string): string {
   return `${position.ledger}-${txHash}-${position.opIndex}-${position.eventIndex}`;
 }
 
 /** A BytesN<32> field value read through the SDK's decoder, refused unless canonical (below the field modulus). */
-function fieldValue(value: xdr.ScVal, what: string): bigint {
+export function fieldValue(value: xdr.ScVal, what: string): bigint {
   const n = fromBytesBE(fromBytes(value, what, 32));
   if (!isCanonicalFr(n)) throw new DecodeError(`${what} is not a canonical field value`);
   return n;
 }
 
 /** An ephemeral point R_e = r_e·H, where r_e is never zero, so the identity is refused too. */
-function ephemeralPoint(value: xdr.ScVal, what: string): Point {
+export function ephemeralPoint(value: xdr.ScVal, what: string): Point {
   const point = requireOnCurvePoint(fromBytes(value, what, 64), what);
   if (point.is0()) throw new DecodeError(`${what} is the identity point`);
   return point;
@@ -235,6 +241,8 @@ export function decodeContractEvent(raw: RawContractEvent, contracts: { token: s
     name = eventName;
     const data = parseScVal(raw.dataXdr, 'event data');
     if (contract === 'token') {
+      // A config name in any other shape is not the token's config event, so it stays undecodable.
+      if (TOKEN_CONFIG_EVENTS.has(eventName)) requireTopicCount(topics, 1, eventName);
       const event = decodeToken(eventName, topics, data, raw.ledger);
       return event === null ? { ...meta, kind: 'ignored', contract, name: eventName, parties: readableParties(topics) } : { ...meta, kind: 'token', event };
     }

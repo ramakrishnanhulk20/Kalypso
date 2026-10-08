@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { Networks, StrKey } from "@stellar/stellar-sdk";
 import { ConfigError, isAllowedOutboundUrl, loadConfig, secretValues } from "../src/config.ts";
-import { API_KEY, DB_API, DB_INGEST, TOKEN, keypairFor, testEnv } from "./helpers.ts";
+import { API_KEY, CRON_SECRET, DB_API, DB_INGEST, LOG_SALT, TOKEN, keypairFor, testEnv } from "./helpers.ts";
 
 function problemsOf(env: Record<string, string | undefined>): string[] {
   try {
@@ -26,6 +26,7 @@ describe("loadConfig", () => {
     expect(cfg.DAILY_FEE_BUDGET_STROOPS).toBe(200_000_000n);
     expect(cfg.PER_IP_LIMIT_PER_HOUR).toBe(60);
     expect(cfg.TRUSTED_IP_HEADER).toBe("x-real-ip");
+    expect(cfg.PASSKEY_WALLET_WASM_HASH).toBe("97ce047884106b1c6c3bb40b8973cc48db1c4dad95c9e20462bf2c701daa764e");
     expect(cfg.NETWORK_PASSPHRASE).toBe(Networks.TESTNET);
     expect(Object.isFrozen(cfg)).toBe(true);
   });
@@ -37,11 +38,21 @@ describe("loadConfig", () => {
       "PAYROLL_CONTRACT_ID",
       "TOKEN_CONTRACT_ID",
       "AUDITOR_CONTRACT_ID",
+      "VERIFIER_CONTRACT_ID",
       "CHANNELS_API_KEY",
       "DATABASE_URL_INGEST",
       "DATABASE_URL_API",
+      "CRON_SECRET",
+      "LOG_SALT",
     ]) {
       expect(problems).toContain(key + ": missing");
+    }
+  });
+
+  it("refuses a shared secret that is short or could split a header", () => {
+    for (const bad of ["a".repeat(31), "a".repeat(40) + " b", "a".repeat(40) + "\n", "a".repeat(257)]) {
+      expect(problemsOf(testEnv({ CRON_SECRET: bad }))[0]).toMatch(/^CRON_SECRET: must be 32 to 256 characters/);
+      expect(problemsOf(testEnv({ LOG_SALT: bad }))[0]).toMatch(/^LOG_SALT: must be 32 to 256 characters/);
     }
   });
 
@@ -60,6 +71,14 @@ describe("loadConfig", () => {
 
   it("refuses two roles sharing one contract id", () => {
     expect(problemsOf(testEnv({ PAYROLL_CONTRACT_ID: TOKEN }))[0]).toMatch(/must all be different/);
+    expect(problemsOf(testEnv({ VERIFIER_CONTRACT_ID: TOKEN }))[0]).toMatch(/must all be different/);
+  });
+
+  it("takes the wallet wasm hash in one spelling only: 64 lower-case hex characters", () => {
+    for (const bad of ["97CE047884106B1C6C3BB40B8973CC48DB1C4DAD95C9E20462BF2C701DAA764E", "97ce04", "0x" + "a".repeat(64), "g".repeat(64)]) {
+      expect(problemsOf(testEnv({ PASSKEY_WALLET_WASM_HASH: bad }))).toEqual(["PASSKEY_WALLET_WASM_HASH: must be 64 lower-case hex characters"]);
+    }
+    expect(loadConfig(testEnv({ PASSKEY_WALLET_WASM_HASH: "ab".repeat(32) })).PASSKEY_WALLET_WASM_HASH).toBe("ab".repeat(32));
   });
 
   it("refuses outbound URLs that are not https, except plain http to this machine", () => {
@@ -100,7 +119,7 @@ describe("loadConfig", () => {
 
   it("collects every secret string, including the passwords inside the database URLs", () => {
     const secrets = secretValues(loadConfig(testEnv()));
-    expect(secrets).toEqual(expect.arrayContaining([API_KEY, DB_INGEST, DB_API, "ingest-pass-7Hq2", "reader-pass-K9z4"]));
+    expect(secrets).toEqual(expect.arrayContaining([API_KEY, DB_INGEST, DB_API, "ingest-pass-7Hq2", "reader-pass-K9z4", CRON_SECRET, LOG_SALT]));
   });
 });
 

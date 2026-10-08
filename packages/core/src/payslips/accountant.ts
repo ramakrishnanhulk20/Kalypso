@@ -6,8 +6,9 @@ import { PayrollErrorCode, isPayrollError } from '../chain/payroll.js';
 import type { ChainPort } from '../chain/ports.js';
 import { requireAccount, requireU64 } from '../chain/scval.js';
 import type { HistoryEvent } from '../history/decode.js';
-import { fetchAccountHistory, type HistorySource } from '../history/events.js';
-import { chainChecks, isMoney, readCompanyPayslips, transferInTx } from './company.js';
+import { fetchAccountHistory, reachesLedger, type HistorySource } from '../history/events.js';
+import { bindTransferToTransaction, oncePerHash, type TxSourcePort } from '../history/tx-binding.js';
+import { bindsAsPayslip, chainChecks, isMoney, readCompanyPayslips, transferInTx } from './company.js';
 
 export interface AuditLine {
   worker: string;
@@ -24,8 +25,10 @@ export interface AuditRun {
 
 /**
  * What the company paid, as its accountant reads it. Only the C18 payslip set is counted, and
- * only amounts that passed every C19 check. complete is false when any history was incomplete or
- * unreadable, or a payslip could not be matched to its transfer.
+ * only amounts that passed every C19 check and are bound to their transaction. complete is false
+ * when any history was incomplete, unreadable, or ends more than INGEST_TOLERANCE_LEDGERS before
+ * the RPC's newest ledger; when a payslip could not be matched to its transfer or bound to its
+ * transaction; or when any run's counted lines differ from its on-chain paid_count.
  */
 export interface AuditResult {
   complete: boolean;
@@ -52,7 +55,17 @@ export class AuditError extends Error {
   }
 }
 
-export type UndecryptableReason = 'amount_out_of_range' | 'balance_chain_break' | 'no_verified_balance_before' | 'undecodable_event';
+export type UndecryptableReason =
+  | 'amount_out_of_range'
+  | 'balance_chain_break'
+  | 'no_verified_balance_before'
+  | 'undecodable_event'
+  /** No source had the payslip's transaction, so its amount could not be bound to it. */
+  | 'transaction_unavailable'
+  /** The payslip's transfer event does not match its transaction, or that transaction is not its pay call. */
+  | 'transaction_mismatch'
+  /** The run's on-chain paid_count is below the lines counted for it, so which ones it includes cannot be told. */
+  | 'run_count_mismatch';
 
 /**
  * Walks one treasury's history in order and decides, for every event that spends from its
@@ -71,8 +84,9 @@ export type UndecryptableReason = 'amount_out_of_range' | 'balance_chain_break' 
  * because shifting one ciphertext's amount up and its balance down by the same value keeps that
  * one event consistent and breaks only the next check.
  *
- * Not covered: the newest spend's balance is checked by no later spend, so a forged newest
- * event is caught only once another spend follows it.
+ * Not covered here: the newest spend's balance is checked by no later spend, and an amount
+ * shifted between two spends keeps the chain whole. auditCompany closes both by binding every
+ * counted line to its transaction.
  */
 function balanceChain(treasury: string, events: HistoryEvent[], secret: bigint): Map<string, { amount: bigint } | { reason: UndecryptableReason }> {
   const verdicts = new Map<string, { amount: bigint } | { reason: UndecryptableReason }>();
@@ -155,13 +169,24 @@ function balanceChain(treasury: string, events: HistoryEvent[], secret: bigint):
  *
  * A line is counted only when the payslip passes every C18 check (a PayslipIssued event from
  * our payroll contract, exactly one transfer in the same transaction from the treasury of that
- * moment to that worker, is_paid on chain) and its amount passed balanceChain. Every spend
- * balanceChain marks is listed in undecryptable and excluded from every total. Direct transfers
- * and withdrawals from the treasury are checked as part of the chain but never counted.
+ * moment to that worker, is_paid on chain), its amount passed balanceChain, and its transfer is
+ * bound to its transaction by bindTransferToTransaction as our payroll's pay for that company
+ * and run. Binding is what catches an amount shifted between two spends, or a forged newest
+ * spend, which balanceChain alone cannot see. Every spend balanceChain marks, and every line that
+ * does not bind, is listed in undecryptable and excluded from every total; a line that does not
+ * bind also makes the result incomplete. Direct transfers and withdrawals from the treasury are
+ * checked as part of the chain but never counted.
+ *
+ * Every run the company history shows is then checked against get_run's paid_count: fewer
+ * counted lines than paid_count means history is missing payslips, so the result is
+ * incomplete; more means paid_count cannot include them all, so none of that run's lines is
+ * counted. An audit line exists only for a transfer that binds and whose run's paid_count can
+ * include it.
  *
  * @param auditorSecret the secret k whose public key k·H the registry holds under the company's
  *   auditor id. A wrong key is not refused up front: every amount it opens is out of range, so
  *   every spend is listed as undecryptable and every total is zero.
+ * @param txSource where each payslip's transaction envelope is read from (createTxSourcePort).
  * @throws AuditError INVALID_INPUT or COMPANY_NOT_FOUND; or the port's or history's own errors.
  */
 export async function auditCompany(input: {
@@ -170,6 +195,7 @@ export async function auditCompany(input: {
   contracts: { payroll: string; token: string };
   companyId: bigint;
   auditorSecret: bigint;
+  txSource: TxSourcePort;
 }): Promise<AuditResult> {
   let contracts: { payroll: string; token: string };
   let companyId: bigint;
@@ -181,7 +207,9 @@ export async function auditCompany(input: {
   }
   const secret = input.auditorSecret;
   if (typeof secret !== 'bigint' || secret <= 0n || secret >= FR_MODULUS) throw new AuditError('INVALID_INPUT');
+  if (typeof input.txSource?.transaction !== 'function') throw new AuditError('INVALID_INPUT');
   const { port, history } = input;
+  const txSource = oncePerHash(input.txSource);
 
   let company: Awaited<ReturnType<typeof readCompanyPayslips>>;
   try {
@@ -193,6 +221,7 @@ export async function auditCompany(input: {
   let complete = company.complete;
   const undecryptable: { txHash: string; reason: string }[] = [];
   const histories = new Map<string, { events: HistoryEvent[]; verdicts: ReturnType<typeof balanceChain> }>();
+  const historyEnds = [company.ingestedThrough];
   for (const treasury of company.treasuries) {
     const read = await fetchAccountHistory({
       port: history.rpc,
@@ -202,6 +231,7 @@ export async function auditCompany(input: {
       fromLedger: history.fromLedger,
     });
     complete &&= read.complete;
+    historyEnds.push(read.ingestedThrough);
     const verdicts = balanceChain(treasury, read.events, secret);
     for (const e of read.events) {
       const verdict = verdicts.get(e.id);
@@ -227,6 +257,13 @@ export async function auditCompany(input: {
     if (!(await checks.isPaid(companyId, candidate.runId, candidate.worker))) continue;
     const verdict = treasuryHistory.verdicts.get(found.transfer.id);
     if (verdict === undefined || !('amount' in verdict)) continue;
+    const binding = await bindTransferToTransaction({ txSource, txHash: candidate.meta.txHash, event: found.transfer.event, contracts });
+    if (!bindsAsPayslip(binding, candidate)) {
+      const reason = !binding.ok && binding.reason === 'transaction_unavailable' ? 'transaction_unavailable' : 'transaction_mismatch';
+      undecryptable.push({ txHash: candidate.meta.txHash, reason });
+      complete = false;
+      continue;
+    }
     const periodLabel = await checks.periodLabel(companyId, candidate.runId);
     if (periodLabel === null) {
       complete = false;
@@ -241,6 +278,19 @@ export async function auditCompany(input: {
     run.total += verdict.amount;
   }
 
+  for (const runId of company.runIds) {
+    const onChain = await checks.run(companyId, runId);
+    const counted = runs.get(runId);
+    const lines = counted?.lines.length ?? 0;
+    if (onChain === null || lines !== onChain.paidCount) complete = false;
+    if (counted !== undefined && (onChain === null || lines > onChain.paidCount)) {
+      for (const l of counted.lines) undecryptable.push({ txHash: l.txHash, reason: 'run_count_mismatch' });
+      runs.delete(runId);
+    }
+  }
+
+  const { latestLedger } = await history.rpc.ledgerWindow();
+  if (!historyEnds.every((through) => reachesLedger(through, latestLedger))) complete = false;
   const ordered = [...runs.values()];
   return { complete, runs: ordered, grandTotal: ordered.reduce((sum, run) => sum + run.total, 0n), undecryptable };
 }

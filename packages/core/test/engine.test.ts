@@ -20,12 +20,14 @@ import {
 } from 'stellar-confidential-token-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatUsdc } from '../src/amounts.js';
-import type { OpeningStore, SavedOpening } from '../src/chain/ports.js';
+import type { InFlightPay, OpeningStore, SavedOpening } from '../src/chain/ports.js';
+import { decodeInvocation } from '../src/chain/tx.js';
 import { parsePayrollCsv } from '../src/csv.js';
 import type { KalypsoKeys } from '../src/keys.js';
 import type { ProverPort, TransferEnvelope } from '../src/prover/port.js';
 import {
   AmountMismatchError,
+  PaymentInFlightError,
   PreflightError,
   SignedTransactionMismatchError,
   executeRun,
@@ -37,10 +39,13 @@ import { HistoryIncompleteError, readSavedOpening, toSavedOpening, treasuryOpeni
 import { FakeChain, readTransferData } from './fake-chain.js';
 import { PASSPHRASE, testAccount, testContract } from './independent-xdr.js';
 
-// The fake proof carries the commitment it was built on, which the fake token checks.
+// The fake proof carries the commitment and the three keys it was built on, which the fake
+// token checks against chain state as the real verifier reads its public inputs.
 async function standInProof(params: TransferParams): Promise<TransferEnvelope> {
   const witness = buildTransferWitness(params);
-  const proof = pointToBytes(commit(params.v, params.r));
+  const proof = new Uint8Array(
+    [commit(params.v, params.r), params.kAudR, params.kAudS, params.pvkB].flatMap((point) => [...pointToBytes(point)]),
+  );
   return {
     payload: new Uint8Array(encodeTransferData(witness, proof).bytes()),
     proof,
@@ -72,15 +77,22 @@ const keys: KalypsoKeys = (() => {
   return { ...deriveKeys(0x5eed_1234_abcdn, addrF, acctF), addrF, acctF };
 })();
 const treasuryKey = treasuryOpeningKey(CONTRACTS.token, treasury);
+// Spelled out rather than imported, so a change to the key format fails here.
+const inFlightRecordKey = `kalypso/v1/inflight/${CONTRACTS.token}/${treasury}`;
 
-function memoryStore(timeline: string[]): OpeningStore & { data: Map<string, SavedOpening> } {
-  const data = new Map<string, SavedOpening>();
+function memoryStore(timeline: string[]): OpeningStore & { data: Map<string, SavedOpening | InFlightPay> } {
+  const data = new Map<string, SavedOpening | InFlightPay>();
+  const kind = (key: string) => (key.startsWith('kalypso/v1/batch/') ? 'batch' : key === inFlightRecordKey ? 'inflight' : 'treasury');
   return {
     data,
     get: async (key) => data.get(key),
     put: async (key, value) => {
-      timeline.push(key.startsWith('kalypso/v1/batch/') ? 'put:batch' : 'put:treasury');
+      timeline.push(`put:${kind(key)}`);
       data.set(key, value);
+    },
+    delete: async (key) => {
+      timeline.push(`delete:${kind(key)}`);
+      data.delete(key);
     },
   };
 }
@@ -130,7 +142,11 @@ function setup(funds = FUNDS) {
 
 const statuses = (report: Awaited<ReturnType<typeof executeRun>>) => report.rows.map((r) => r.status);
 const transfersPerWorker = (chain: FakeChain) => workers.map((w) => chain.transfersTo.get(w) ?? 0);
-const treasuryOpening = (store: ReturnType<typeof memoryStore>) => readSavedOpening(store.data.get(treasuryKey) as SavedOpening);
+const treasuryOpening = (store: ReturnType<typeof memoryStore>) => readSavedOpening(store.data.get(treasuryKey));
+const batchKeys = (store: ReturnType<typeof memoryStore>) => [...store.data.keys()].filter((key) => key.startsWith('kalypso/v1/batch/'));
+const unbuildable = async (): Promise<never> => {
+  throw new Error('the circuit refused the witness');
+};
 const sigmaOfCall = async (i: number) => readTransferData((await prove.mock.results[i]?.value).payload).sigma;
 
 afterEach(() => {
@@ -139,7 +155,7 @@ afterEach(() => {
 });
 
 describe('executeRun on a clean run', () => {
-  it('pays 5 rows in 3 transactions, one at a time, saving each opening before submitting', async () => {
+  it('pays 5 rows in 3 transactions, one at a time, saving each opening and the in-flight record before submitting', async () => {
     const { chain, store, events, input } = setup();
     const report = await executeRun(input);
 
@@ -153,8 +169,9 @@ describe('executeRun on a clean run', () => {
     expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 1]);
     expect(chain.timeline).toEqual([
       'put:treasury',
-      ...Array.from({ length: 3 }, () => ['put:batch', 'submit', 'put:treasury']).flat(),
+      ...Array.from({ length: 3 }, () => ['put:batch', 'put:inflight', 'submit', 'put:treasury', 'delete:inflight']).flat(),
     ]);
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
 
     const left = treasuryOpening(store);
     expect(left?.v).toBe(FUNDS - TOTAL);
@@ -193,7 +210,7 @@ describe('executeRun on a clean run', () => {
 
 describe('executeRun when a transaction does not land cleanly', () => {
   it('retries a FAILED transaction once, with new proofs from chain state and fresh salts', async () => {
-    const { chain, input } = setup();
+    const { chain, store, input } = setup();
     chain.failNext('FAILED');
     const report = await executeRun(input);
 
@@ -206,9 +223,12 @@ describe('executeRun when a transaction does not land cleanly', () => {
     expect(await sigmaOfCall(2)).not.toBe(await sigmaOfCall(0));
     expect(await sigmaOfCall(3)).not.toBe(await sigmaOfCall(1));
     expect(chain.violations).toEqual([]);
+    // Each attempt's opening sits under its own hash, so the retry overwrote nothing.
+    expect(batchKeys(store)).toHaveLength(4);
+    expect(batchKeys(store).map((key) => key.slice(-64))).toEqual(chain.submitted);
   });
 
-  it('stops after a second failure: those rows and every later row report failed, nothing is paid', async () => {
+  it('stops after failing on chain twice: those rows and every later row report failed, nothing is paid', async () => {
     const { chain, store, events, input } = setup();
     chain.failNext('FAILED', 'FAILED');
     const report = await executeRun(input);
@@ -216,6 +236,7 @@ describe('executeRun when a transaction does not land cleanly', () => {
     expect(chain.submitted).toHaveLength(2);
     expect(report.transactions).toEqual([]);
     expect(statuses(report)).toEqual(Array(5).fill('failed'));
+    expect(report.rows.map((row) => row.reason)).toEqual(['TRANSACTION_FAILED', 'TRANSACTION_FAILED', 'RUN_STOPPED', 'RUN_STOPPED', 'RUN_STOPPED']);
     expect(transfersPerWorker(chain)).toEqual([0, 0, 0, 0, 0]);
     expect(events.filter((e) => e.status === 'failed').map((e) => e.row)).toEqual([1, 2, 3, 4, 5]);
     expect(treasuryOpening(store)?.v).toBe(FUNDS);
@@ -270,6 +291,150 @@ describe('executeRun when a transaction does not land cleanly', () => {
   });
 });
 
+describe('executeRun keeps one pay per treasury in flight (C13)', () => {
+  it('waits on a pay still in flight when resumed, never proves it again, and keeps its opening', async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('OK', 'HELD');
+    await expect(executeRun(input)).rejects.toThrow(/stopped answering/);
+    const proofs = prove.mock.calls.length;
+
+    await expect(executeRun(input)).rejects.toThrow(/stopped answering/);
+    expect(prove.mock.calls.length).toBe(proofs);
+    expect(chain.submitted).toHaveLength(2);
+
+    chain.land();
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(['already-paid', 'already-paid', 'already-paid', 'already-paid', 'paid']);
+    expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 1]);
+    expect(chain.submitted).toHaveLength(3);
+    expect(chain.violations).toEqual([]);
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
+    expect(treasuryOpening(store)?.v).toBe(FUNDS - TOTAL);
+  });
+
+  it('settles a pay that finished the run while nobody watched, before reading anything', async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('OK', 'OK', 'HELD');
+    await expect(executeRun(input)).rejects.toThrow(/stopped answering/);
+    chain.land();
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('already-paid'));
+    expect(chain.submitted).toHaveLength(3);
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
+    expect(treasuryOpening(store)?.v).toBe(FUNDS - TOTAL);
+  });
+
+  it('settles a submit whose reply was lost after the network took it through the in-flight record', async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('TIMEOUT_AFTER_ACCEPT');
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect(report.rows[0]?.txHash).toBe(chain.submitted[0]);
+    expect(chain.submitted).toHaveLength(3);
+    expect(prove).toHaveBeenCalledTimes(5);
+    expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 1]);
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
+  });
+
+  it("never treats NOT_FOUND without the chain's close time as final: the run is refused, not retried", async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('DROPPED');
+    chain.reportsCloseTime = false;
+    const err = await executeRun(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PaymentInFlightError);
+    expect((err as PaymentInFlightError).reason).toBe('PENDING');
+    expect([chain.submitted.length, prove.mock.calls.length]).toEqual([1, 2]);
+    expect(store.data.has(inFlightRecordKey)).toBe(true);
+
+    chain.reportsCloseTime = true;
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect(chain.submitted).toHaveLength(4);
+    expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it("judges a dropped pay's window by the chain's clock, even with the chain 10 minutes behind this machine", async () => {
+    const { chain, input } = setup();
+    chain.closeTime -= 600;
+    chain.failNext('DROPPED');
+    const sent: { maxTime: number; chainTime: number }[] = [];
+    const submit = chain.submit.bind(chain);
+    chain.submit = async (signed) => {
+      sent.push({ maxTime: decodeInvocation(signed, PASSPHRASE).maxTime, chainTime: chain.closeTime });
+      return submit(signed);
+    };
+    expect(statuses(await executeRun(input))).toEqual(Array(5).fill('paid'));
+    expect(sent[1]?.chainTime).toBeGreaterThan((sent[0]?.maxTime as number) + 30);
+  });
+
+  it('refuses to run over a damaged in-flight record and sends nothing', async () => {
+    const { chain, store, input } = setup();
+    store.data.set(inFlightRecordKey, toSavedOpening(1n, 1n));
+    const err = await executeRun(input).catch((e: unknown) => e);
+    expect((err as PaymentInFlightError).reason).toBe('UNREADABLE');
+    expect([chain.simulations, chain.submitted.length, prove.mock.calls.length]).toEqual([0, 0, 0]);
+  });
+});
+
+describe('executeRun survives a key rotation', () => {
+  // Worker 2, on CSV line 3, is registered under auditor id 12.
+  const rotatedKey = (n: number) => scalarMul(7000n + BigInt(n), H);
+
+  it("rebuilds a batch once, with keys re-read from chain, when a worker's auditor key rotates mid-run", async () => {
+    const { chain, input } = setup();
+    let rotations = 0;
+    input.onProgress = (e) => {
+      if (e.row === 3 && e.status === 'proving' && rotations === 0) chain.auditorKeys.set(12, rotatedKey(++rotations));
+    };
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect(chain.submitted).toHaveLength(3);
+    expect(prove).toHaveBeenCalledTimes(7);
+    expect(prove.mock.calls[2]?.[0].kAudR.equals(rotatedKey(1))).toBe(false);
+    expect(prove.mock.calls[4]?.[0].kAudR.equals(rotatedKey(1))).toBe(true);
+    expect(chain.violations).toEqual([]);
+  });
+
+  it("rebuilds with the company's auditor key re-read from chain, and later batches keep using it", async () => {
+    const { chain, input } = setup();
+    let rotated = false;
+    input.onProgress = (e) => {
+      if (e.row === 3 && e.status === 'proving' && !rotated) {
+        rotated = true;
+        chain.auditorKeys.set(0, rotatedKey(9));
+      }
+    };
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect([chain.simulations, chain.submitted.length]).toEqual([4, 3]);
+    expect(prove.mock.calls.at(-1)?.[0].kAudS.equals(rotatedKey(9))).toBe(true);
+  });
+
+  it('fails only that batch when the rebuild still cannot be simulated, and pays every other batch', async () => {
+    const { chain, input } = setup();
+    let rotations = 0;
+    input.onProgress = (e) => {
+      if (e.row === 3 && e.status === 'proving') chain.auditorKeys.set(12, rotatedKey(++rotations));
+    };
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(['paid', 'paid', 'failed', 'failed', 'paid']);
+    expect(report.rows.map((row) => row.reason)).toEqual([undefined, undefined, 'SIMULATION_FAILED', 'SIMULATION_FAILED', undefined]);
+    expect(transfersPerWorker(chain)).toEqual([1, 1, 0, 0, 1]);
+    expect(chain.submitted).toHaveLength(2);
+    // The next batch starts from the same verified opening the failed one did.
+    expect(prove.mock.calls.at(-1)?.[0].v).toBe(FUNDS - (AMOUNTS[0] as bigint) - (AMOUNTS[1] as bigint));
+  });
+
+  it('fails only that batch when its proof cannot be built twice', async () => {
+    const { chain, input } = setup();
+    prove.mockImplementationOnce(unbuildable).mockImplementationOnce(unbuildable);
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(['failed', 'failed', 'paid', 'paid', 'paid']);
+    expect(report.rows[0]?.reason).toBe('PROOF_FAILED');
+    expect([chain.simulations, chain.submitted.length]).toEqual([2, 2]);
+  });
+});
+
 describe('executeRun checks what was paid against the CSV (C14)', () => {
   it('stops with AmountMismatchError when the chain balance after a batch is not the approved one', async () => {
     const { chain, input } = setup();
@@ -313,6 +478,15 @@ describe('executeRun preflight refuses the whole run and sends nothing', () => {
     ['a closed run', 'RUN_NOT_OPEN', undefined, (s) => s.chain.runs.set(`${COMPANY}/${RUN}`, { open: false, expected: 5, paid: 0 })],
     ['a run opened for fewer payments', 'RUN_COUNT_EXCEEDED', undefined, (s) => s.chain.runs.set(`${COMPANY}/${RUN}`, { open: true, expected: 5, paid: 1 })],
     ['an unregistered treasury', 'TREASURY_NOT_REGISTERED', undefined, (s) => s.chain.accounts.delete(treasury)],
+    ['a company under a demo auditor id', 'DEMO_AUDITOR_ID', undefined, (s) => {
+      s.input.demoAuditorIds = [0];
+    }],
+    ['a worker under a demo auditor id', 'DEMO_AUDITOR_ID', 4, (s) => {
+      s.input.demoAuditorIds = [99, 13];
+    }],
+    ['a demo auditor id that is not a u32', 'INVALID_INPUT', undefined, (s) => {
+      s.input.demoAuditorIds = [-1];
+    }],
     ['keys that are not the treasury', 'KEYS_MISMATCH', undefined, (s) => {
       const account = s.chain.accounts.get(treasury);
       if (account) account.pvk = scalarMul(99n, H);
@@ -411,11 +585,20 @@ describe('secrets and salts (C11, C12)', () => {
     await executeRun(bug.input).catch(record);
     const poor = setup(TOTAL - 1n);
     await executeRun(poor.input).catch(record);
+    const isolated = setup();
+    prove.mockImplementationOnce(unbuildable).mockImplementationOnce(unbuildable);
+    seen.push(JSON.stringify(await executeRun(isolated.input)));
+    const waiting = setup();
+    waiting.chain.failNext('DROPPED');
+    waiting.chain.reportsCloseTime = false;
+    await executeRun(waiting.input).catch(record);
     seen.push(JSON.stringify(tampered.events), JSON.stringify(bug.events));
 
     const haystack = seen.join('\n');
     expect(haystack).toContain('AmountMismatchError');
     expect(haystack).toContain('INSUFFICIENT_FUNDS');
+    expect(haystack).toContain('PROOF_FAILED');
+    expect(haystack).toContain('PaymentInFlightError');
     for (const amount of [...AMOUNTS, TOTAL, FUNDS - TOTAL, TOTAL - 1n]) {
       const le = Buffer.alloc(8);
       le.writeBigUInt64LE(amount);

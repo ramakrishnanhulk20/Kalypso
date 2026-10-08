@@ -4,14 +4,14 @@ import type { Config } from "../config.ts";
 import { OutboundError, errorResponse, fetchWithTimeout, json, parseJsonBytes, readJsonBody } from "../http.ts";
 import type { Logger } from "../log.ts";
 import type { RpcClient } from "../rpc.ts";
-import { clientBucket } from "./client-ip.ts";
+import { clientBucket, ipTag } from "./client-ip.ts";
 import { requestDigest, simulate, validateSponsorRequest, type SimulateFn } from "./validate.ts";
 
 export interface SponsorContext {
   cfg: Config;
   /** A connection that may write (DATABASE_URL_INGEST): the counters live here. */
   db: Db;
-  rpc: Pick<RpcClient, "simulateTransaction">;
+  rpc: Pick<RpcClient, "simulateTransaction" | "getLedgerEntries">;
   log: Logger;
   simulate?: SimulateFn;
   now?: () => Date;
@@ -53,60 +53,64 @@ const hourStartOf = (now: Date) => new Date(Math.floor(now.getTime() / 3_600_000
  * Channels is asked not to wait for the ledger (skipWait), so the reply is
  * `{ transactionId, status }` at once; the caller polls the status route. A
  * duplicate body gets the first relay's reply without a second relay, or 409
- * while the first is still in flight. Refusals are `{ error: code }`. Every
- * refusal is logged with its code and every relay with its transaction id;
- * no secret and no request body is ever logged.
+ * while the first is still in flight. Refusals are `{ error: code }`.
+ *
+ * Logging: every refusal and failure carries its code and the caller's
+ * salted IP tag (never the IP); every relay carries its transaction id and
+ * hash and nothing derived from the IP, so no log line ties a caller to a
+ * transaction. No secret and no request body is ever logged.
  */
 export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise<Response> {
   const { cfg, log } = ctx;
-  const refuse = (status: number, code: string, ip?: string, headers: Record<string, string> = {}) => {
-    log.info("sponsor_refused", ip === undefined ? { code } : { code, ip });
+  const refuse = (status: number, code: string, tag?: string, headers: Record<string, string> = {}) => {
+    log.info("sponsor_refused", tag === undefined ? { code } : { code, ipTag: tag });
     return errorResponse(status, code, headers);
   };
 
   if (req.method !== "POST") return refuse(405, "method_not_allowed", undefined, { allow: "POST" });
   const ip = clientBucket(req.headers.get(cfg.TRUSTED_IP_HEADER));
   if (ip === null) return refuse(400, "no_client_ip");
+  const tag = ipTag(ip, cfg.LOG_SALT);
   if (!/^application\/json\s*(;|$)/i.test(req.headers.get("content-type") ?? "")) {
-    return refuse(415, "unsupported_media_type", ip);
+    return refuse(415, "unsupported_media_type", tag);
   }
 
   try {
     const body = await readJsonBody(req);
-    if (!body.ok) return refuse(body.status, body.code, ip);
+    if (!body.ok) return refuse(body.status, body.code, tag);
     const request = validateSponsorRequest(body.value, cfg);
-    if (!request.ok) return refuse(400, request.code, ip);
+    if (!request.ok) return refuse(400, request.code, tag);
 
     const now = ctx.now?.() ?? new Date();
     if (!(await countSponsorRequest(ctx.db, ip, hourStartOf(now), cfg.PER_IP_LIMIT_PER_HOUR))) {
-      return refuse(429, "rate_limited", ip);
+      return refuse(429, "rate_limited", tag);
     }
 
     const digest = requestDigest(request);
     const claim = await claimRelay(ctx.db, digest, now, DEDUPE_WINDOW_MS);
     if (!claim.claimed) {
       if (claim.transactionId !== null && claim.status !== null) {
-        log.info("sponsor_duplicate", { transactionId: claim.transactionId, ip });
+        log.info("sponsor_duplicate", { transactionId: claim.transactionId });
         return json({ transactionId: claim.transactionId, status: claim.status });
       }
-      return refuse(409, "duplicate_in_flight", ip);
+      return refuse(409, "duplicate_in_flight", tag);
     }
 
     const verdict = await (ctx.simulate ?? simulate)(cfg, request, ctx.rpc);
     if (!verdict.ok) {
       await releaseRelay(ctx.db, digest, claim.claimedAt);
-      return refuse(verdict.code === "rpc_unavailable" ? 503 : 400, verdict.code, ip);
+      return refuse(verdict.code === "rpc_unavailable" ? 503 : 400, verdict.code, tag);
     }
     if (!(await reserveDailyFee(ctx.db, now.toISOString().slice(0, 10), verdict.chargeStroops, cfg.DAILY_FEE_BUDGET_STROOPS))) {
       await releaseRelay(ctx.db, digest, claim.claimedAt);
-      return refuse(429, "daily_budget_spent", ip);
+      return refuse(429, "daily_budget_spent", tag);
     }
 
     const params =
       request.kind === "func"
         ? { func: request.func, auth: request.auth, skipWait: true }
         : { xdr: request.xdr, skipWait: true };
-    const relayed = await callChannels(ctx, { params }, { ip, kind: request.kind });
+    const relayed = await callChannels(ctx, { params }, { ipTag: tag, kind: request.kind });
     if (!relayed.ok) {
       // Only a 4xx refusal proves nothing was submitted. A timeout, a 5xx or
       // a garbled reply might hide a submitted transaction, so the claim stays.
@@ -122,11 +126,10 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
       kind: request.kind,
       rootContract: request.rootContract,
       chargeStroops: verdict.chargeStroops,
-      ip,
     });
     return json({ transactionId, status });
   } catch (err) {
-    log.warn("sponsor_internal_error", { ip, error: err instanceof Error ? err.name : "unknown" });
+    log.warn("sponsor_internal_error", { ipTag: tag, error: err instanceof Error ? err.name : "unknown" });
     return errorResponse(500, "internal_error");
   }
 }
@@ -137,50 +140,53 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
  * submitted). The id must be in Channels' format and is passed on only as a
  * value inside the JSON body. Requests are limited per IP per hour at the
  * same rate as the POST, counted separately so polling cannot use up a
- * worker's relays.
+ * worker's relays. Logged the same way as the POST: the salted IP tag on
+ * refusals and failures, no IP-derived field next to the id and hash.
  */
 export async function sponsorStatusHandler(req: Request, ctx: SponsorStatusContext): Promise<Response> {
   const { cfg, log } = ctx;
-  const refuse = (status: number, code: string, ip?: string, headers: Record<string, string> = {}) => {
-    log.info("sponsor_status_refused", ip === undefined ? { code } : { code, ip });
+  const refuse = (status: number, code: string, tag?: string, headers: Record<string, string> = {}) => {
+    log.info("sponsor_status_refused", tag === undefined ? { code } : { code, ipTag: tag });
     return errorResponse(status, code, headers);
   };
 
   if (req.method !== "GET") return refuse(405, "method_not_allowed", undefined, { allow: "GET" });
   const ip = clientBucket(req.headers.get(cfg.TRUSTED_IP_HEADER));
   if (ip === null) return refuse(400, "no_client_ip");
-  if (req.url.length > 2_048) return refuse(400, "bad_id", ip);
+  const tag = ipTag(ip, cfg.LOG_SALT);
+  if (req.url.length > 2_048) return refuse(400, "bad_id", tag);
 
   try {
     const ids = new URL(req.url).searchParams.getAll("id");
     const id = ids.length === 1 ? ids[0]! : "";
-    if (!TRANSACTION_ID.test(id)) return refuse(400, "bad_id", ip);
+    if (!TRANSACTION_ID.test(id)) return refuse(400, "bad_id", tag);
 
     const now = ctx.now?.() ?? new Date();
     if (!(await countSponsorRequest(ctx.db, "status " + ip, hourStartOf(now), cfg.PER_IP_LIMIT_PER_HOUR))) {
-      return refuse(429, "rate_limited", ip);
+      return refuse(429, "rate_limited", tag);
     }
 
-    const answer = await callChannels(ctx, { params: { getTransaction: { transactionId: id } } }, { ip, kind: "status" });
+    const answer = await callChannels(ctx, { params: { getTransaction: { transactionId: id } } }, { ipTag: tag, kind: "status" });
     if (!answer.ok) return answer.response;
     if (answer.data.transactionId !== id) {
-      log.warn("sponsor_status_bad_reply", { ip, reason: "transaction id mismatch" });
+      log.warn("sponsor_status_bad_reply", { ipTag: tag, reason: "transaction id mismatch" });
       return errorResponse(502, "relay_bad_reply");
     }
-    log.info("sponsor_status", { transactionId: id, status: answer.data.status, hash: answer.data.hash, ip });
+    log.info("sponsor_status", { transactionId: id, status: answer.data.status, hash: answer.data.hash });
     return json({ status: answer.data.status, hash: answer.data.hash });
   } catch (err) {
-    log.warn("sponsor_internal_error", { ip, error: err instanceof Error ? err.name : "unknown" });
+    log.warn("sponsor_internal_error", { ipTag: tag, error: err instanceof Error ? err.name : "unknown" });
     return errorResponse(500, "internal_error");
   }
 }
 
 type ChannelsResult = { ok: true; data: ChannelsData } | { ok: false; notSubmitted: boolean; response: Response };
 
+/** `logFields` goes on failure lines only, which carry no transaction id or hash. */
 async function callChannels(
   ctx: SponsorStatusContext,
   body: unknown,
-  logFields: { ip: string; kind: string },
+  logFields: { ipTag: string; kind: string },
 ): Promise<ChannelsResult> {
   const { cfg, log } = ctx;
   let upstream;

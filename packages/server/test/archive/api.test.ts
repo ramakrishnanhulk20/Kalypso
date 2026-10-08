@@ -83,11 +83,38 @@ describe("GET /v1/health", () => {
     });
   });
 
-  it("raises the alarm for a permanent gap and for 48 hours without an ingest", async () => {
+  const rpcDown = () => ({
+    getHealth: async () => Promise.reject(new Error("down")),
+    getEvents: chain.getEvents.bind(chain),
+    simulateTransaction: chain.simulateTransaction,
+    getLedgerEntries: chain.getLedgerEntries,
+  });
+  const hoursLater = (hours: number, extraMs = 0) => () => new Date(NOW.getTime() + hours * 3_600_000 + extraMs);
+
+  it("answers 503 for a permanent gap on its own", async () => {
+    expect((await get("/v1/health")).status).toBe(200);
+    await recordGap(db, 200, 210, NOW);
+    const res = await get("/v1/health");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ alarm: true, alarm_reasons: ["permanent_gap"], complete: false });
+  });
+
+  it("answers 503 after 48 hours without a successful ingest, and 200 again once an ingest succeeds", async () => {
+    expect((await get("/v1/health")).status).toBe(200);
+    expect((await get("/v1/health", context({ now: hoursLater(47), rpc: rpcDown() }))).status).toBe(200);
+    const stale = await get("/v1/health", context({ now: hoursLater(49), rpc: rpcDown() }));
+    expect(stale.status).toBe(503);
+    expect(stale.body).toMatchObject({ alarm: true, alarm_reasons: ["stale"], last_ingest_at: NOW.toISOString() });
+    const resumed = await get("/v1/health", context({ now: hoursLater(49, 10_000) }));
+    expect(resumed.status).toBe(200);
+    expect(resumed.body).toMatchObject({ alarm: false, alarm_reasons: [] });
+  });
+
+  it("raises the alarm for a permanent gap and for 48 hours without an ingest together", async () => {
     await get("/v1/health");
     await recordGap(db, 200, 210, NOW);
-    const later = context({ now: () => new Date(NOW.getTime() + 49 * 3_600_000), rpc: { ...chain, getHealth: async () => Promise.reject(new Error("down")), getEvents: chain.getEvents.bind(chain), simulateTransaction: chain.simulateTransaction } });
-    const res = await get("/v1/health", later);
+    const res = await get("/v1/health", context({ now: hoursLater(49), rpc: rpcDown() }));
+    expect(res.status).toBe(503);
     expect(res.body).toMatchObject({
       complete: false,
       alarm: true,
@@ -97,9 +124,10 @@ describe("GET /v1/health", () => {
     expect(logs.at(-1)).toContain("archive_catch_up_failed");
   });
 
-  it("reports an empty archive honestly when RPC is down", async () => {
-    const down = context({ rpc: { getHealth: async () => Promise.reject(new Error("down")), getEvents: chain.getEvents.bind(chain), simulateTransaction: chain.simulateTransaction } });
-    expect((await get("/v1/health", down)).body).toMatchObject({ ingested_through: 0, ingested_from: 0, complete: false, alarm: true });
+  it("reports an empty archive honestly, with 503, when RPC is down", async () => {
+    const res = await get("/v1/health", context({ rpc: rpcDown() }));
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ ingested_through: 0, ingested_from: 0, complete: false, alarm: true });
   });
 });
 

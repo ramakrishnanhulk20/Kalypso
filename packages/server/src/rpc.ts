@@ -11,6 +11,8 @@ import { fetchWithTimeout, parseJsonBytes } from "./http.ts";
 
 const MAX_RPC_RESPONSE_BYTES = 8 * 1024 * 1024;
 export const MAX_EVENT_TOPICS = 8;
+/** RPC's own cap on keys per getLedgerEntries call. */
+export const MAX_LEDGER_KEYS = 200;
 
 export class RpcError extends Error {
   /** A JSON-RPC error code, or what went wrong with the reply itself. */
@@ -65,6 +67,24 @@ const simulationSchema = z.object({
     .optional(),
 });
 
+const ledgerEntriesSchema = z.object({
+  entries: z
+    .array(
+      z.object({
+        /** Base64 LedgerKey. */
+        key: z.string().max(4_096),
+        /** Base64 LedgerEntryData. */
+        xdr: z.string().max(262_144),
+        lastModifiedLedgerSeq: z.number().int().min(0).optional(),
+        liveUntilLedgerSeq: z.number().int().min(0).optional(),
+      }),
+    )
+    .max(MAX_LEDGER_KEYS)
+    .nullish()
+    .transform((entries) => entries ?? []),
+  latestLedger: ledgerNumber,
+});
+
 const envelopeSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.number(),
@@ -76,6 +96,7 @@ export type RpcHealth = z.infer<typeof healthSchema>;
 export type RpcEvent = z.infer<typeof eventSchema>;
 export type RpcEventsPage = z.infer<typeof eventsSchema>;
 export type RpcSimulation = z.infer<typeof simulationSchema>;
+export type RpcLedgerEntries = z.output<typeof ledgerEntriesSchema>;
 
 export interface GetEventsQuery {
   /** Required when there is no cursor; RPC refuses both together. */
@@ -96,6 +117,12 @@ export interface RpcClient {
    * needs; RPC refuses a record run that carries auth entries.
    */
   simulateTransaction(txBase64: string, authMode?: SimulationAuthMode, signal?: AbortSignal): Promise<RpcSimulation>;
+  /**
+   * Reads 1 to 200 ledger entries by base64 LedgerKey. A key with no entry
+   * is simply missing from the reply. Throws RangeError for an empty or
+   * oversized key list, before any network call.
+   */
+  getLedgerEntries(keys: readonly string[], signal?: AbortSignal): Promise<RpcLedgerEntries>;
 }
 
 /** RPC answers -32600 when a startLedger has fallen out of its retention window. */
@@ -141,5 +168,9 @@ export function createRpcClient(cfg: Pick<Config, "RPC_URL" | "CHANNELS_URL">, f
     },
     simulateTransaction: (txBase64, authMode = "enforce", signal) =>
       call("simulateTransaction", { transaction: txBase64, authMode }, simulationSchema, signal),
+    getLedgerEntries: async (keys, signal) => {
+      if (keys.length === 0 || keys.length > MAX_LEDGER_KEYS) throw new RangeError("getLedgerEntries takes 1 to 200 keys");
+      return call("getLedgerEntries", { keys: [...keys] }, ledgerEntriesSchema, signal);
+    },
   };
 }

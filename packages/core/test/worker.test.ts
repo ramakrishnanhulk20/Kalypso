@@ -1,11 +1,15 @@
 // Does NOT cover: real proofs or the live network (scratchpad/m5b3/e2e-views.mjs runs these
 // views on testnet), or an archive and an RPC that agree on a lie about which events exist.
 // Every ciphertext here is real, built by the SDK's witness builders on the fake ledger.
+import { Address, xdr } from '@stellar/stellar-sdk/base';
+import { commit, ecdh, encryptAmount, fromBytesBE, H, scalarMul } from 'stellar-confidential-token-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatUsdc } from '../src/amounts.js';
+import type { RpcContractEvent } from '../src/history/rpc-events.js';
+import type { TxSourcePort } from '../src/history/tx-binding.js';
 import { loadWorkerBalance, loadWorkerView, WorkerViewError, type WorkerView } from '../src/payslips/worker.js';
 import { FakeLedger, sym, type ArchiveOptions } from './fake-ledger.js';
-import { raw, testAccount, testContract } from './independent-xdr.js';
+import { be32, pointBytes, raw, testAccount, testContract } from './independent-xdr.js';
 import { COMPANY, COMPANY_AUDITOR_ID, CONTRACTS, PAY, RUN, keysFor, scenario, type Scenario } from './scenario.js';
 
 afterEach(() => {
@@ -15,10 +19,15 @@ afterEach(() => {
 
 const archive = { baseUrl: FakeLedger.archiveBase };
 
-function view(s: Scenario, worker: string, opts: { archive?: ArchiveOptions; companyIds?: bigint[]; keysOf?: string } = {}): Promise<WorkerView> {
+function view(
+  s: Scenario,
+  worker: string,
+  opts: { archive?: ArchiveOptions; companyIds?: bigint[]; keysOf?: string; txSource?: TxSourcePort } = {},
+): Promise<WorkerView> {
   if (opts.archive !== undefined) vi.stubGlobal('fetch', s.ledger.archiveFetch(opts.archive).fetch);
   const history = opts.archive === undefined ? { rpc: s.ledger.rpc(), fromLedger: s.fromLedger } : { archive, rpc: s.ledger.rpc(), fromLedger: s.fromLedger };
-  return loadWorkerView({ port: s.ledger, history, contracts: CONTRACTS, worker, keys: keysFor(opts.keysOf ?? worker), companyIds: opts.companyIds ?? [COMPANY] });
+  const txSource = opts.txSource ?? s.ledger.txSource();
+  return loadWorkerView({ port: s.ledger, history, contracts: CONTRACTS, worker, keys: keysFor(opts.keysOf ?? worker), companyIds: opts.companyIds ?? [COMPANY], txSource });
 }
 
 const payslipOf = (s: Scenario, i: number) => ({
@@ -140,6 +149,80 @@ describe('loadWorkerView: payslips (C18)', () => {
   });
 });
 
+/**
+ * What a lying archive can do with public keys alone: re-encrypt the amount of the transfer to
+ * `worker` in `txHash` under the worker's public viewing key, with a fresh ephemeral scalar.
+ */
+function reEncrypted(s: Scenario, worker: string, txHash: string, amount: bigint): Map<string, string> {
+  const event = s.ledger.events.find(
+    (e) => e.txHash === txHash && e.contractId === CONTRACTS.token && Address.fromScVal(xdr.ScVal.fromXDR(e.topicsXdr[2] as string, 'base64')).toString() === worker,
+  );
+  if (event === undefined) throw new Error('no transfer to that worker in that transaction');
+  const fields = new Map((xdr.ScVal.fromXDR(event.dataXdr, 'base64').map() ?? []).map((entry) => [entry.key().sym().toString(), entry.val()]));
+  const sigma = fromBytesBE(new Uint8Array((fields.get('sigma') as xdr.ScVal).bytes()));
+  const ephemeral = 0x7e5e_ed00_0001n;
+  fields.set('r_e_point', raw.bytes(pointBytes(scalarMul(ephemeral, H))));
+  fields.set('v_tilde', raw.bytes(be32(encryptAmount(amount, ecdh(ephemeral, keysFor(worker).PVK), sigma))));
+  return new Map([[`${event.ledger}-${event.txHash}-${event.opIndex}-${event.eventIndex}`, raw.struct(Object.fromEntries(fields)).toXDR('base64')]]);
+}
+
+describe('loadWorkerView: every shown amount is bound to its transaction (C18, C19)', () => {
+  it('shows no payslip, and says incomplete, when the archive re-encrypts a paid transfer after a merge and a withdrawal', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.merge(worker);
+    s.ledger.withdraw(worker, worker, 100n);
+    const replace = reEncrypted(s, worker, s.payTx, 9_190_000_018n);
+    const result = await view(s, worker, { archive: { replace } });
+    expect(result.payslips).toEqual([]);
+    expect(result.complete).toBe(false);
+  });
+
+  it('shows no payslip whose transaction no source has', async () => {
+    const s = scenario();
+    expect(await view(s, s.workers[0] as string, { txSource: s.ledger.txSource({ missing: new Set([s.payTx]) }) })).toMatchObject({ complete: false, payslips: [] });
+  });
+
+  it('never turns a direct transfer into a payslip, even with a payslip event and a paid flag forged around it', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.openRun(COMPANY, 2n, 'November 2026', 1);
+    s.ledger.paid.add(`${COMPANY}/2/${worker}`);
+    const { topics, data, payload } = s.ledger.transferEvent(s.treasury, worker, 4_000_004n);
+    const call = { contract: 'token', method: 'confidential_transfer', args: [raw.address(s.treasury), raw.address(worker), raw.bytes(payload)] };
+    s.ledger.tx((emit) => {
+      emit('token', topics, data);
+      emit('payroll', [sym('payslip_issued'), raw.u64(COMPANY), raw.u64(2n), raw.address(worker)], {});
+    }, call);
+    const result = await view(s, worker);
+    expect(result.payslips).toEqual([payslipOf(s, 0)]);
+    expect(result.complete).toBe(false);
+  });
+
+  it('refuses a payslip event for one run placed in the pay transaction of another', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.openRun(COMPANY, 2n, 'November 2026', 1);
+    s.ledger.paid.add(`${COMPANY}/2/${worker}`);
+    const slip = s.ledger.events.find((e) => e.txHash === s.payTx && e.contractId === CONTRACTS.payroll) as RpcContractEvent;
+    const topics = [sym('payslip_issued'), raw.u64(COMPANY), raw.u64(2n), raw.address(worker)];
+    s.ledger.events.push({ ...slip, eventIndex: 9, topicsXdr: topics.map((t) => t.toXDR('base64')) });
+    const result = await view(s, worker);
+    expect(result.payslips).toEqual([payslipOf(s, 0)]);
+    expect(result.complete).toBe(false);
+  });
+
+  it("gives no number when what the worker decrypts does not open the transaction's c_transfer", async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.openRun(COMPANY, 2n, 'November 2026', 1);
+    const forged = s.ledger.pay(COMPANY, 2n, [{ worker, amount: 6_000_006n, forge: (p) => ({ ...p, cTx: commit(6_000_007n, 1n) }) }]);
+    const result = await view(s, worker);
+    expect(result.payslips.some((p) => p.txHash === forged)).toBe(false);
+    expect(result).toMatchObject({ complete: false, payslips: [payslipOf(s, 0)] });
+  });
+});
+
 describe('loadWorkerView: balances only when history is complete and opens the chain (C16, C17)', () => {
   it('reads the archive and gives the same view as the RPC', async () => {
     const s = scenario();
@@ -164,6 +247,14 @@ describe('loadWorkerView: balances only when history is complete and opens the c
     expect(balance.history).toMatchObject({ source: 'archive', complete: true });
     expect([balance.complete, balance.spendable, balance.receiving]).toEqual([false, undefined, undefined]);
     expect(await view(s, worker, { archive: { drop } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
+  });
+
+  it('gives no balance, and says incomplete, when the archive ends more than 12 ledgers behind the chain', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.ledger += 20;
+    expect(await view(s, worker, { archive: { lag: 12 } })).toMatchObject({ complete: true, spendable: 0n, receiving: PAY[0] });
+    expect(await view(s, worker, { archive: { lag: 13 } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
   });
 
   it('gives no balance when the RPC window starts after the worker registered', async () => {

@@ -22,6 +22,8 @@ const SPIKE_AUDITOR = "CCMJNKU7DDERYUUMRLDUKM7FVXFOHK7HUH6TFH2XEYBBXZNTTKY2MGWV"
 const SPIKE_START_LEDGER = 5_070_101;
 // A valid contract id that was never deployed, so it has no events.
 const DUMMY_PAYROLL = StrKey.encodeContract(hash(Buffer.from("kalypso smoke: payroll with no events")));
+// The archive never reads the verifier; the config only needs a distinct id.
+const DUMMY_VERIFIER = StrKey.encodeContract(hash(Buffer.from("kalypso smoke: verifier the archive never reads")));
 
 const cfg = loadConfig({
   NETWORK: "testnet",
@@ -29,9 +31,12 @@ const cfg = loadConfig({
   TOKEN_CONTRACT_ID: SPIKE_TOKEN,
   PAYROLL_CONTRACT_ID: DUMMY_PAYROLL,
   AUDITOR_CONTRACT_ID: SPIKE_AUDITOR,
+  VERIFIER_CONTRACT_ID: DUMMY_VERIFIER,
   CHANNELS_API_KEY: "smoke-run-makes-no-relay-calls",
   DATABASE_URL_INGEST: "postgres://unused@localhost/smoke",
   DATABASE_URL_API: "postgres://unused@localhost/smoke",
+  CRON_SECRET: "smoke-run-makes-no-cron-calls-0000000000",
+  LOG_SALT: "smoke-run-logs-no-sponsor-lines-00000000",
 });
 
 const db = pgliteDb(new PGlite());

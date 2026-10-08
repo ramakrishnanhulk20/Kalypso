@@ -24,8 +24,13 @@ export interface ChainPort {
    * @throws SubmitRejectedError when the network refused it, so it is not in flight.
    */
   submit(signedTxXdr: string): Promise<{ hash: string }>;
-  /** Waits up to timeoutMs for a final result. NOT_FOUND means it was not seen in that time. */
-  waitFor(hash: string, timeoutMs: number): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number }>;
+  /**
+   * Waits up to timeoutMs for a final result. NOT_FOUND means it was not seen in that time.
+   * With NOT_FOUND, closeTime is the close time in Unix seconds of the latest ledger the network
+   * had at the last look. Without it, NOT_FOUND says nothing about whether the transaction can
+   * still land.
+   */
+  waitFor(hash: string, timeoutMs: number): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; closeTime?: number }>;
   /**
    * Read-only contract call by simulation.
    * @throws ContractCallError when the call fails, with the contract's own error code when it raised one.
@@ -46,9 +51,25 @@ export interface SavedOpening {
   commitment: string;
 }
 
+/** A pay transaction handed to the network whose result is not final yet. It holds no amount. */
+export interface InFlightPay {
+  /** The transaction hash, 64 lowercase hex characters. */
+  hash: string;
+  /** The transaction's last valid moment, in Unix seconds. */
+  maxTime: number;
+  /** Store key of the opening the treasury is left with if this transaction lands. */
+  batchKey: string;
+}
+
+/**
+ * This device's record of treasury openings and of the pay in flight. Values are read back as
+ * untrusted: openings are checked against the chain and records against their shape.
+ */
 export interface OpeningStore {
-  get(key: string): Promise<SavedOpening | undefined>;
-  put(key: string, value: SavedOpening): Promise<void>;
+  get(key: string): Promise<SavedOpening | InFlightPay | undefined>;
+  put(key: string, value: SavedOpening | InFlightPay): Promise<void>;
+  /** Removes the key. Removing a key that is not there is not an error. */
+  delete(key: string): Promise<void>;
 }
 
 /**

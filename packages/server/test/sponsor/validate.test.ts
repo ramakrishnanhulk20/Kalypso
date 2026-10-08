@@ -1,9 +1,11 @@
 // Not covered here: a real enforce-mode simulation (RPC is faked; the
-// scratchpad/m5a live check runs one against testnet), and whether a passkey
-// wallet's own signature is valid, which only its __check_auth can decide.
+// scratchpad/m5a live check runs one against testnet), whether a passkey
+// wallet's own signature is valid, which only its __check_auth can decide,
+// and a wallet or contract changing its state between our simulation and
+// Channels' own one.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Networks, Transaction, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import { Address, Networks, Transaction, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 import {
   INCLUSION_FEE_ALLOWANCE_STROOPS,
   MAX_AUTH_ENTRIES,
@@ -14,25 +16,34 @@ import {
   type SponsorRequest,
 } from "../../src/sponsor/validate.ts";
 import { createRpcClient } from "../../src/rpc.ts";
-import { fakeSimulation, footprintData, recordedAuthOf } from "./fake-rpc.ts";
-import { PAYROLL, STRANGER, TOKEN, testConfig } from "../helpers.ts";
+import { contractOfKey, fakeSimulation, instanceEntries, recordedAuthOf, transactionData } from "./fake-rpc.ts";
+import { AUDITOR, PAYROLL, STRANGER, TOKEN, USDC, VERIFIER, contractFor, testConfig } from "../helpers.ts";
 import {
   LATEST_LEDGER,
+  PINNED_WALLET_WASM,
+  accountKey,
   addr,
   b64,
+  codeKey,
   contractAccountEntry,
   createContractInvocation,
   createContractOperation,
   depositTree,
   employer,
   envelope,
+  fakeCode,
   hostCall,
+  instanceKey,
   invocation,
   mergeFuncAuth,
   mergeOperation,
+  nonceKey,
+  passkeyMergeFootprint,
+  passkeyWallet,
   paymentOperation,
   signedEntry,
   sourceAccountEntry,
+  storageKey,
   thirdPartyOperation,
   uploadOperation,
   worker,
@@ -260,12 +271,20 @@ describe("simulate", () => {
   describe("the live 27,596 stroop case (testnet replies captured on 7 Oct 2026)", () => {
     const live = JSON.parse(readFileSync(new URL("./live-read-only-call.json", import.meta.url), "utf8"));
     const liveCfg = testConfig({ TOKEN_CONTRACT_ID: live.token });
+    // The wasm the captured footprint names for the spike token.
+    const liveTokenWasm = "c77ac818ab3af1a2b9cdbc54964d68070f106fb72c9172ba4fff186995704cfd";
     // Replays the captured JSON-RPC results through the real client, so the
     // reply schema is exercised on the real shapes too.
     const liveRpc = (record = live.record, enforce = live.enforce) =>
       createRpcClient(liveCfg, async (_url, init) => {
-        const { id, params } = JSON.parse(String(init?.body));
-        return new Response(JSON.stringify({ jsonrpc: "2.0", id, result: params.authMode === "record" ? record : enforce }));
+        const { id, method, params } = JSON.parse(String(init?.body));
+        const result =
+          method === "getLedgerEntries"
+            ? { entries: instanceEntries(params.keys, (c) => (c === live.token ? liveTokenWasm : fakeCode(c))), latestLedger: enforce.latestLedger }
+            : params.authMode === "record"
+              ? record
+              : enforce;
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }));
       });
 
     it("was a signed, structurally valid request that would have cost 17,596 + 10,000 stroops", () => {
@@ -283,7 +302,10 @@ describe("simulate", () => {
       const request = validateSponsorRequest(live.request, liveCfg);
       if (!request.ok) throw new Error(request.code);
       expect(live.record.results[0].auth).toEqual([]);
-      const writing = { ...live.enforce, transactionData: footprintData(1) };
+      // The captured footprint, with the token's balance entry moved to read-write.
+      const captured = xdr.SorobanTransactionData.fromXDR(live.enforce.transactionData, "base64").resources().footprint();
+      const writes = transactionData({ readOnly: captured.readOnly().slice(1), readWrite: captured.readOnly().slice(0, 1) });
+      const writing = { ...live.enforce, transactionData: writes };
       expect(await simulate(liveCfg, request, liveRpc(live.record, writing))).toEqual({ ok: false, code: "unused_auth" });
     });
   });
@@ -339,6 +361,128 @@ describe("simulate", () => {
     const rpc = fakeSimulation({ enforce: { minResourceFee: "100000" } });
     expect(await simulate(cfg, v, rpc)).toMatchObject({ ok: true, chargeStroops: 1_300_000n });
     expect(rpc.simulateTransaction.mock.calls[0]![0]).toBe(v.kind === "xdr" ? v.xdr : "");
+  });
+});
+
+describe("simulate: the sponsor pays only for our code, USDC's, or a pinned passkey wallet's (C20)", () => {
+  const walletCall = (wallet: string): Call => ({ contract: TOKEN, fn: "merge", args: [addr(wallet)] });
+  const walletMerge = (wallet = passkeyWallet, entry = contractAccountEntry(walletCall(wallet), undefined, wallet)) => {
+    const v = validateSponsorRequest({ func: b64(hostCall(TOKEN, "merge", [addr(wallet)])), auth: [b64(entry)] }, cfg);
+    if (!v.ok) throw new Error(v.code);
+    return v;
+  };
+  const classicMerge = async () => {
+    const v = validateSponsorRequest(await mergeFuncAuth(), cfg);
+    if (!v.ok) throw new Error(v.code);
+    return v;
+  };
+  const tokenCode = fakeCode(TOKEN)!;
+  const ours = [PAYROLL, TOKEN, AUDITOR, VERIFIER].flatMap((c) => [instanceKey(c), codeKey(fakeCode(c)!)]);
+
+  it("accepts a passkey wallet that runs the pinned wallet code, with the live M1b merge's footprint, from one code read", async () => {
+    const rpc = fakeSimulation({ footprint: passkeyMergeFootprint() });
+    expect(await simulate(cfg, walletMerge(), rpc)).toMatchObject({ ok: true });
+    expect(rpc.getLedgerEntries).toHaveBeenCalledTimes(1);
+    const asked = rpc.getLedgerEntries.mock.calls[0]![0].map(contractOfKey);
+    expect([...asked].sort()).toEqual([PAYROLL, TOKEN, AUDITOR, VERIFIER, passkeyWallet].sort());
+  });
+
+  it("refuses unknown_wallet_code for a C authorizer whose instance runs another wasm, before any simulation", async () => {
+    const rpc = fakeSimulation({ footprint: passkeyMergeFootprint() });
+    expect(await simulate(cfg, walletMerge(contractFor("self-deployed wallet")), rpc)).toEqual({ ok: false, code: "unknown_wallet_code" });
+    expect(rpc.simulateTransaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses unknown_wallet_code for a wallet with no instance, an upgraded wallet, an asset contract, or a delegate on other code", async () => {
+    const swap = (to: string | null) => fakeSimulation({ code: (c) => (c === passkeyWallet ? to : fakeCode(c)) });
+    expect(await simulate(cfg, walletMerge(), swap(null))).toMatchObject({ code: "unknown_wallet_code" });
+    expect(await simulate(cfg, walletMerge(), swap("ab".repeat(32)))).toMatchObject({ code: "unknown_wallet_code" });
+    expect(await simulate(cfg, walletMerge(USDC), fakeSimulation())).toMatchObject({ code: "unknown_wallet_code" });
+
+    const plain = contractAccountEntry(walletCall(passkeyWallet));
+    const delegated = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddressWithDelegates(
+        new xdr.SorobanAddressCredentialsWithDelegates({
+          addressCredentials: plain.credentials().addressV2(),
+          delegates: [
+            new xdr.SorobanDelegateSignature({
+              address: new Address(contractFor("delegate")).toScAddress(),
+              signature: xdr.ScVal.scvVoid(),
+              nestedDelegates: [],
+            }),
+          ],
+        }),
+      ),
+      rootInvocation: plain.rootInvocation(),
+    });
+    const rpc = fakeSimulation({ footprint: passkeyMergeFootprint() });
+    expect(await simulate(cfg, walletMerge(passkeyWallet, delegated), rpc)).toMatchObject({ code: "unknown_wallet_code" });
+  });
+
+  it("refuses foreign_contract_in_footprint when a pinned wallet's __check_auth touches a third-party contract", async () => {
+    const reads = passkeyMergeFootprint();
+    reads.readOnly.push(instanceKey(STRANGER), codeKey(fakeCode(STRANGER)!));
+    expect(await simulate(cfg, walletMerge(), fakeSimulation({ footprint: reads }))).toEqual({
+      ok: false,
+      code: "foreign_contract_in_footprint",
+    });
+    const writes = passkeyMergeFootprint();
+    writes.readWrite.push(storageKey(STRANGER));
+    expect(await simulate(cfg, walletMerge(), fakeSimulation({ footprint: writes }))).toMatchObject({ code: "foreign_contract_in_footprint" });
+  });
+
+  it("allows the storage and code of payroll, token, auditor, verifier and USDC, and refuses any other code, the wallet code included when no wallet signed", async () => {
+    const withCode = (wasm: string) =>
+      fakeSimulation({ footprint: { readOnly: [...ours, instanceKey(USDC), storageKey(USDC), codeKey(wasm)], readWrite: [storageKey(TOKEN)] } });
+    expect(await simulate(cfg, await classicMerge(), withCode(tokenCode))).toMatchObject({ ok: true });
+    expect(await simulate(cfg, await classicMerge(), withCode("cd".repeat(32)))).toMatchObject({ code: "foreign_contract_in_footprint" });
+    expect(await simulate(cfg, await classicMerge(), withCode(PINNED_WALLET_WASM))).toMatchObject({ code: "foreign_contract_in_footprint" });
+  });
+
+  it("lets through a classic signer's own nonce and the accounts USDC moves, and nothing else under a classic account", async () => {
+    const request = await classicMerge();
+    const withWrites = (extra: xdr.LedgerKey[]) =>
+      fakeSimulation({
+        footprint: {
+          readOnly: [instanceKey(TOKEN), codeKey(tokenCode), instanceKey(USDC), accountKey(employer.publicKey())],
+          readWrite: [storageKey(TOKEN), accountKey(worker.publicKey()), ...extra],
+        },
+      });
+    expect(await simulate(cfg, request, withWrites([nonceKey(worker.publicKey())]))).toMatchObject({ ok: true });
+    expect(await simulate(cfg, request, withWrites([nonceKey(employer.publicKey())]))).toMatchObject({ code: "foreign_contract_in_footprint" });
+    expect(await simulate(cfg, request, withWrites([storageKey(worker.publicKey())]))).toMatchObject({ code: "foreign_contract_in_footprint" });
+  });
+
+  it("applies the same rule to the footprint an envelope declares", async () => {
+    const declared = envelope({ footprint: { readOnly: [instanceKey(TOKEN), instanceKey(STRANGER)], readWrite: [storageKey(TOKEN)] } });
+    const v = validateSponsorRequest({ xdr: declared }, cfg);
+    if (!v.ok) throw new Error(v.code);
+    expect(await simulate(cfg, v, fakeSimulation())).toEqual({ ok: false, code: "foreign_contract_in_footprint" });
+  });
+
+  it("fails closed, simulating nothing, when the code read fails, garbles an entry, answers twice or answers for a contract nobody asked about", async () => {
+    expect(await simulate(cfg, walletMerge(), fakeSimulation({ fail: "ledger_entries" }))).toEqual({ ok: false, code: "rpc_unavailable" });
+    const answer = (extra: (keys: readonly string[]) => { key: string; xdr: string }[]) => {
+      const rpc = fakeSimulation({ footprint: passkeyMergeFootprint() });
+      rpc.getLedgerEntries.mockImplementationOnce(async (keys) => ({
+        entries: [...instanceEntries(keys, (c) => (c === passkeyWallet ? null : fakeCode(c))), ...extra(keys)],
+        latestLedger: LATEST_LEDGER,
+      }));
+      return rpc;
+    };
+    const walletKeys = (keys: readonly string[]) => keys.filter((k) => contractOfKey(k) === passkeyWallet);
+    const replies = [
+      answer((keys) => [
+        ...instanceEntries(walletKeys(keys), () => PINNED_WALLET_WASM),
+        ...instanceEntries(walletKeys(keys), () => "ef".repeat(32)),
+      ]),
+      answer((keys) => walletKeys(keys).map((key) => ({ key, xdr: "AAAA" }))),
+      answer(() => instanceEntries([b64(instanceKey(STRANGER))], () => PINNED_WALLET_WASM)),
+    ];
+    for (const rpc of replies) {
+      expect(await simulate(cfg, walletMerge(), rpc)).toEqual({ ok: false, code: "rpc_unavailable" });
+      expect(rpc.simulateTransaction).not.toHaveBeenCalled();
+    }
   });
 });
 

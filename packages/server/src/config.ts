@@ -11,6 +11,9 @@ export interface Config {
   readonly TOKEN_CONTRACT_ID: string;
   readonly USDC_SAC_ID: string;
   readonly AUDITOR_CONTRACT_ID: string;
+  readonly VERIFIER_CONTRACT_ID: string;
+  /** Lower-case hex. The only code a contract-account signer may run for the sponsor to pay. */
+  readonly PASSKEY_WALLET_WASM_HASH: string;
   readonly CHANNELS_URL: string;
   readonly CHANNELS_API_KEY: string;
   readonly DATABASE_URL_INGEST: string;
@@ -19,6 +22,10 @@ export interface Config {
   readonly DAILY_FEE_BUDGET_STROOPS: bigint;
   readonly PER_IP_LIMIT_PER_HOUR: number;
   readonly TRUSTED_IP_HEADER: string;
+  /** The bearer token the scheduler sends to the ingest route. */
+  readonly CRON_SECRET: string;
+  /** The key for the tag that stands in for a caller's IP in log lines. */
+  readonly LOG_SALT: string;
 }
 
 export class ConfigError extends Error {
@@ -29,6 +36,9 @@ export class ConfigError extends Error {
     this.problems = problems;
   }
 }
+
+/** passkey-kit 0.19.1's canonical testnet wallet (docs/deployments-2026-09-01.md line 10 in that repo). */
+export const PINNED_PASSKEY_WALLET_WASM_HASH = "97ce047884106b1c6c3bb40b8973cc48db1c4dad95c9e20462bf2c701daa764e";
 
 const loopback = new BlockList();
 loopback.addSubnet("127.0.0.0", 8, "ipv4");
@@ -92,6 +102,14 @@ const apiKey = z
     error: "must be 16 to 256 characters from A-Z a-z 0-9 . _ ~ + / = -",
   });
 
+// A shared secret that travels in a header: no whitespace or control
+// characters, and long enough that guessing it is hopeless.
+const sharedSecret = z
+  .string({ error: "missing" })
+  .refine((v) => /^[A-Za-z0-9._~+/=-]{32,256}$/.test(v), {
+    error: "must be 32 to 256 characters from A-Z a-z 0-9 . _ ~ + / = -",
+  });
+
 const schema = z
   .object({
     NETWORK: z.literal("testnet", { error: "must be testnet (the only network this server supports)" }),
@@ -102,6 +120,12 @@ const schema = z
       "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
     ),
     AUDITOR_CONTRACT_ID: contractId("must be a contract address (C...)"),
+    VERIFIER_CONTRACT_ID: contractId("must be a contract address (C...)"),
+    // One spelling only, because it is compared as a string with the hex of the on-chain hash.
+    PASSKEY_WALLET_WASM_HASH: z
+      .string()
+      .refine((v) => /^[0-9a-f]{64}$/.test(v), { error: "must be 64 lower-case hex characters" })
+      .default(PINNED_PASSKEY_WALLET_WASM_HASH),
     CHANNELS_URL: outboundUrl.default("https://channels.openzeppelin.com/testnet"),
     CHANNELS_API_KEY: apiKey,
     DATABASE_URL_INGEST: postgresUrl,
@@ -117,6 +141,8 @@ const schema = z
       .string()
       .refine((v) => /^[a-z0-9-]{1,64}$/.test(v), { error: "must be a lower-case HTTP header name" })
       .default("x-real-ip"),
+    CRON_SECRET: sharedSecret,
+    LOG_SALT: sharedSecret,
   })
   .superRefine((cfg, ctx) => {
     if (cfg.DAILY_FEE_BUDGET_STROOPS < cfg.FEE_CAP_STROOPS) {
@@ -126,12 +152,12 @@ const schema = z
         message: "must be at least FEE_CAP_STROOPS",
       });
     }
-    const ids = [cfg.PAYROLL_CONTRACT_ID, cfg.TOKEN_CONTRACT_ID, cfg.USDC_SAC_ID, cfg.AUDITOR_CONTRACT_ID];
+    const ids = [cfg.PAYROLL_CONTRACT_ID, cfg.TOKEN_CONTRACT_ID, cfg.USDC_SAC_ID, cfg.AUDITOR_CONTRACT_ID, cfg.VERIFIER_CONTRACT_ID];
     if (new Set(ids).size !== ids.length) {
       ctx.addIssue({
         code: "custom",
         path: ["PAYROLL_CONTRACT_ID"],
-        message: "PAYROLL, TOKEN, USDC_SAC and AUDITOR contract ids must all be different",
+        message: "PAYROLL, TOKEN, USDC_SAC, AUDITOR and VERIFIER contract ids must all be different",
       });
     }
   });
@@ -165,7 +191,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 
 /** Every secret string a log line or error body must never contain. */
 export function secretValues(cfg: Config): string[] {
-  const out = [cfg.CHANNELS_API_KEY, cfg.DATABASE_URL_INGEST, cfg.DATABASE_URL_API];
+  const out = [cfg.CHANNELS_API_KEY, cfg.DATABASE_URL_INGEST, cfg.DATABASE_URL_API, cfg.CRON_SECRET, cfg.LOG_SALT];
   for (const value of [cfg.DATABASE_URL_INGEST, cfg.DATABASE_URL_API]) {
     const password = new URL(value).password;
     if (password) out.push(password, decodeURIComponent(password));

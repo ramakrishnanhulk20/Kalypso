@@ -90,6 +90,19 @@ describe('createRpcChainPort', () => {
     await expect(port.waitFor(HASH, -1)).rejects.toThrow(RangeError);
   });
 
+  it("reports the chain's latest close time with NOT_FOUND, and drops a malformed one", async () => {
+    const port = createRpcChainPort({ rpcUrl: URL_OK, networkPassphrase: PASSPHRASE });
+    const get = vi.spyOn(Server.prototype, 'getTransaction');
+    get.mockResolvedValueOnce({ status: Api.GetTransactionStatus.NOT_FOUND, latestLedgerCloseTime: '1791460800' } as never);
+    expect(await port.waitFor(HASH, 0)).toEqual({ status: 'NOT_FOUND', closeTime: 1_791_460_800 });
+    get.mockResolvedValueOnce({ status: Api.GetTransactionStatus.NOT_FOUND, latestLedgerCloseTime: 1_791_460_805 } as never);
+    expect(await port.waitFor(HASH, 0)).toEqual({ status: 'NOT_FOUND', closeTime: 1_791_460_805 });
+    for (const bad of ['1.5e9', '-5', '0', 'soon', 1.5, Number.NaN]) {
+      get.mockResolvedValueOnce({ status: Api.GetTransactionStatus.NOT_FOUND, latestLedgerCloseTime: bad } as never);
+      expect(await port.waitFor(HASH, 0)).toEqual({ status: 'NOT_FOUND' });
+    }
+  });
+
   it('reads by simulation and keeps the contract error code, or none for an outage', async () => {
     const port = createRpcChainPort({ rpcUrl: URL_OK, networkPassphrase: PASSPHRASE });
     const sim = vi.spyOn(Server.prototype, 'simulateTransaction');

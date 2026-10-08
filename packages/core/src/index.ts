@@ -26,7 +26,7 @@ export {
 export type { KeyErrorCode, KalypsoKeys, PrfUnavailableReason } from './keys.js';
 
 export { ContractCallError, SubmitRejectedError, contractErrorCode } from './chain/ports.js';
-export type { ChainPort, OpeningStore, SavedOpening, SignerPort, SimResult } from './chain/ports.js';
+export type { ChainPort, InFlightPay, OpeningStore, SavedOpening, SignerPort, SimResult } from './chain/ports.js';
 
 export { RPC_TIMEOUT_MS, RpcTimeoutError, createRpcChainPort } from './chain/rpc-port.js';
 
@@ -93,15 +93,23 @@ export { planRun } from './run/plan.js';
 export {
   HistoryIncompleteError,
   batchOpeningKey,
+  inFlightKey,
   loadTreasuryOpening,
+  readInFlight,
   readSavedOpening,
   toSavedOpening,
   treasuryOpeningKey,
 } from './run/treasury.js';
 export type { HistoryIncompleteReason, Opening } from './run/treasury.js';
 
-export { AmountMismatchError, PreflightError, SignedTransactionMismatchError, executeRun } from './run/engine.js';
-export type { PreflightErrorCode, RowStatus, RunInput, RunReport } from './run/engine.js';
+export {
+  AmountMismatchError,
+  PaymentInFlightError,
+  PreflightError,
+  SignedTransactionMismatchError,
+  executeRun,
+} from './run/engine.js';
+export type { PreflightErrorCode, RowFailureReason, RowStatus, RunInput, RunReport } from './run/engine.js';
 
 export { createCircuitProver } from './prover/browser.js';
 export type { CircuitProverPort, CircuitSet, CompiledCircuit } from './prover/browser.js';
@@ -113,6 +121,8 @@ export { decodeContractEvent, eventId } from './history/decode.js';
 export type { EventMeta, HistoryEvent, PayrollEvent, TokenEvent } from './history/decode.js';
 export { ARCHIVE_TIMEOUT_MS, fetchAccountHistory, fetchCompanyHistory } from './history/events.js';
 export type { ArchiveConfig, HistoryResult, HistorySource } from './history/events.js';
+export { TX_SOURCE_TIMEOUT_MS, bindTransferToTransaction, createTxSourcePort } from './history/tx-binding.js';
+export type { BindingFailure, BoundCall, BoundTransferPayload, TransferBinding, TxRecord, TxSourcePort } from './history/tx-binding.js';
 
 export { MAX_WORKER_COMPANIES, WorkerViewError, loadWorkerBalance, loadWorkerView } from './payslips/worker.js';
 export type { Payslip, WorkerBalance, WorkerView, WorkerViewErrorCode } from './payslips/worker.js';

@@ -1,0 +1,485 @@
+{
+  "about": "Kalypso's showcase company on Stellar testnet, made by npm run seed:testnet and attacked by npm run prove:testnet. Public on purpose: ids, addresses, transaction hashes and one demo auditor key. No amount and no account secret is in this file.",
+  "network": "testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "keyDomain": "kalypso-payroll.vercel.app",
+  "fromLedger": 5084191,
+  "amountScale": "no scaling",
+  "contracts": {
+    "verifier": {
+      "id": "CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM"
+    },
+    "auditorRegistry": {
+      "id": "CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG"
+    },
+    "token": {
+      "id": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ"
+    },
+    "payroll": {
+      "id": "CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA"
+    },
+    "usdc": {
+      "id": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+    }
+  },
+  "company": {
+    "id": "1",
+    "label": "Andes Studio (demo)",
+    "treasury": "GA774NZX5OQGBL222I4QO4IZXGRHGWFTONNH3VYGMYXF5VARMAIYSRZU",
+    "explorer": "https://stellar.expert/explorer/testnet/account/GA774NZX5OQGBL222I4QO4IZXGRHGWFTONNH3VYGMYXF5VARMAIYSRZU"
+  },
+  "accountant": {
+    "account": "GDDJCJQFWINZSKCGST4UWYANLYGE2G5II6SI4NKXLD3OBU66T3ULQLLE",
+    "auditorId": 5,
+    "demoAccountantKeyPublishedOnPurpose": "0x1f452e9bc7607a3181de9e0918c16e43da7b789684da871c88d2410b8dc540e3",
+    "demoAccountantKeyNote": "A demo key, published on purpose so anyone can open the accountant view: it reads only this demo company's payments and its treasury balance after each one, so never bind anything real to it."
+  },
+  "workers": [
+    {
+      "account": "GAGNT67DMQN7LOQDXB46U3KVSSADRIMIVGWSD7S5MJEYR5FEUM5UHD3U",
+      "auditorId": 6,
+      "explorer": "https://stellar.expert/explorer/testnet/account/GAGNT67DMQN7LOQDXB46U3KVSSADRIMIVGWSD7S5MJEYR5FEUM5UHD3U"
+    },
+    {
+      "account": "GASKCOE5NUCBDBUTJL6PVHGDGTLS437BLAO3YOPDLIKURF4WAXMROZOR",
+      "auditorId": 7,
+      "explorer": "https://stellar.expert/explorer/testnet/account/GASKCOE5NUCBDBUTJL6PVHGDGTLS437BLAO3YOPDLIKURF4WAXMROZOR"
+    },
+    {
+      "account": "GB2B5TSHRMNF5DYXPXH26ABLRALTB5WVEOTDWTJBVFXJU5B52YMPKZO6",
+      "auditorId": 8,
+      "explorer": "https://stellar.expert/explorer/testnet/account/GB2B5TSHRMNF5DYXPXH26ABLRALTB5WVEOTDWTJBVFXJU5B52YMPKZO6"
+    },
+    {
+      "account": "GASG6VPDXBR3CRQY2G34QJ4XBHWDJ7ZIMEI5THT3XPAMNXGGWFNLIL2G",
+      "auditorId": 9,
+      "explorer": "https://stellar.expert/explorer/testnet/account/GASG6VPDXBR3CRQY2G34QJ4XBHWDJ7ZIMEI5THT3XPAMNXGGWFNLIL2G"
+    },
+    {
+      "account": "GDN7XDXLWHR43XTQRAKAAS3Z7R5WRVLG4XY6GFT7SXEHT2EXONZF7RS4",
+      "auditorId": 10,
+      "explorer": "https://stellar.expert/explorer/testnet/account/GDN7XDXLWHR43XTQRAKAAS3Z7R5WRVLG4XY6GFT7SXEHT2EXONZF7RS4"
+    },
+    {
+      "account": "GAGIT2FSO65PY2MT6POK4EMPJJ6VOQDWJICKWLM2KHKHFVB3RH6N6OLJ",
+      "auditorId": 11,
+      "explorer": "https://stellar.expert/explorer/testnet/account/GAGIT2FSO65PY2MT6POK4EMPJJ6VOQDWJICKWLM2KHKHFVB3RH6N6OLJ"
+    }
+  ],
+  "runs": [
+    {
+      "id": "202609",
+      "label": "September 2026",
+      "expectedCount": 6,
+      "payTransactions": [
+        "689954ba3cd0b70a6399184b73b6073c3f1c7137a77f3583e2ef0f6e335577c9",
+        "37b65371438b058707b42af92f66d57afbbdc72b5bb9553c80fc02b5a6fdfbd6",
+        "d40de8bbd613715a635689e74e5fb09121c9bf0a909d10c87566acdbaa9d8e7b"
+      ]
+    },
+    {
+      "id": "202610",
+      "label": "October 2026",
+      "expectedCount": 6,
+      "payTransactions": [
+        "e5429568b15594445adf9f119162cdbbc574611e32d7713ad8d274402a2610ab",
+        "63dfd62872c79414ca68e841cfbe00cd2a22211a45560108c377d5a9d1d04f9e",
+        "5b793b664d8ef027669ec95caccbf89cf67bbe76f4c9073347036f6f46502033"
+      ]
+    }
+  ],
+  "outsider": {
+    "account": "GDDKZGPQ4KRZCGLMXIGBCJNCLSWDDC6WF2ZGLWL7H7UVN2ZPYQOUBBXQ",
+    "auditorId": 12,
+    "companyId": "2",
+    "companyLabel": "Outsider Co (demo)",
+    "plantedOn": "GAGNT67DMQN7LOQDXB46U3KVSSADRIMIVGWSD7S5MJEYR5FEUM5UHD3U"
+  },
+  "funders": [
+    "GCPH7L5PKKQBMW6UEKWFWMHOKBGBCN6N6G5C2225M2OCZQXY6MC6ZY5G",
+    "GAN7ULPDJLF5VI5ZI7I2UP3UJEC6T5GFUETNRBOO5AVUVMHMY6YRUETL"
+  ],
+  "transactions": {
+    "accountant register_key": {
+      "hash": "6acfa36587e226eb10790b87e4c716ce19082357b1c77624ab7ecc6e69304507",
+      "ledger": 5084203,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/6acfa36587e226eb10790b87e4c716ce19082357b1c77624ab7ecc6e69304507"
+    },
+    "worker1 register_key": {
+      "hash": "d2ed258cfe873e0261b6e79a9609e7cdbc44137304cfdfcc64ad171834df672b",
+      "ledger": 5084205,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/d2ed258cfe873e0261b6e79a9609e7cdbc44137304cfdfcc64ad171834df672b"
+    },
+    "worker2 register_key": {
+      "hash": "7f24d6ff7b75422c9fb717ad39b96663ca0802bb0ce39f24574f1ea3f2e23c84",
+      "ledger": 5084207,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/7f24d6ff7b75422c9fb717ad39b96663ca0802bb0ce39f24574f1ea3f2e23c84"
+    },
+    "worker3 register_key": {
+      "hash": "354e715dc670e796e5e6fbbf2f58f3c557b59238857c78dcca75027c208f1dbb",
+      "ledger": 5084209,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/354e715dc670e796e5e6fbbf2f58f3c557b59238857c78dcca75027c208f1dbb"
+    },
+    "worker4 register_key": {
+      "hash": "151331c80a59325e9a80c073b1e22a98cc7dfd5b0b61e337d2f64e4316281ba6",
+      "ledger": 5084210,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/151331c80a59325e9a80c073b1e22a98cc7dfd5b0b61e337d2f64e4316281ba6"
+    },
+    "worker5 register_key": {
+      "hash": "3196361bf1100227f76c7e9e1bab375717bd7ea9191ec49bd5dfd5a91bcc5b1e",
+      "ledger": 5084211,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/3196361bf1100227f76c7e9e1bab375717bd7ea9191ec49bd5dfd5a91bcc5b1e"
+    },
+    "worker6 register_key": {
+      "hash": "f005c0932495237adb1ca9bac44d8b209ab078f1fd9458f112c3e19b8b327c61",
+      "ledger": 5084212,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/f005c0932495237adb1ca9bac44d8b209ab078f1fd9458f112c3e19b8b327c61"
+    },
+    "outsider register_key": {
+      "hash": "380e8d5d3d7de5606c3effc69333a05092e44c86e4d4b107b87d727278447bd3",
+      "ledger": 5084213,
+      "feeStroops": 705666,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/380e8d5d3d7de5606c3effc69333a05092e44c86e4d4b107b87d727278447bd3"
+    },
+    "treasury USDC trustline": {
+      "hash": "439836ee4b0db031e26a18cc09a47cf965080030d2e613e351bc34e5a2a34d7f",
+      "ledger": 5084215,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/439836ee4b0db031e26a18cc09a47cf965080030d2e613e351bc34e5a2a34d7f"
+    },
+    "treasury token register": {
+      "hash": "5d357d1c87eb5f811caf04395f164086115aa19af0cdf608d473a5cb2196179b",
+      "ledger": 5084217,
+      "feeStroops": 510584,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/5d357d1c87eb5f811caf04395f164086115aa19af0cdf608d473a5cb2196179b"
+    },
+    "worker1 token register": {
+      "hash": "340ffe5b0855dd990e3220b55515e81ea7be0ada25120d1ced8d23df99cfae05",
+      "ledger": 5084219,
+      "feeStroops": 510558,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/340ffe5b0855dd990e3220b55515e81ea7be0ada25120d1ced8d23df99cfae05"
+    },
+    "worker2 token register": {
+      "hash": "3d4cbcddbbedcdafda1e0b4fcb7ee4892f97d0db86fa675ac930a69ad719789d",
+      "ledger": 5084221,
+      "feeStroops": 510599,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/3d4cbcddbbedcdafda1e0b4fcb7ee4892f97d0db86fa675ac930a69ad719789d"
+    },
+    "worker3 token register": {
+      "hash": "c710100be2a17b95b693ec42f15418b546a47b13d79b75b02d1ec9acc1b80f53",
+      "ledger": 5084223,
+      "feeStroops": 510579,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c710100be2a17b95b693ec42f15418b546a47b13d79b75b02d1ec9acc1b80f53"
+    },
+    "worker4 token register": {
+      "hash": "31b89e9a6311749cb5e751c2ab0950da19fcd9d665a19ba0ea285bf9b515c159",
+      "ledger": 5084225,
+      "feeStroops": 510815,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/31b89e9a6311749cb5e751c2ab0950da19fcd9d665a19ba0ea285bf9b515c159"
+    },
+    "worker5 token register": {
+      "hash": "c5b2002c161f482862a1e864e68efae43ec0f9a25e1a2887fef628a7b3fde6a6",
+      "ledger": 5084227,
+      "feeStroops": 510769,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c5b2002c161f482862a1e864e68efae43ec0f9a25e1a2887fef628a7b3fde6a6"
+    },
+    "worker6 token register": {
+      "hash": "8dd4a341457d69abb38b7cb3b0d7e6e6bdf9c11f3dc67bdebd072c392092cb86",
+      "ledger": 5084229,
+      "feeStroops": 510830,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/8dd4a341457d69abb38b7cb3b0d7e6e6bdf9c11f3dc67bdebd072c392092cb86"
+    },
+    "outsider token register": {
+      "hash": "f8d79b8e4dd1dd50b974f59fcf82e0cabcaaa1c6c225ea6e77f77b0cc7c42f5b",
+      "ledger": 5084232,
+      "feeStroops": 510825,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/f8d79b8e4dd1dd50b974f59fcf82e0cabcaaa1c6c225ea6e77f77b0cc7c42f5b"
+    },
+    "create_company Andes Studio": {
+      "hash": "c6a97814f8c025358f1c8f2fd29c3615e4efa564610763f4ec814ce9b13abffa",
+      "ledger": 5084234,
+      "feeStroops": 5645573,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c6a97814f8c025358f1c8f2fd29c3615e4efa564610763f4ec814ce9b13abffa"
+    },
+    "invite_worker worker1": {
+      "hash": "61bf1bd9588bb9f18f807518d483a14b6316d1b6624fb0fc1e60132cf7056f94",
+      "ledger": 5084235,
+      "feeStroops": 2848667,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/61bf1bd9588bb9f18f807518d483a14b6316d1b6624fb0fc1e60132cf7056f94"
+    },
+    "accept_invite worker1": {
+      "hash": "17fd7f11be0fe913909a1ae7314bdb4c6c159fcfd87acf3a89f175795ee06690",
+      "ledger": 5084237,
+      "feeStroops": 3089168,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/17fd7f11be0fe913909a1ae7314bdb4c6c159fcfd87acf3a89f175795ee06690"
+    },
+    "invite_worker worker2": {
+      "hash": "83da3167f8036c8d08191c9ad09ad2f16cf7286b0fa014aed1dee6a2e914dd25",
+      "ledger": 5084238,
+      "feeStroops": 2848667,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/83da3167f8036c8d08191c9ad09ad2f16cf7286b0fa014aed1dee6a2e914dd25"
+    },
+    "accept_invite worker2": {
+      "hash": "65f140fff7ecfe95187fce89b53ee8b68978ba45a770834dc92423d8057602e3",
+      "ledger": 5084239,
+      "feeStroops": 3089168,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/65f140fff7ecfe95187fce89b53ee8b68978ba45a770834dc92423d8057602e3"
+    },
+    "invite_worker worker3": {
+      "hash": "764270a1705532615904ecd4828634df58b51e51e00e05d5db1cb11f703a38f5",
+      "ledger": 5084240,
+      "feeStroops": 2848667,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/764270a1705532615904ecd4828634df58b51e51e00e05d5db1cb11f703a38f5"
+    },
+    "accept_invite worker3": {
+      "hash": "822363d3119c20eb7bed27665dcd84d965224fbb9efdfdaa1cf7be4587fcd43a",
+      "ledger": 5084241,
+      "feeStroops": 3089168,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/822363d3119c20eb7bed27665dcd84d965224fbb9efdfdaa1cf7be4587fcd43a"
+    },
+    "invite_worker worker4": {
+      "hash": "c9dba468d3e3a347d93f0e380dcd8568c7b84a2d58083140ba72d4b578e9e414",
+      "ledger": 5084242,
+      "feeStroops": 2848667,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c9dba468d3e3a347d93f0e380dcd8568c7b84a2d58083140ba72d4b578e9e414"
+    },
+    "accept_invite worker4": {
+      "hash": "e1134dbeee427f6cf078233ee72a645e364b44ca0c8c00aecf0c599925e3eb81",
+      "ledger": 5084243,
+      "feeStroops": 3089168,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/e1134dbeee427f6cf078233ee72a645e364b44ca0c8c00aecf0c599925e3eb81"
+    },
+    "invite_worker worker5": {
+      "hash": "a74080c6e34dabd05f922a37b450ba8cc58b8aa6e7ee5914689be11051fc5148",
+      "ledger": 5084244,
+      "feeStroops": 2848667,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/a74080c6e34dabd05f922a37b450ba8cc58b8aa6e7ee5914689be11051fc5148"
+    },
+    "accept_invite worker5": {
+      "hash": "c3324810ad6087c79884b639184b8da921bab1ae5a36b5fad2ee355008f29a38",
+      "ledger": 5084246,
+      "feeStroops": 3089170,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c3324810ad6087c79884b639184b8da921bab1ae5a36b5fad2ee355008f29a38"
+    },
+    "invite_worker worker6": {
+      "hash": "96557b2be4d44ec931991749e51a371648ddc16a3ee4ef6a4fd3e60e96180ac3",
+      "ledger": 5084248,
+      "feeStroops": 2848667,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/96557b2be4d44ec931991749e51a371648ddc16a3ee4ef6a4fd3e60e96180ac3"
+    },
+    "accept_invite worker6": {
+      "hash": "cf9f3609ebbac1c5bea4821a92aa41523e092b96ba92998614a9c8c147449d91",
+      "ledger": 5084250,
+      "feeStroops": 3089175,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/cf9f3609ebbac1c5bea4821a92aa41523e092b96ba92998614a9c8c147449d91"
+    },
+    "create_company Outsider Co": {
+      "hash": "b3d3db7a1858cdd8cdc9b7efb8f013c6425db80b2f6bdee18adf79873bc77b81",
+      "ledger": 5084251,
+      "feeStroops": 5645578,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/b3d3db7a1858cdd8cdc9b7efb8f013c6425db80b2f6bdee18adf79873bc77b81"
+    },
+    "funder1 buys USDC for the treasury": {
+      "hash": "600c21e2b236013f6980c5681769f83737add32fcd4aa76ef0ab80dd2de850e3",
+      "ledger": 5084255,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/600c21e2b236013f6980c5681769f83737add32fcd4aa76ef0ab80dd2de850e3"
+    },
+    "funder2 buys USDC for the treasury": {
+      "hash": "30c5be7bb4d827af6851ab10b096a5ccc43af6c7bd67cff9888c1538e84e9b38",
+      "ledger": 5084257,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/30c5be7bb4d827af6851ab10b096a5ccc43af6c7bd67cff9888c1538e84e9b38"
+    },
+    "treasury deposit for September 2026": {
+      "hash": "7d749dc9eed592709a4ffe625b9e7a25129c884a22b602ac59cb7e7a5ec20313",
+      "ledger": 5084259,
+      "feeStroops": 29390,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/7d749dc9eed592709a4ffe625b9e7a25129c884a22b602ac59cb7e7a5ec20313"
+    },
+    "treasury merge for September 2026": {
+      "hash": "a587cc828478d16849ad421b727fffc13163258bc727295fdf5c28cfba76870f",
+      "ledger": 5084261,
+      "feeStroops": 8246,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/a587cc828478d16849ad421b727fffc13163258bc727295fdf5c28cfba76870f"
+    },
+    "open_run September 2026": {
+      "hash": "87f57b2ea27d32acfc70609d153c1d01f5f97d9cebf5cfedb3456e95b502a1ae",
+      "ledger": 5084263,
+      "feeStroops": 3850225,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/87f57b2ea27d32acfc70609d153c1d01f5f97d9cebf5cfedb3456e95b502a1ae"
+    },
+    "pay September 2026 batch 1": {
+      "hash": "689954ba3cd0b70a6399184b73b6073c3f1c7137a77f3583e2ef0f6e335577c9",
+      "ledger": 5084267,
+      "feeStroops": 4914808,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/689954ba3cd0b70a6399184b73b6073c3f1c7137a77f3583e2ef0f6e335577c9"
+    },
+    "pay September 2026 batch 2": {
+      "hash": "37b65371438b058707b42af92f66d57afbbdc72b5bb9553c80fc02b5a6fdfbd6",
+      "ledger": 5084270,
+      "feeStroops": 4914839,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/37b65371438b058707b42af92f66d57afbbdc72b5bb9553c80fc02b5a6fdfbd6"
+    },
+    "pay September 2026 batch 3": {
+      "hash": "d40de8bbd613715a635689e74e5fb09121c9bf0a909d10c87566acdbaa9d8e7b",
+      "ledger": 5084273,
+      "feeStroops": 4914880,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/d40de8bbd613715a635689e74e5fb09121c9bf0a909d10c87566acdbaa9d8e7b"
+    },
+    "treasury deposit for October 2026": {
+      "hash": "641d7631fd681b981eda94a2bd36399adb25f8fa3ec25fa64624353d2deb2ee5",
+      "ledger": 5084276,
+      "feeStroops": 28306,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/641d7631fd681b981eda94a2bd36399adb25f8fa3ec25fa64624353d2deb2ee5"
+    },
+    "treasury merge for October 2026": {
+      "hash": "bd0e958db554a90bd54034bf9cea95602c6bf77cb33c7dadc72d92ee68192201",
+      "ledger": 5084278,
+      "feeStroops": 8465,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/bd0e958db554a90bd54034bf9cea95602c6bf77cb33c7dadc72d92ee68192201"
+    },
+    "open_run October 2026": {
+      "hash": "82a60894c2d59e1416ab89da2b1d1d5b9a1c74a38c6a306ddcc05a698098d549",
+      "ledger": 5084280,
+      "feeStroops": 3794527,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/82a60894c2d59e1416ab89da2b1d1d5b9a1c74a38c6a306ddcc05a698098d549"
+    },
+    "pay October 2026 batch 1": {
+      "hash": "e5429568b15594445adf9f119162cdbbc574611e32d7713ad8d274402a2610ab",
+      "ledger": 5084284,
+      "feeStroops": 4915321,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/e5429568b15594445adf9f119162cdbbc574611e32d7713ad8d274402a2610ab"
+    },
+    "pay October 2026 batch 2": {
+      "hash": "63dfd62872c79414ca68e841cfbe00cd2a22211a45560108c377d5a9d1d04f9e",
+      "ledger": 5084287,
+      "feeStroops": 4915337,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/63dfd62872c79414ca68e841cfbe00cd2a22211a45560108c377d5a9d1d04f9e"
+    },
+    "pay October 2026 batch 3": {
+      "hash": "5b793b664d8ef027669ec95caccbf89cf67bbe76f4c9073347036f6f46502033",
+      "ledger": 5084290,
+      "feeStroops": 4919216,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/5b793b664d8ef027669ec95caccbf89cf67bbe76f4c9073347036f6f46502033"
+    },
+    "outsider USDC trustline": {
+      "hash": "c3232906e6ca6fbb32f5a332d5ea6df83e0cf649bc8c9bda506e9cab7cb94479",
+      "ledger": 5084293,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c3232906e6ca6fbb32f5a332d5ea6df83e0cf649bc8c9bda506e9cab7cb94479"
+    },
+    "outsider buys USDC": {
+      "hash": "22f29b7fd18582dfb5f84aaaf022d740b14af78458ca36dfad2ba533f058e583",
+      "ledger": 5084295,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/22f29b7fd18582dfb5f84aaaf022d740b14af78458ca36dfad2ba533f058e583"
+    },
+    "outsider deposit to itself": {
+      "hash": "5659d2d6359d3bf5b2b08661518a37ee5a10fff04b73f683d050ff8e67a42de8",
+      "ledger": 5084296,
+      "feeStroops": 27026,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/5659d2d6359d3bf5b2b08661518a37ee5a10fff04b73f683d050ff8e67a42de8"
+    },
+    "outsider merge": {
+      "hash": "94249c6ead1fab0d32978c480e250000c93e0a420b80a9957f2ab3c5faf817b5",
+      "ledger": 5084298,
+      "feeStroops": 8246,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/94249c6ead1fab0d32978c480e250000c93e0a420b80a9957f2ab3c5faf817b5"
+    },
+    "outsider direct confidential transfer to worker1": {
+      "hash": "43e079e0055d9bc7a2327bcb9d091755df6dda130ec946b1a667c9cd9a9c1f07",
+      "ledger": 5084300,
+      "feeStroops": 214472,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/43e079e0055d9bc7a2327bcb9d091755df6dda130ec946b1a667c9cd9a9c1f07"
+    },
+    "outsider public deposit to worker1": {
+      "hash": "b45a838c84845f9acdeff119d5644ff9b9abd4fda733886e4c8dc9ceaa949197",
+      "ledger": 5084302,
+      "feeStroops": 27975,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/b45a838c84845f9acdeff119d5644ff9b9abd4fda733886e4c8dc9ceaa949197"
+    },
+    "treasury account created by friendbot": {
+      "hash": "743fd4e40cc80540dcfd1233d5362ca28376dee8ec7508621316c0afab6c0f6a",
+      "ledger": 5084193,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/743fd4e40cc80540dcfd1233d5362ca28376dee8ec7508621316c0afab6c0f6a"
+    },
+    "accountant account created by friendbot": {
+      "hash": "dced518466c9a9faab634d529d633cb2e91ddd70f397e88a28b701a204fabc13",
+      "ledger": 5084194,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/dced518466c9a9faab634d529d633cb2e91ddd70f397e88a28b701a204fabc13"
+    },
+    "worker1 account created by friendbot": {
+      "hash": "e40d1672301c6c4a0dd4f305dae8179a00b4cda23fa52e5da92631c0f44cce95",
+      "ledger": 5084195,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/e40d1672301c6c4a0dd4f305dae8179a00b4cda23fa52e5da92631c0f44cce95"
+    },
+    "worker2 account created by friendbot": {
+      "hash": "d52b17d4d01b02f49d0274b142cb086d248403c47e6631e1261cb6678eb64e89",
+      "ledger": 5084196,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/d52b17d4d01b02f49d0274b142cb086d248403c47e6631e1261cb6678eb64e89"
+    },
+    "worker3 account created by friendbot": {
+      "hash": "4ebd544f0be4fae0d4290a61a7aa3b811ee414db7b3b1c966f2d76b93b5e2a22",
+      "ledger": 5084197,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/4ebd544f0be4fae0d4290a61a7aa3b811ee414db7b3b1c966f2d76b93b5e2a22"
+    },
+    "worker4 account created by friendbot": {
+      "hash": "afe363a41fc57532ae1764501c3622997bd14da47fab38df981ec131e43a9bdf",
+      "ledger": 5084198,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/afe363a41fc57532ae1764501c3622997bd14da47fab38df981ec131e43a9bdf"
+    },
+    "worker5 account created by friendbot": {
+      "hash": "f2b6a81deea74f66881e84da7fb4c42b00d89b24889e4f471afc6015159c1a22",
+      "ledger": 5084199,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/f2b6a81deea74f66881e84da7fb4c42b00d89b24889e4f471afc6015159c1a22"
+    },
+    "worker6 account created by friendbot": {
+      "hash": "addf0e0addd0807cffc53e9e90fd82d3ad3241bad1681c1b4f2ca486d34cd064",
+      "ledger": 5084200,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/addf0e0addd0807cffc53e9e90fd82d3ad3241bad1681c1b4f2ca486d34cd064"
+    },
+    "outsider account created by friendbot": {
+      "hash": "911b43a2c283c8832294e387eec8ae0d2099e92cf39a2fd8d284d766c4cee995",
+      "ledger": 5084201,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/911b43a2c283c8832294e387eec8ae0d2099e92cf39a2fd8d284d766c4cee995"
+    },
+    "funder1 account created by friendbot": {
+      "hash": "64a1560c0b864a81cdf49bda39102e4572e71106cec44a98ce25b75b2f708fac",
+      "ledger": 5084253,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/64a1560c0b864a81cdf49bda39102e4572e71106cec44a98ce25b75b2f708fac"
+    },
+    "funder2 account created by friendbot": {
+      "hash": "59309a1ec3995418e16c2bbdddbc77dc6b10afaeabc0715ccc28067ff2ef46ae",
+      "ledger": 5084256,
+      "feeStroops": 100,
+      "explorer": "https://stellar.expert/explorer/testnet/tx/59309a1ec3995418e16c2bbdddbc77dc6b10afaeabc0715ccc28067ff2ef46ae"
+    }
+  },
+  "pending": {},
+  "seededAt": "2026-10-08T07:38:20Z"
+}

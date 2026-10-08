@@ -43,6 +43,14 @@ function firstLine(text: string): string {
   return (text.split('\n')[0] ?? '').slice(0, 200);
 }
 
+// The SDK types this as a number but passes the RPC's JSON through unchanged, and the RPC
+// sends a decimal string. Anything that is not a whole positive second count is dropped, so a
+// bad value can only make a NOT_FOUND less final, never more.
+function unixSeconds(value: unknown): number | undefined {
+  const seconds = typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value) ? Number(value) : value;
+  return typeof seconds === 'number' && Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
+}
+
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -96,10 +104,12 @@ export function createRpcChainPort(config: { rpcUrl: string; networkPassphrase: 
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       let pollError: unknown;
+      let closeTime: number | undefined;
       try {
         const found = await withTimeout('getTransaction', server.getTransaction(hash));
         if (found.status === Api.GetTransactionStatus.SUCCESS) return { status: 'SUCCESS' as const, ledger: found.ledger };
         if (found.status === Api.GetTransactionStatus.FAILED) return { status: 'FAILED' as const, ledger: found.ledger };
+        closeTime = unixSeconds(found.latestLedgerCloseTime);
       } catch (err) {
         pollError = err;
       }
@@ -108,7 +118,7 @@ export function createRpcChainPort(config: { rpcUrl: string; networkPassphrase: 
         // NOT_FOUND is an answer the caller acts on, so it is only given when the last look
         // at the deadline actually came back empty. A failed look is not an answer.
         if (pollError !== undefined) throw pollError;
-        return { status: 'NOT_FOUND' as const };
+        return closeTime === undefined ? { status: 'NOT_FOUND' as const } : { status: 'NOT_FOUND' as const, closeTime };
       }
       await sleep(Math.min(POLL_INTERVAL_MS, left));
     }

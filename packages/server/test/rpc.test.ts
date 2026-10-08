@@ -47,6 +47,25 @@ describe("createRpcClient", () => {
     ]);
   });
 
+  it("reads ledger entries by key, treats a missing entries list as none found, and bounds the key count", async () => {
+    const entry = { key: "AAAABg==", xdr: "AAAABg==", lastModifiedLedgerSeq: 40, liveUntilLedgerSeq: 900, extXdr: "AAAAAA==" };
+    const { rpc, fetchImpl } = rpcWith((req) => ok(req.params.keys.length === 2 ? { entries: [entry], latestLedger: 50 } : { latestLedger: 50 })(req));
+    expect(await rpc.getLedgerEntries(["AAAABg==", "AAAABw=="])).toEqual({
+      entries: [{ key: "AAAABg==", xdr: "AAAABg==", lastModifiedLedgerSeq: 40, liveUntilLedgerSeq: 900 }],
+      latestLedger: 50,
+    });
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]!.body))).toMatchObject({
+      method: "getLedgerEntries",
+      params: { keys: ["AAAABg==", "AAAABw=="] },
+    });
+    expect(await rpc.getLedgerEntries(["AAAABg=="])).toEqual({ entries: [], latestLedger: 50 });
+    await expect(rpc.getLedgerEntries([])).rejects.toBeInstanceOf(RangeError);
+    await expect(rpc.getLedgerEntries(Array(201).fill("AAAABg=="))).rejects.toBeInstanceOf(RangeError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const tooMany = rpcWith(ok({ entries: Array(201).fill(entry), latestLedger: 50 })).rpc;
+    await expect(tooMany.getLedgerEntries(["AAAABg=="])).rejects.toMatchObject({ code: "bad_reply" });
+  });
+
   it("turns every unexpected reply into an RpcError without upstream text in its message", async () => {
     const cases: Array<[(req: any) => { status?: number; body: unknown }, RpcError["code"]]> = [
       [(req) => ({ body: { jsonrpc: "2.0", id: req.id, error: { code: RPC_INVALID_REQUEST, message: "startLedger out of range" } } }), RPC_INVALID_REQUEST],

@@ -10,9 +10,12 @@
   },
   "scripts": {
     "deploy:testnet": "node deploy.mjs",
-    "check:testnet": "node check.mjs"
+    "check:testnet": "node check.mjs",
+    "seed:testnet": "node seed.mjs",
+    "prove:testnet": "node prove.mjs"
   },
   "dependencies": {
+    "@kalypso/core": "file:../../core",
     "@stellar/stellar-sdk": "16.3.1",
     "stellar-confidential-token-sdk": "0.1.9"
   },

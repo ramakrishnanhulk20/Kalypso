@@ -31,7 +31,9 @@ import { scValToPlainJson } from "./scval-json.ts";
  *
  * Every data reply carries `complete` and `ingested_through` (threat model
  * C17). `complete` is true only when the archive read every ledger of the
- * requested range in full and no gap touches it.
+ * requested range in full and no gap touches it. /v1/health answers 503
+ * while its alarm is raised: a permanent gap, or no successful ingest for
+ * 48 hours.
  *
  * Every parameter is checked before anything else runs (C24): contract ids
  * must equal our configured ids after the shared address parser, accounts
@@ -265,8 +267,10 @@ const health: Route = (ctx) => async (c) => {
     c.lastIngestAt === null || now.getTime() - c.lastIngestAt.getTime() > STALE_AFTER_MS || latest - through > STALE_AFTER_LEDGERS;
   if (stale) reasons.push("stale");
   const from = ingestedFrom(c);
+  // The status code is the alarm a person sees: an uptime check or a
+  // scheduled job reads it without parsing the body.
   return {
-    status: 200,
+    status: reasons.length > 0 ? 503 : 200,
     body: {
       latest_ledger: latest,
       ingested_through: through,

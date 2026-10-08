@@ -1,5 +1,5 @@
 import { requireAccount, requireU64 } from '../chain/scval.js';
-import { decodeContractEvent, type HistoryEvent } from './decode.js';
+import { TOKEN_CONFIG_EVENTS, decodeContractEvent, type HistoryEvent } from './decode.js';
 import { parseRpcEventId, type ContractEventsQuery, type EventsPort, type RawContractEvent } from './rpc-events.js';
 
 /** Our archive server (packages/server/src/archive/api.ts). Its URL comes from app config only, never from a request. */
@@ -28,6 +28,20 @@ export interface HistoryResult {
 }
 
 export const ARCHIVE_TIMEOUT_MS = 10_000;
+
+/** How far a history may end behind the newest ledger and still count as current: about one minute of ledgers. */
+export const INGEST_TOLERANCE_LEDGERS = 12;
+
+/**
+ * True when a history that ends at ingestedThrough reaches to within INGEST_TOLERANCE_LEDGERS of
+ * latestLedger, the newest ledger the caller's chain reads could reflect. A history that ends
+ * earlier may be missing events the chain already shows, so it is not complete whatever its
+ * source says (threat model C17).
+ */
+export function reachesLedger(ingestedThrough: number, latestLedger: number): boolean {
+  return Number.isInteger(ingestedThrough) && ingestedThrough >= latestLedger - INGEST_TOLERANCE_LEDGERS;
+}
+
 /** The archive's and the RPC's own page cap. */
 const PAGE_LIMIT = 200;
 /** 50,000 events. A history that needs more pages is reported incomplete, never cut short silently. */
@@ -214,10 +228,19 @@ function requireFromLedger(fromLedger: number): number {
   return Math.max(fromLedger, 1);
 }
 
-function archiveBase(archive: ArchiveConfig): string {
-  const baseUrl = archive?.baseUrl;
-  if (typeof baseUrl !== 'string' || !HTTPS_BASE.test(baseUrl)) throw new TypeError('archive.baseUrl must be an https URL with no query');
+/**
+ * A configured service origin (the archive, Horizon), with a trailing slash. Only https, a plain
+ * host and path, no query, fragment or credentials, so a path appended to it stays on that origin.
+ *
+ * @throws TypeError for anything else, naming the setting.
+ */
+export function httpsBaseUrl(baseUrl: unknown, setting: string): string {
+  if (typeof baseUrl !== 'string' || !HTTPS_BASE.test(baseUrl)) throw new TypeError(`${setting} must be an https URL with no query`);
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
+
+function archiveBase(archive: ArchiveConfig): string {
+  return httpsBaseUrl(archive?.baseUrl, 'archive.baseUrl');
 }
 
 async function fetchHistory(input: FetchInput, target: Target): Promise<HistoryResult> {
@@ -240,6 +263,8 @@ function tokenParties(event: HistoryEvent): string[] | null {
     return e.type === 'register' || e.type === 'merge' ? [e.account] : [e.from, e.to];
   }
   if (event.kind === 'payroll') return [];
+  // decodeContractEvent let these through as ignored only with their one name topic.
+  if (event.kind === 'ignored' && event.contract === 'token' && TOKEN_CONFIG_EVENTS.has(event.name)) return [];
   return event.parties.length > 0 ? event.parties : null;
 }
 

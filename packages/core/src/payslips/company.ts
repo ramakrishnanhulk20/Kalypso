@@ -1,10 +1,11 @@
 import { MAX_STROOPS } from '../amounts.js';
-import { MAX_PERIOD_LABEL_BYTES, getCompany, getRun, isPaid, type Company } from '../chain/payroll.js';
+import { MAX_PERIOD_LABEL_BYTES, PayrollErrorCode, getCompany, getRun, isPaid, isPayrollError, type Company, type Run } from '../chain/payroll.js';
 import type { ChainPort } from '../chain/ports.js';
 import { utf8Length } from '../chain/scval.js';
 import type { EventMeta, HistoryEvent, TokenEvent } from '../history/decode.js';
 import { fetchCompanyHistory, type HistorySource } from '../history/events.js';
 import type { EventPosition } from '../history/rpc-events.js';
+import type { TransferBinding } from '../history/tx-binding.js';
 
 /** A payslip event of ours, with the treasury that was the company's admin when it was issued. */
 export interface PayslipCandidate {
@@ -20,6 +21,10 @@ export interface CompanyPayslips {
   candidates: PayslipCandidate[];
   /** Every account that was the company's treasury within the history read, oldest first. */
   treasuries: string[];
+  /** Every run the history shows opened or paid, for any worker, in the order first seen. */
+  runIds: bigint[];
+  /** The last ledger the company's history covers. */
+  ingestedThrough: number;
   /** False when the company's history is incomplete, unreadable in places, or its admin changes do not add up. */
   complete: boolean;
 }
@@ -73,8 +78,16 @@ export async function readCompanyPayslips(input: {
   const read = await fetchCompanyHistory({ port: history.rpc, ...(history.archive ? { archive: history.archive } : {}), contracts, companyId, fromLedger: history.fromLedger });
   // An unreadable payroll event could be a payslip or an admin change, so the set is not known in full.
   let complete = read.complete && !read.events.some((e) => e.kind === 'undecodable');
+  const runIds = [
+    ...new Set(
+      read.events.flatMap((e) =>
+        e.kind === 'payroll' && (e.event.type === 'run_opened' || e.event.type === 'payslip_issued') && e.event.companyId === companyId ? [e.event.runId] : [],
+      ),
+    ),
+  ];
+  const { ingestedThrough } = read;
   const timeline = adminTimeline(company.admin, read.events);
-  if (timeline === null) return { company, candidates: [], treasuries: [company.admin], complete: false };
+  if (timeline === null) return { company, candidates: [], treasuries: [company.admin], runIds, ingestedThrough, complete: false };
   const candidates = read.events.flatMap((e): PayslipCandidate[] => {
     if (e.kind !== 'payroll' || e.event.type !== 'payslip_issued' || e.event.companyId !== companyId) return [];
     if (input.worker !== undefined && e.event.worker !== input.worker) return [];
@@ -87,7 +100,7 @@ export async function readCompanyPayslips(input: {
   for (const c of candidates) seen.set(`${c.runId}/${c.worker}`, (seen.get(`${c.runId}/${c.worker}`) ?? 0) + 1);
   const unique = candidates.filter((c) => seen.get(`${c.runId}/${c.worker}`) === 1);
   if (unique.length !== candidates.length) complete = false;
-  return { company, candidates: unique, treasuries: timeline.admins, complete };
+  return { company, candidates: unique, treasuries: timeline.admins, runIds, ingestedThrough, complete };
 }
 
 /**
@@ -113,20 +126,38 @@ export function transferInTx(
   return { problem: unreadable ? 'undecodable' : 'missing' };
 }
 
-/** Reads is_paid and the run's period label once per (company, run, worker) and (company, run). */
+/**
+ * True only when the transfer bound to its transaction (bindTransferToTransaction) and that
+ * transaction is the payslip's own pay call: our payroll's pay, for this company and this run.
+ * A direct transfer, or a pay for another run, never stands in for a payslip.
+ */
+export function bindsAsPayslip(binding: TransferBinding, candidate: PayslipCandidate): binding is Extract<TransferBinding, { ok: true }> {
+  return binding.ok && binding.call.kind === 'payroll_pay' && binding.call.companyId === candidate.companyId && binding.call.runId === candidate.runId;
+}
+
+/** Reads is_paid once per (company, run, worker) call, and each run once per (company, run). */
 export function chainChecks(port: ChainPort, payroll: string) {
-  const labels = new Map<string, Promise<string | null>>();
+  const runs = new Map<string, Promise<Run | null>>();
+  /** The run on chain, or null when this company never opened it: a run id from history is not trusted to exist. */
+  const run = (companyId: bigint, runId: bigint): Promise<Run | null> => {
+    const key = `${companyId}/${runId}`;
+    let read = runs.get(key);
+    if (read === undefined) {
+      read = getRun(port, payroll, companyId, runId).catch((err: unknown) => {
+        if (isPayrollError(err, PayrollErrorCode.RunNotFound)) return null;
+        throw err;
+      });
+      runs.set(key, read);
+    }
+    return read;
+  };
   return {
     isPaid: (companyId: bigint, runId: bigint, worker: string) => isPaid(port, payroll, companyId, runId, worker),
-    /** The run's label from chain, or null when it is longer than the contract allows (C25). */
-    periodLabel(companyId: bigint, runId: bigint): Promise<string | null> {
-      const key = `${companyId}/${runId}`;
-      let label = labels.get(key);
-      if (label === undefined) {
-        label = getRun(port, payroll, companyId, runId).then((run) => (utf8Length(run.periodLabel) <= MAX_PERIOD_LABEL_BYTES ? run.periodLabel : null));
-        labels.set(key, label);
-      }
-      return label;
+    run,
+    /** The run's label from chain, or null when the run is unknown or its label is longer than the contract allows (C25). */
+    async periodLabel(companyId: bigint, runId: bigint): Promise<string | null> {
+      const onChain = await run(companyId, runId);
+      return onChain !== null && utf8Length(onChain.periodLabel) <= MAX_PERIOD_LABEL_BYTES ? onChain.periodLabel : null;
     },
   };
 }
