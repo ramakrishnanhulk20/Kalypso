@@ -296,6 +296,59 @@ fn register_rejects_a_second_encoding_of_a_valid_point() {
     assert_eq!(c.key_count(), 0);
 }
 
+/// AR3: the id counter is forced to the u32 limit, because four billion real
+/// registrations are out of reach. register_key is refused with
+/// CounterOverflow and stores nothing, so the counter never wraps back to an
+/// id that already has an owner.
+#[test]
+fn register_refuses_when_the_id_counter_is_at_its_limit() {
+    let (e, c) = setup();
+    let first_owner = Address::generate(&e);
+    let latecomer = Address::generate(&e);
+    register(&c, &first_owner, &point(&e, G));
+    e.as_contract(&c.address, || crate::storage::set_key_count(&e, u32::MAX));
+
+    let outcome = try_register(&c, &latecomer, &latecomer, &point(&e, DEAD_H));
+
+    assert_eq!(failure(outcome), RegistryError::CounterOverflow.into());
+    assert!(e
+        .events()
+        .all()
+        .filter_by_contract(&c.address)
+        .events()
+        .is_empty());
+    assert_eq!(c.key_count(), u32::MAX);
+    assert_eq!(
+        failure(c.try_get_key(&u32::MAX)),
+        AuditorError::AuditorNotRegistered.into()
+    );
+    assert_eq!(c.owner_of(&0), first_owner);
+    assert_eq!(c.get_key(&0), point(&e, G));
+}
+
+/// propose_owner refuses a past deadline before it stores anything, so the
+/// subtraction in set_pending_owner is reachable only by calling it
+/// directly. Given a deadline behind the current ledger, it fails with
+/// InvalidLiveUntil rather than an unnamed arithmetic trap.
+#[test]
+#[should_panic(expected = "Error(Contract, #103)")]
+fn storing_an_offer_with_a_past_deadline_fails_with_invalid_live_until() {
+    let (e, c) = setup();
+    let new_owner = Address::generate(&e);
+    set_ledger(&e, 100);
+
+    e.as_contract(&c.address, || {
+        crate::storage::set_pending_owner(
+            &e,
+            0,
+            &PendingOwner {
+                new_owner,
+                live_until_ledger: 99,
+            },
+        );
+    });
+}
+
 #[test]
 fn register_accepts_valid_grumpkin_points() {
     let (e, c) = setup();

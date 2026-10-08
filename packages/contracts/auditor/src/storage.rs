@@ -102,13 +102,18 @@ pub fn pending_owner(e: &Env, auditor_id: u32) -> Option<PendingOwner> {
 }
 
 /// The caller has already checked that the deadline is after the current
-/// ledger and within the network's maximum entry lifetime.
+/// ledger and within the network's maximum entry lifetime. A deadline in the
+/// past still fails here with [`RegistryError::InvalidLiveUntil`], so this
+/// function never relies on that check alone.
 pub fn set_pending_owner(e: &Env, auditor_id: u32, pending: &PendingOwner) {
     let key = RegistryStorageKey::PendingOwner(auditor_id);
     e.storage().persistent().set(&key, pending);
     // Keeps the record readable through its deadline, so a valid accept never
     // lands on an archived entry.
-    let live_for = pending.live_until_ledger - e.ledger().sequence();
+    let live_for = pending
+        .live_until_ledger
+        .checked_sub(e.ledger().sequence())
+        .unwrap_or_else(|| panic_with_error!(e, RegistryError::InvalidLiveUntil));
     e.storage()
         .persistent()
         .extend_ttl(&key, live_for, live_for);

@@ -71,6 +71,68 @@ fn company_ids_count_up_from_zero_and_one_admin_may_run_two_companies() {
     assert_eq!(s.client().get_company(&1).admin, second);
 }
 
+/// The next company id is forced to the u64 limit, because no real sequence
+/// of calls gets there. create_company is refused with CounterOverflow and
+/// stores nothing, so the counter can never wrap back onto company 0.
+#[test]
+fn create_company_refuses_when_company_ids_run_out() {
+    let s = Setup::new();
+    let first = s.account(COMPANY_AUDITOR);
+    s.create_company(&first, COMPANY_AUDITOR, "Acme");
+    s.e.as_contract(&s.payroll, || {
+        crate::storage::set_next_company_id(&s.e, u64::MAX);
+    });
+    let admin = s.account(OTHER_AUDITOR);
+    let label = s.text("Beta");
+    s.sign(
+        &admin,
+        "create_company",
+        (&admin, OTHER_AUDITOR, &label).into_val(&s.e),
+    );
+
+    let result = s
+        .client()
+        .try_create_company(&admin, &OTHER_AUDITOR, &label);
+
+    assert_eq!(result, Err(Ok(err(PayrollError::CounterOverflow))));
+    assert!(s.payroll_events().events().is_empty());
+    assert_eq!(s.client().company_count(), u64::MAX);
+    assert_eq!(
+        s.client().try_get_company(&u64::MAX),
+        Err(Ok(err(PayrollError::CompanyNotFound)))
+    );
+    assert_eq!(s.client().get_company(&0).admin, first);
+}
+
+/// The constructor writes the token address and nothing removes it. With it
+/// deleted straight from storage, every call that needs the token fails with
+/// MissingRecord rather than an unnamed trap.
+#[test]
+fn a_missing_token_address_fails_with_missing_record() {
+    let s = Setup::new();
+    let admin = s.account(COMPANY_AUDITOR);
+    s.e.as_contract(&s.payroll, || {
+        s.e.storage().instance().remove(&s.key("Token", ()));
+    });
+
+    assert_eq!(
+        s.client().try_token(),
+        Err(Ok(err(PayrollError::MissingRecord)))
+    );
+    let label = s.text("Acme");
+    s.sign(
+        &admin,
+        "create_company",
+        (&admin, COMPANY_AUDITOR, &label).into_val(&s.e),
+    );
+    assert_eq!(
+        s.client()
+            .try_create_company(&admin, &COMPANY_AUDITOR, &label),
+        Err(Ok(err(PayrollError::MissingRecord)))
+    );
+    assert_eq!(s.client().company_count(), 0);
+}
+
 #[test]
 fn create_company_rejects_an_admin_not_registered_with_the_token() {
     let s = Setup::new();

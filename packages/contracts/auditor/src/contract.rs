@@ -24,10 +24,14 @@ impl AuditorRegistry {
     ///
     /// Authorization: `owner`.
     ///
-    /// Errors (both from OpenZeppelin's own point validation):
-    /// * `AuditorError::IdentityPoint` (3302) if `point` is 64 zero bytes.
+    /// Errors:
+    /// * [`RegistryError::CounterOverflow`] (105) if the id counter is at the
+    ///   u32 limit, so no further id can be handed out.
+    /// * `AuditorError::IdentityPoint` (3302) if `point` is 64 zero bytes
+    ///   (OpenZeppelin's own point validation).
     /// * `AuditorError::PointNotOnCurve` (3303) if either coordinate is not
-    ///   below the field modulus or the point is not on the Grumpkin curve.
+    ///   below the field modulus or the point is not on the Grumpkin curve
+    ///   (OpenZeppelin's own point validation).
     ///
     /// Events: `AuditorRegistered { auditor_id, point }` (OpenZeppelin), then
     /// [`OwnerSet`].
@@ -37,10 +41,12 @@ impl AuditorRegistry {
         owner.require_auth();
 
         let auditor_id = storage::key_count(&e);
-        // Overflow-checks traps this increment at the u32 limit, and
-        // OpenZeppelin's register_key refuses any id that already holds a key,
-        // so an id can never be handed out twice.
-        let next_count = auditor_id + 1;
+        // The counter never wraps, and OpenZeppelin's register_key refuses
+        // any id that already holds a key, so an id can never be handed out
+        // twice.
+        let next_count = auditor_id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, RegistryError::CounterOverflow));
 
         key_store::register_key(&e, auditor_id, &point);
         storage::extend_key(&e, auditor_id);

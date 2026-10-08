@@ -28,7 +28,7 @@ use soroban_sdk::{
 };
 
 use crate::storage::WorkerRecord;
-use crate::{Payroll, PayrollClient, PayrollError, WorkerStatus};
+use crate::{Company, Payroll, PayrollClient, PayrollError, Run, WorkerStatus};
 use mock_token::{register_account, MockToken, MockTokenClient, RecordedTransfer};
 
 /// Testnet's minimum entry lifetimes on 7 Oct 2026 (reference/stellar/now.md):
@@ -208,6 +208,26 @@ impl Setup {
                     on_roster: false,
                 },
             );
+        });
+    }
+
+    /// Rewrites a company record straight in storage. Used only to put a
+    /// counter at a limit that would take billions of real calls to reach, so
+    /// the overflow check can be shown to hold.
+    pub fn force_company(&self, company_id: u64, change: impl FnOnce(&mut Company)) {
+        self.e.as_contract(&self.payroll, || {
+            let mut company = crate::storage::company(&self.e, company_id).unwrap();
+            change(&mut company);
+            crate::storage::set_company(&self.e, company_id, &company);
+        });
+    }
+
+    /// See `force_company`, for one run.
+    pub fn force_run(&self, company_id: u64, run_id: u64, change: impl FnOnce(&mut Run)) {
+        self.e.as_contract(&self.payroll, || {
+            let mut run = crate::storage::run(&self.e, company_id, run_id).unwrap();
+            change(&mut run);
+            crate::storage::set_run(&self.e, company_id, run_id, &run);
         });
     }
 

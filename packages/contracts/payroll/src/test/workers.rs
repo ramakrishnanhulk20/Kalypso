@@ -287,6 +287,115 @@ fn get_roster_rejects_a_limit_of_zero_or_above_fifty() {
     }
 }
 
+/// accept_invite writes every roster index below roster_len. With one entry
+/// deleted straight from storage, get_roster fails with MissingRecord instead
+/// of returning a short page, and a page that starts past the gap still reads.
+#[test]
+fn get_roster_fails_with_missing_record_when_an_entry_is_gone() {
+    let s = Setup::new();
+    let t = s.team(2);
+    let gap = s.key("RosterAt", (t.company_id, 0u32));
+    s.e.as_contract(&s.payroll, || s.e.storage().persistent().remove(&gap));
+
+    assert_eq!(
+        s.client().try_get_roster(&t.company_id, &0, &50),
+        Err(Ok(err(PayrollError::MissingRecord)))
+    );
+    assert_eq!(
+        s.client().get_roster(&t.company_id, &1, &50),
+        Vec::from_array(&s.e, [t.workers[1].clone()])
+    );
+}
+
+/// The roster length is forced to the u32 limit. A new worker's accept is
+/// refused with CounterOverflow, and the roster entry written just before
+/// the check is undone with the rest of the call.
+#[test]
+fn accept_invite_refuses_when_the_roster_length_is_at_its_limit() {
+    let s = Setup::new();
+    let t = s.team(0);
+    let worker = s.account(WORKER_AUDITOR);
+    s.invite(t.company_id, &t.admin, &worker);
+    s.force_company(t.company_id, |company| company.roster_len = u32::MAX);
+    s.sign(
+        &worker,
+        "accept_invite",
+        (t.company_id, &worker).into_val(&s.e),
+    );
+
+    assert_eq!(
+        s.client().try_accept_invite(&t.company_id, &worker),
+        Err(Ok(err(PayrollError::CounterOverflow)))
+    );
+    assert!(s.payroll_events().events().is_empty());
+    assert_eq!(
+        s.client().worker_status(&t.company_id, &worker),
+        Some(WorkerStatus::Invited)
+    );
+    let company = s.client().get_company(&t.company_id);
+    assert_eq!(company.roster_len, u32::MAX);
+    assert_eq!(company.active_workers, 0);
+    let last_slot = s.key("RosterAt", (t.company_id, u32::MAX));
+    assert!(!s
+        .e
+        .as_contract(&s.payroll, || s.e.storage().persistent().has(&last_slot)));
+}
+
+/// The active worker count is forced to the u32 limit. Accepting is refused
+/// with CounterOverflow and the worker stays invited.
+#[test]
+fn accept_invite_refuses_when_the_active_worker_count_is_at_its_limit() {
+    let s = Setup::new();
+    let t = s.team(0);
+    let worker = s.account(WORKER_AUDITOR);
+    s.invite(t.company_id, &t.admin, &worker);
+    s.force_company(t.company_id, |company| company.active_workers = u32::MAX);
+    s.sign(
+        &worker,
+        "accept_invite",
+        (t.company_id, &worker).into_val(&s.e),
+    );
+
+    assert_eq!(
+        s.client().try_accept_invite(&t.company_id, &worker),
+        Err(Ok(err(PayrollError::CounterOverflow)))
+    );
+    assert!(s.payroll_events().events().is_empty());
+    assert_eq!(
+        s.client().worker_status(&t.company_id, &worker),
+        Some(WorkerStatus::Invited)
+    );
+    let company = s.client().get_company(&t.company_id);
+    assert_eq!(company.active_workers, u32::MAX);
+    assert_eq!(company.roster_len, 0);
+}
+
+/// The active worker count is forced to zero while a worker is still active,
+/// a state no public call produces. remove_worker is refused with
+/// CounterOverflow instead of wrapping the count to the u32 limit.
+#[test]
+fn remove_worker_refuses_when_the_active_worker_count_is_already_zero() {
+    let s = Setup::new();
+    let t = s.team(1);
+    s.force_company(t.company_id, |company| company.active_workers = 0);
+    s.sign(
+        &t.admin,
+        "remove_worker",
+        (t.company_id, &t.workers[0]).into_val(&s.e),
+    );
+
+    assert_eq!(
+        s.client().try_remove_worker(&t.company_id, &t.workers[0]),
+        Err(Ok(err(PayrollError::CounterOverflow)))
+    );
+    assert!(s.payroll_events().events().is_empty());
+    assert_eq!(
+        s.client().worker_status(&t.company_id, &t.workers[0]),
+        Some(WorkerStatus::Active)
+    );
+    assert_eq!(s.client().get_company(&t.company_id).active_workers, 0);
+}
+
 #[test]
 fn get_roster_fails_for_an_unknown_company() {
     let s = Setup::new();

@@ -42,8 +42,9 @@ impl Payroll {
     /// registered under must equal `auditor_id`.
     ///
     /// Fails with `LabelInvalid` if `label` is empty or longer than 64 bytes,
-    /// `NotRegisteredWithToken` if the token has no account for `admin`, and
-    /// `AuditorMismatch` if the registered auditor id differs.
+    /// `NotRegisteredWithToken` if the token has no account for `admin`,
+    /// `AuditorMismatch` if the registered auditor id differs, and
+    /// `CounterOverflow` if every company id has been used.
     ///
     /// Emits `CompanyCreated`.
     pub fn create_company(e: Env, admin: Address, auditor_id: u32, label: String) -> u64 {
@@ -52,7 +53,10 @@ impl Payroll {
         require_registered_under(&e, &admin, auditor_id);
 
         let company_id = storage::next_company_id(&e);
-        storage::set_next_company_id(&e, company_id + 1);
+        let next_company_id = company_id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
+        storage::set_next_company_id(&e, next_company_id);
         let company = Company {
             admin: admin.clone(),
             auditor_id,
@@ -235,8 +239,9 @@ impl Payroll {
     /// their own.
     ///
     /// Fails with `CompanyNotFound`, `WorkerIsAdmin` if `worker` is the
-    /// admin, `InviteNotFound` if the worker's status is not `Invited`, or
-    /// `NotRegisteredWithToken`.
+    /// admin, `InviteNotFound` if the worker's status is not `Invited`,
+    /// `NotRegisteredWithToken`, or `CounterOverflow` if the roster length or
+    /// the active worker count is already at its limit.
     ///
     /// Emits `WorkerJoined`.
     pub fn accept_invite(e: Env, company_id: u64, worker: Address) {
@@ -257,11 +262,17 @@ impl Payroll {
 
         if !record.on_roster {
             storage::set_roster_at(&e, company_id, company.roster_len, &worker);
-            company.roster_len += 1;
+            company.roster_len = company
+                .roster_len
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
             record.on_roster = true;
         }
         record.status = WorkerStatus::Active;
-        company.active_workers += 1;
+        company.active_workers = company
+            .active_workers
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
         storage::set_worker_record(&e, company_id, &worker, &record);
         storage::set_company(&e, company_id, &company);
         storage::extend_instance(&e);
@@ -274,8 +285,9 @@ impl Payroll {
     ///
     /// The admin must authorize.
     ///
-    /// Fails with `CompanyNotFound`, or `NotActive` if the worker is not
-    /// active.
+    /// Fails with `CompanyNotFound`, `NotActive` if the worker is not active,
+    /// or `CounterOverflow` if the active worker count is already zero, which
+    /// no sequence of public calls produces.
     ///
     /// Emits `WorkerRemoved`.
     pub fn remove_worker(e: Env, company_id: u64, worker: Address) {
@@ -286,7 +298,10 @@ impl Payroll {
         };
 
         record.status = WorkerStatus::Removed;
-        company.active_workers -= 1;
+        company.active_workers = company
+            .active_workers
+            .checked_sub(1)
+            .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
         storage::set_worker_record(&e, company_id, &worker, &record);
         storage::set_company(&e, company_id, &company);
         storage::extend_instance(&e);
@@ -357,7 +372,8 @@ impl Payroll {
     /// `TooManyItems` above `MAX_BATCH`, `WorkerIsAdmin` if an item names the
     /// admin, `NotActive` if a worker is not active right now, `AlreadyPaid`
     /// if a worker was already paid in this run (including earlier in the same
-    /// batch), `ExpectedCountExceeded`, or with the token's own error if a
+    /// batch), `CounterOverflow` if the run's paid count is already at its
+    /// limit, `ExpectedCountExceeded`, or with the token's own error if a
     /// transfer fails. Any failure undoes the whole call: no flag, no
     /// transfer, no event.
     ///
@@ -395,7 +411,10 @@ impl Payroll {
             }
 
             storage::set_paid(&e, company_id, run_id, &worker);
-            run.paid_count += 1;
+            run.paid_count = run
+                .paid_count
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
             if run.paid_count > run.expected_count {
                 panic_with_error!(&e, PayrollError::ExpectedCountExceeded);
             }
@@ -473,8 +492,9 @@ impl Payroll {
     /// removed workers; use `worker_status` for who is active. Needs no
     /// signature.
     ///
-    /// Fails with `LimitInvalid` unless `limit` is between 1 and 50, or
-    /// `CompanyNotFound`.
+    /// Fails with `LimitInvalid` unless `limit` is between 1 and 50,
+    /// `CompanyNotFound`, or `MissingRecord` if a roster entry below the
+    /// roster length is missing, which no sequence of public calls produces.
     pub fn get_roster(e: Env, company_id: u64, start: u32, limit: u32) -> Vec<Address> {
         if limit == 0 || limit > MAX_ROSTER_PAGE {
             panic_with_error!(&e, PayrollError::LimitInvalid);
@@ -484,8 +504,11 @@ impl Payroll {
         let mut page = Vec::new(&e);
         for index in start..end {
             // Every index below roster_len was written in the same call that
-            // raised roster_len, so the entry is always there.
-            page.push_back(storage::roster_at(&e, company_id, index).unwrap());
+            // raised roster_len, so a gap means storage was changed some other
+            // way, and the read fails rather than returning a short page.
+            let worker = storage::roster_at(&e, company_id, index)
+                .unwrap_or_else(|| panic_with_error!(&e, PayrollError::MissingRecord));
+            page.push_back(worker);
         }
         page
     }
@@ -499,6 +522,9 @@ impl Payroll {
 
     /// Returns the confidential token this contract pays through. Needs no
     /// signature.
+    ///
+    /// Fails with `MissingRecord` only if the address the constructor wrote
+    /// is gone, which no public call can cause.
     pub fn token(e: Env) -> Address {
         storage::token(&e)
     }

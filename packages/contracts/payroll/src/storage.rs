@@ -4,8 +4,9 @@
 //! not deleted, when their lifetime runs out, so a flag is never read as
 //! missing while it is archived.
 
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env};
 
+use crate::errors::PayrollError;
 use crate::types::{Company, PendingAdmin, Run, WorkerStatus};
 
 /// 86,400 seconds a day at about 5 seconds a ledger.
@@ -81,8 +82,12 @@ pub fn set_token(e: &Env, token: &Address) {
 
 pub fn token(e: &Env) -> Address {
     // Set once by the constructor, which runs in the same transaction as the
-    // deploy, so it is always present.
-    e.storage().instance().get(&DataKey::Token).unwrap()
+    // deploy, so it is always present. If it ever is not, every call that
+    // needs the token fails with a named error instead of a bare trap.
+    e.storage()
+        .instance()
+        .get(&DataKey::Token)
+        .unwrap_or_else(|| panic_with_error!(e, PayrollError::MissingRecord))
 }
 
 pub fn next_company_id(e: &Env) -> u64 {

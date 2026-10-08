@@ -19,4 +19,8 @@ pub enum RegistryError {
     InvalidLiveUntil = 103,
     /// The proposed new owner already owns the id.
     SameOwner = 104,
+    /// Every id the counter can count has been handed out, so there is no
+    /// next id. The call is refused rather than letting the counter wrap back
+    /// to an id that already has an owner.
+    CounterOverflow = 105,
 }

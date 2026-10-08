@@ -340,6 +340,22 @@ fn pay_rejects_payments_beyond_the_expected_count() {
     assert_eq!(s.client().get_run(&t.company_id, &7).paid_count, 1);
 }
 
+/// The run's paid count is forced to the u32 limit. pay is refused with
+/// CounterOverflow, which is checked before the expected count, and nothing
+/// is paid.
+#[test]
+fn pay_refuses_when_the_runs_paid_count_is_at_its_limit() {
+    let s = Setup::new();
+    let t = s.team(1);
+    s.open_run(t.company_id, &t.admin, 7, 1);
+    s.force_run(t.company_id, 7, |run| run.paid_count = u32::MAX);
+    let items = s.items(&[&t.workers[0]]);
+
+    assert_pay_fails(&s, &t.admin, t.company_id, 7, &items, err(PayrollError::CounterOverflow));
+    assert!(!s.client().is_paid(&t.company_id, &7, &t.workers[0]));
+    assert_eq!(s.client().get_run(&t.company_id, &7).paid_count, u32::MAX);
+}
+
 #[test]
 fn a_worker_paid_in_one_run_is_paid_again_in_the_next() {
     let s = Setup::new();

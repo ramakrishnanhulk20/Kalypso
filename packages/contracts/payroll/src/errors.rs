@@ -35,4 +35,14 @@ pub enum PayrollError {
     AdminTransferExpired = 18,
     InvalidLiveUntil = 19,
     LimitInvalid = 20,
+    /// A counter would go past the largest value its type holds, or below
+    /// zero: the next company id, a company's roster length or active worker
+    /// count, or a run's paid count. The call is refused rather than letting
+    /// the counter wrap.
+    CounterOverflow = 21,
+    /// A record the contract always writes before it reads it is missing:
+    /// the token address set by the constructor, or a roster entry below the
+    /// company's roster length. No public function can cause this; it fails
+    /// closed if storage is ever not what the code expects.
+    MissingRecord = 22,
 }
