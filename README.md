@@ -17,6 +17,27 @@ Status: work in progress for the Find Your Way hackathon. Testnet only. Not audi
 | `packages/server` | Fee sponsor for workers' own transactions, and an archive of public events after RPC's 7-day window |
 | `docs/security/threat-model.md` | The threat model; section C is the definition of done for every component |
 
+## Live on Stellar testnet (release v0.1.0)
+
+| Contract | Address |
+|---|---|
+| Payroll | [`CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA`](https://stellar.expert/explorer/testnet/contract/CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA) |
+| Auditor registry | [`CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG`](https://stellar.expert/explorer/testnet/contract/CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG) |
+| Confidential USDC (OpenZeppelin) | [`CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ`](https://stellar.expert/explorer/testnet/contract/CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ) |
+| Verifier (OpenZeppelin, locked) | [`CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM`](https://stellar.expert/explorer/testnet/contract/CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM) |
+
+The payroll and auditor contracts were built by GitHub Actions from tag `v0.1.0` and each wasm carries a build attestation. Check that a live contract came from this repo:
+
+```bash
+stellar contract info build --id CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA --network testnet
+```
+
+Check that nobody, including us, can change which proofs the verifier accepts, and that neither of our contracts has an admin or an upgrade path (15 checks read from chain state):
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run check:testnet -- --wasm-dir <folder with the v0.1.0 release wasm files>
+```
+
 ## Run the tests
 
 ```bash

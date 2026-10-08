@@ -28,39 +28,39 @@
   },
   "contracts": {
     "verifier": {
-      "id": "CD4BAMXJTLM2ZBTPBKABN3DTI5MFCLOCMMHAR5765JQXOTW3Y22EGWGR",
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CD4BAMXJTLM2ZBTPBKABN3DTI5MFCLOCMMHAR5765JQXOTW3Y22EGWGR",
+      "id": "CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM",
       "wasmHash": "93db2afdcfa45ad0ced0dcd90dd2fc2743227b786e89b2dd4c74fe6cf184957f",
       "wasmSource": "fixtures/confidential_verifier.wasm",
-      "salt": "d208da3ac16d54d048fb5663a6d7284f7ff505a7c885592f72dd32bea99b265c",
+      "salt": "5db539737c41af532d691b1d5d10931ac826c6467fe3adc01d327b6bfe4dc44b",
       "constructor": {
         "admin": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC",
         "manager": "GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC"
       },
       "deployTx": {
-        "hash": "bceb0a711f9c3e2665ac779211eee63e0edfc70d709baaf8cd27f75183e57ef5",
-        "ledger": 5073492,
-        "feeStroops": 436557,
-        "explorer": "https://stellar.expert/explorer/testnet/tx/bceb0a711f9c3e2665ac779211eee63e0edfc70d709baaf8cd27f75183e57ef5"
+        "hash": "855f7e94dcbbbb09946036ce1b6dd1684e2f8f2e2aaad8c3679e2c70c1810891",
+        "ledger": 5083365,
+        "feeStroops": 445667,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/855f7e94dcbbbb09946036ce1b6dd1684e2f8f2e2aaad8c3679e2c70c1810891"
       },
       "keyRegistrations": {
         "register": {
-          "hash": "d319687f0474b4b652727c42da05e1eeaa6a68d2183e131bcf195cc5d7a87fd2",
-          "ledger": 5073493,
-          "feeStroops": 1928588,
-          "explorer": "https://stellar.expert/explorer/testnet/tx/d319687f0474b4b652727c42da05e1eeaa6a68d2183e131bcf195cc5d7a87fd2"
+          "hash": "afb16754121fa33f1e1795a9447a70c2aacf8169eb769a0f6d8829c763358d83",
+          "ledger": 5083367,
+          "feeStroops": 1971450,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/afb16754121fa33f1e1795a9447a70c2aacf8169eb769a0f6d8829c763358d83"
         },
         "withdraw": {
-          "hash": "bf1a1584a216444860921cc9c28b1bf03817d489687f446e34fe84ea40315504",
-          "ledger": 5073494,
-          "feeStroops": 984065,
-          "explorer": "https://stellar.expert/explorer/testnet/tx/bf1a1584a216444860921cc9c28b1bf03817d489687f446e34fe84ea40315504"
+          "hash": "e6d29e30dd9591c1633b89158f6ac500c4e5aa3f1538726b15d92a8b148d0bbc",
+          "ledger": 5083369,
+          "feeStroops": 1005541,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/e6d29e30dd9591c1633b89158f6ac500c4e5aa3f1538726b15d92a8b148d0bbc"
         },
         "transfer": {
-          "hash": "84aaa2874f9c656774b96602bc4393dec0ddafd34cf1aa6303b8af08c27ec2a3",
-          "ledger": 5073495,
-          "feeStroops": 985659,
-          "explorer": "https://stellar.expert/explorer/testnet/tx/84aaa2874f9c656774b96602bc4393dec0ddafd34cf1aa6303b8af08c27ec2a3"
+          "hash": "06993b45133020475568f9dfdcf0736438e37a73a7d0f004059e1b4c30e5161b",
+          "ledger": 5083371,
+          "feeStroops": 1007127,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/06993b45133020475568f9dfdcf0736438e37a73a7d0f004059e1b4c30e5161b"
         }
       },
       "lockdown": {
@@ -85,16 +85,16 @@
           }
         },
         "renounceManagerTx": {
-          "hash": "286e15830951019f82ba1b2d2002eb5ccefb6d2eaaab1727aed97cdd89ff7bca",
-          "ledger": 5073497,
-          "feeStroops": 665854,
-          "explorer": "https://stellar.expert/explorer/testnet/tx/286e15830951019f82ba1b2d2002eb5ccefb6d2eaaab1727aed97cdd89ff7bca"
+          "hash": "5bada668c52c6b06c90c61412eef3386c045260171d2616f86d921aa2fd2f357",
+          "ledger": 5083374,
+          "feeStroops": 680482,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/5bada668c52c6b06c90c61412eef3386c045260171d2616f86d921aa2fd2f357"
         },
         "renounceAdminTx": {
-          "hash": "9994421bf0bdbc9a9bd39c804fcdc22d0a219f183ea696738177845618a15776",
-          "ledger": 5073499,
+          "hash": "50faedcee7878a53a23a36eea7e3e336ad586b72b36143106b7271ea047bdae5",
+          "ledger": 5083376,
           "feeStroops": 12045,
-          "explorer": "https://stellar.expert/explorer/testnet/tx/9994421bf0bdbc9a9bd39c804fcdc22d0a219f183ea696738177845618a15776"
+          "explorer": "https://stellar.expert/explorer/testnet/tx/50faedcee7878a53a23a36eea7e3e336ad586b72b36143106b7271ea047bdae5"
         },
         "after": {
           "calls": {
@@ -115,53 +115,72 @@
       }
     },
     "auditorRegistry": {
-      "id": "CDHGEYEDQRZFDKN6APVEB6LNDX2OJORVZIBHC5Y4NWU4R5IEHLBLOEFW",
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CDHGEYEDQRZFDKN6APVEB6LNDX2OJORVZIBHC5Y4NWU4R5IEHLBLOEFW",
-      "wasmHash": "63067366b49f96bd0a55c3768ddf2b8859c55b398378ca913b309303c6aa1982",
+      "id": "CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG",
+      "wasmHash": "90127a7d9dc6957a2bb2191f275346816850700bcd43c7a1af7d7cdd9107e55f",
       "wasmSource": "kalypso_auditor.wasm",
-      "salt": "96edfc4f551c593a433edb4a41e33ab66818ed82275e2266e0630698d7231151",
+      "salt": "902161bf2225686250c3dbb75a8a2e60e171a03ba2d1a0b9268069061b65c6da",
       "constructor": null,
       "deployTx": {
-        "hash": "08cfa3a324cb05a7131440e953c02360e3c9ac2511ae7caf9cbc46bc539a4222",
-        "ledger": 5073501,
-        "feeStroops": 64014,
-        "explorer": "https://stellar.expert/explorer/testnet/tx/08cfa3a324cb05a7131440e953c02360e3c9ac2511ae7caf9cbc46bc539a4222"
+        "hash": "39a6e909f2e4946c6ca2b8dc2968f614046b49f0731718a925d4ee1394386786",
+        "ledger": 5083380,
+        "feeStroops": 65248,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/39a6e909f2e4946c6ca2b8dc2968f614046b49f0731718a925d4ee1394386786"
       }
     },
     "token": {
-      "id": "CB3OUG5O6U5R6YWKLUER42U7OEZICLBOC4FE4TAO2JBYH57YBTEX7BID",
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CB3OUG5O6U5R6YWKLUER42U7OEZICLBOC4FE4TAO2JBYH57YBTEX7BID",
+      "id": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ",
       "wasmHash": "c77ac818ab3af1a2b9cdbc54964d68070f106fb72c9172ba4fff186995704cfd",
       "wasmSource": "fixtures/confidential_token.wasm",
-      "salt": "ec7cae36d62b867c3770bd1ba1f6f40319412150e1c3877c19f9decd0d95d238",
+      "salt": "13969ae7149999217a28d8a8255c4d478a978e4f02414a7e4dd3443471d961f5",
       "constructor": {
         "underlyingAsset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
-        "verifier": "CD4BAMXJTLM2ZBTPBKABN3DTI5MFCLOCMMHAR5765JQXOTW3Y22EGWGR",
-        "auditor": "CDHGEYEDQRZFDKN6APVEB6LNDX2OJORVZIBHC5Y4NWU4R5IEHLBLOEFW"
+        "verifier": "CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM",
+        "auditor": "CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG"
       },
       "deployTx": {
-        "hash": "645f94a921814a685873a575894452d5ccdae7430b2ec3074598d612e5aab8fb",
-        "ledger": 5073502,
-        "feeStroops": 223545,
-        "explorer": "https://stellar.expert/explorer/testnet/tx/645f94a921814a685873a575894452d5ccdae7430b2ec3074598d612e5aab8fb"
+        "hash": "348da699d0e3494a0496a45a1fe33b558d100d2f63c5ef202f93aa19056299b9",
+        "ledger": 5083382,
+        "feeStroops": 228242,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/348da699d0e3494a0496a45a1fe33b558d100d2f63c5ef202f93aa19056299b9"
       }
     },
     "payroll": {
-      "id": "CAWWWCKWNOV4O2OR2VRAY3TBQQIGTMFMDIFCZHP3JFWOQUD5NOFNNY63",
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CAWWWCKWNOV4O2OR2VRAY3TBQQIGTMFMDIFCZHP3JFWOQUD5NOFNNY63",
-      "wasmHash": "f98c894bf9ca04042b2e1009b85649d3d7024672b3577d4feaebe8ddba6d3698",
+      "id": "CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
+      "wasmHash": "6f815c99d9ad5a05727d70e5973de94f624f3f4a532a6ec75503bf96933784b6",
       "wasmSource": "kalypso_payroll.wasm",
-      "salt": "46565a8f4ad5dbc77debbd4c62b594ead30feaba5846c410c1e303dd9096c60e",
+      "salt": "04f6ceedbc04f037ec34975efdba0623f1c4fb5a13c7947a36add56e4e0122e5",
       "constructor": {
-        "token": "CB3OUG5O6U5R6YWKLUER42U7OEZICLBOC4FE4TAO2JBYH57YBTEX7BID"
+        "token": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ"
       },
       "deployTx": {
-        "hash": "8c8efbefcec1d73aea11d6c565c4ced0de874061befa8050bd9f558b311c5b48",
-        "ledger": 5073503,
-        "feeStroops": 404967,
-        "explorer": "https://stellar.expert/explorer/testnet/tx/8c8efbefcec1d73aea11d6c565c4ced0de874061befa8050bd9f558b311c5b48"
+        "hash": "e5f369acaa5707836739f4a18f3368665260f2b95b41f6ca1c01267a7a183cb4",
+        "ledger": 5083384,
+        "feeStroops": 195713455,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/e5f369acaa5707836739f4a18f3368665260f2b95b41f6ca1c01267a7a183cb4"
       }
     }
   },
-  "uploads": {}
+  "uploads": {
+    "90127a7d9dc6957a2bb2191f275346816850700bcd43c7a1af7d7cdd9107e55f": {
+      "file": "kalypso_auditor.wasm",
+      "tx": {
+        "hash": "0523d81b1dd10b7a214754fdf7b8e9c3fe123409433b6c2cc4e3a0b7d563ccdb",
+        "ledger": 5083379,
+        "feeStroops": 38983329,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/0523d81b1dd10b7a214754fdf7b8e9c3fe123409433b6c2cc4e3a0b7d563ccdb"
+      }
+    },
+    "6f815c99d9ad5a05727d70e5973de94f624f3f4a532a6ec75503bf96933784b6": {
+      "file": "kalypso_payroll.wasm",
+      "tx": {
+        "hash": "ffc524b341f61a221ae6b579801994e9b2934c710d21644f6a9dbb779c43466c",
+        "ledger": 5083383,
+        "feeStroops": 59578982,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/ffc524b341f61a221ae6b579801994e9b2934c710d21644f6a9dbb779c43466c"
+      }
+    }
+  }
 }
