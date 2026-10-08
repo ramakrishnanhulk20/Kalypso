@@ -71,11 +71,17 @@ jobs:
       # Pinned image tag, as Scout's README advises for automation. SCOUT_OFFLINE stops its
       # telemetry and update check, so the job's only network use is pulling the image.
       - name: Scout static analysis
-        run: |
-          docker run --rm --platform linux/amd64             -e SCOUT_OFFLINE=1             -e INPUT_TARGET=/scoutme/packages/contracts             -e INPUT_SCOUT_ARGS="--output-format md,json"             -v "$PWD:/scoutme"             coinfabrik/scout:0.3.17
+        run: >-
+          docker run --rm --platform linux/amd64
+          -e SCOUT_OFFLINE=1
+          -e INPUT_TARGET=/scoutme/packages/contracts
+          -e INPUT_SCOUT_ARGS="--output-format md,json"
+          -v "$PWD:/scoutme"
+          coinfabrik/scout:0.3.17
 
       # Logs and artifacts need a GitHub sign-in to read, so the findings are also published where
-      # anyone can see them: the run summary and a check annotation readable through the API.
+      # anyone can see them: the run summary, and one annotation (readable through the API) that
+      # lists every finding on its own line, because an annotation is cut off at about 4 KB.
       - name: Publish Scout report
         if: always()
         run: |
@@ -85,7 +91,19 @@ jobs:
             exit 0
           fi
           cat "$report" >> "$GITHUB_STEP_SUMMARY"
-          python3 -c "import sys; t=open(sys.argv[1]).read()[:60000]; print('::notice title=Scout report::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))" "$report"
+          python3 - "$report" <<'PY'
+          import re, sys
+          title = impact = None
+          rows = []
+          for line in open(sys.argv[1], encoding="utf-8"):
+              if m := re.match(r"^### (.+)", line):
+                  title, impact = m.group(1).strip(), None
+              elif m := re.match(r"^\*\*Impact:\*\* (\w+)", line):
+                  impact = m.group(1)
+              elif title and (m := re.match(r"^\| (\d+) \| (\w+) \| \[([^\]]+)\]", line)):
+                  rows.append(f"#{m.group(1)} [{impact}] {title}: {m.group(2)} {m.group(3)}")
+          print("::notice title=Scout findings (" + str(len(rows)) + ")::" + "%0A".join(rows))
+          PY
 
       - uses: actions/upload-artifact@v7
         with:
