@@ -90,6 +90,57 @@ describe('createRpcChainPort', () => {
     await expect(port.waitFor(HASH, -1)).rejects.toThrow(RangeError);
   });
 
+  it("passes a successful call's return value through from the same getTransaction answer, and never a failed one's", async () => {
+    const port = createRpcChainPort({ rpcUrl: URL_OK, networkPassphrase: PASSPHRASE });
+    const get = vi.spyOn(Server.prototype, 'getTransaction');
+    const sim = vi.spyOn(Server.prototype, 'simulateTransaction');
+    const returnValue = raw.u32(3);
+    get.mockResolvedValueOnce({ status: Api.GetTransactionStatus.SUCCESS, ledger: 15, returnValue } as never);
+    const done = await port.waitFor(HASH, 5_000);
+    expect(done).toEqual({ status: 'SUCCESS', ledger: 15, returnValue });
+    expect(done.returnValue?.u32()).toBe(3);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(sim).not.toHaveBeenCalled();
+
+    get.mockResolvedValueOnce({ status: Api.GetTransactionStatus.FAILED, ledger: 16, returnValue } as never);
+    expect(await port.waitFor(HASH, 5_000)).toEqual({ status: 'FAILED', ledger: 16 });
+  });
+
+  it("reads the return value out of the RPC's raw result meta through the SDK's own parser", async () => {
+    const port = createRpcChainPort({ rpcUrl: URL_OK, networkPassphrase: PASSPHRASE });
+    const meta = new xdr.TransactionMeta(
+      4,
+      new xdr.TransactionMetaV4({
+        ext: new xdr.ExtensionPoint(0),
+        txChangesBefore: [],
+        operations: [],
+        txChangesAfter: [],
+        sorobanMeta: new xdr.SorobanTransactionMetaV2({ ext: new xdr.SorobanTransactionMetaExt(0), returnValue: raw.u32(41) }),
+        events: [],
+        diagnosticEvents: [],
+      }),
+    );
+    const rpc = Server.prototype as unknown as { _getTransaction(hash: string): Promise<unknown> };
+    vi.spyOn(rpc, '_getTransaction').mockResolvedValueOnce({
+      status: 'SUCCESS',
+      latestLedger: 20,
+      latestLedgerCloseTime: '1791460800',
+      oldestLedger: 1,
+      oldestLedgerCloseTime: '1791400000',
+      ledger: 19,
+      createdAt: '1791460795',
+      applicationOrder: 1,
+      feeBump: false,
+      envelopeXdr: envelope(),
+      resultXdr: 'AAAAAAAAAGT////7AAAAAA==',
+      resultMetaXdr: meta.toXDR('base64'),
+    });
+    const done = await port.waitFor(HASH, 5_000);
+    expect(done.status).toBe('SUCCESS');
+    expect(done.returnValue?.switch().name).toBe('scvU32');
+    expect(done.returnValue?.u32()).toBe(41);
+  });
+
   it("reports the chain's latest close time with NOT_FOUND, and drops a malformed one", async () => {
     const port = createRpcChainPort({ rpcUrl: URL_OK, networkPassphrase: PASSPHRASE });
     const get = vi.spyOn(Server.prototype, 'getTransaction');
@@ -101,6 +152,45 @@ describe('createRpcChainPort', () => {
       get.mockResolvedValueOnce({ status: Api.GetTransactionStatus.NOT_FOUND, latestLedgerCloseTime: bad } as never);
       expect(await port.waitFor(HASH, 0)).toEqual({ status: 'NOT_FOUND' });
     }
+  });
+
+  it("reads the newest ledger's sequence and close time from a getLatestLedger reply, and refuses anything not whole", async () => {
+    const port = createRpcChainPort({ rpcUrl: URL_OK, networkPassphrase: PASSPHRASE });
+    const rpc = Server.prototype as unknown as { _getLatestLedger(): Promise<unknown> };
+    const latest = vi.spyOn(rpc, '_getLatestLedger');
+    // The shape testnet RPC answered on 2026-10-08: protocolVersion as a number, closeTime as a
+    // decimal string. The two XDR fields (headerXdr, metadataXdr) are carried but never read.
+    const reply = {
+      id: '97d228f61a383ae78e35aebe8e0b33f2d02173da5cf516d52d6a6b7454529de6',
+      protocolVersion: 29,
+      sequence: 5_088_696,
+      closeTime: '1791467067',
+      headerXdr: 'AAAAAA==',
+      metadataXdr: 'AAAAAA==',
+    };
+    latest.mockResolvedValueOnce(reply);
+    expect(await port.latestLedger()).toEqual({ sequence: 5_088_696, closeTime: 1_791_467_067 });
+    for (const bad of [
+      { closeTime: '1.79e9' },
+      { closeTime: 'soon' },
+      { closeTime: Number.NaN },
+      { closeTime: Number.POSITIVE_INFINITY },
+      { closeTime: -5 },
+      { closeTime: undefined },
+      { sequence: '5088696' },
+      { sequence: 1.5 },
+      { sequence: 0 },
+      { sequence: 2 ** 32 },
+    ]) {
+      latest.mockResolvedValueOnce({ ...reply, ...bad });
+      await expect(port.latestLedger()).rejects.toThrow(TypeError);
+    }
+
+    vi.useFakeTimers();
+    latest.mockReturnValueOnce(new Promise(() => {}));
+    const waiting = port.latestLedger().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(RPC_TIMEOUT_MS);
+    expect(await waiting).toBeInstanceOf(RpcTimeoutError);
   });
 
   it('reads by simulation and keeps the contract error code, or none for an outage', async () => {

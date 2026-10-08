@@ -4,14 +4,25 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   addIngestedRange,
+  claimAuthEntries,
   claimIngestSlot,
   claimRelay,
+  countAuthoriserRelays,
+  dailyFeeSpent,
+  forgetExpiredRelays,
+  holdRelay,
+  readArchiveState,
   recordRelay,
+  releaseAuthoriserRelays,
+  releaseDailyFee,
   releaseRelay,
+  reserveDailyFee,
   countSponsorRequest,
   insertEvents,
   readCoverage,
   schemaSql,
+  setArchiveStart,
+  settleArchiveStart,
   type Db,
   type EventRow,
 } from "../../src/archive/db.ts";
@@ -26,7 +37,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetArchive(db);
-  await clearTables(db, ["ip_hour", "relay_dedupe"]);
+  await clearTables(db, ["ip_hour", "address_day", "day_budget", "relay_dedupe", "relay_auth"]);
 });
 
 const row = (id: string, ledger: number, valueXdr = "AAAAAQ=="): EventRow => ({
@@ -112,10 +123,157 @@ describe("relay dedupe", () => {
     expect(await claimRelay(db, "d3", after(30), 120_000)).toMatchObject({ claimed: false, transactionId: "tx_8" });
   });
 
-  it("forgets claims older than an hour", async () => {
+  it("forgets unheld claims older than an hour, and never a held one by time", async () => {
     await claimRelay(db, "old", t, 120_000);
+    await claimRelay(db, "held", t, 120_000);
+    await holdRelay(db, "held", t, 5_000);
     await claimRelay(db, "new", after(3_600_001), 120_000);
-    expect(await db.query("select digest from relay_dedupe")).toEqual([{ digest: "new" }]);
+    expect(await db.query("select digest from relay_dedupe order by digest")).toEqual([{ digest: "held" }, { digest: "new" }]);
+  });
+
+  it("holds a claim held to a ledger past every time window, until a simulation reports that ledger reached", async () => {
+    const hours = (h: number, ms = 0) => after(h * 3_600_000 + ms);
+    await claimRelay(db, "h1", t, 120_000);
+    await holdRelay(db, "h1", t, 1_000);
+    expect(await claimRelay(db, "h1", hours(10), 120_000)).toEqual({ claimed: false, transactionId: null, status: null });
+    await recordRelay(db, "h1", t, "tx_9", "pending");
+    expect(await claimRelay(db, "h1", hours(10, 1), 120_000)).toEqual({ claimed: false, transactionId: "tx_9", status: "pending" });
+    await forgetExpiredRelays(db, 999);
+    expect(await claimRelay(db, "h1", hours(10, 2), 120_000)).toMatchObject({ claimed: false });
+    await forgetExpiredRelays(db, 1_000);
+    expect(await claimRelay(db, "h1", hours(10, 3), 120_000)).toMatchObject({ claimed: true });
+  });
+
+  it("holds only the claim it was given", async () => {
+    await claimRelay(db, "h2", t, 120_000);
+    await holdRelay(db, "h2", after(1), 1_000);
+    expect(await claimRelay(db, "h2", after(120_000), 120_000)).toMatchObject({ claimed: true });
+  });
+});
+
+describe("signed auth entry claims", () => {
+  const t = new Date("2026-10-07T12:00:00Z");
+  const after = (ms: number) => new Date(t.getTime() + ms);
+  const e1 = { address: "GW", nonce: "1", expiryLedger: 900 };
+  const e2 = { address: "GW", nonce: "2", expiryLedger: 1_000 };
+  const claimBody = async (digest: string, at: Date, entries = [e1]) => {
+    expect(await claimRelay(db, digest, at, 120_000)).toMatchObject({ claimed: true });
+    return claimAuthEntries(db, entries, digest, at, 120_000);
+  };
+
+  it("lets one body claim an entry, all or nothing, and refuses it to every other body", async () => {
+    expect(await claimBody("a", t, [e1])).toBe(true);
+    expect(await claimBody("b", after(1), [e2, e1])).toBe(false);
+    expect(await db.query("select address, nonce, digest from relay_auth order by nonce")).toEqual([{ address: "GW", nonce: "1", digest: "a" }]);
+    expect(await claimBody("c", after(2), [e2])).toBe(true);
+  });
+
+  it("lets an unheld claim go after its window, but holds a held entry past any window until its own expiry ledger", async () => {
+    await claimBody("a", t, [e1, e2]);
+    expect(await claimBody("b", after(120_000), [e1])).toBe(true);
+    await holdRelay(db, "b", after(120_000), 900);
+    const hours = (h: number) => after(h * 3_600_000);
+    expect(await claimBody("c", hours(5), [e1])).toBe(false);
+    await forgetExpiredRelays(db, 899);
+    expect(await claimBody("d", hours(6), [e1])).toBe(false);
+    await forgetExpiredRelays(db, 900);
+    expect(await claimBody("e", hours(7), [e1])).toBe(true);
+  });
+
+  it("gives entries back with their body, and never once the body recorded a relay", async () => {
+    await claimBody("a", t, [e1]);
+    await releaseRelay(db, "a", t);
+    expect(await claimBody("b", after(1), [e1])).toBe(true);
+    await recordRelay(db, "b", after(1), "tx_1", "pending");
+    await releaseRelay(db, "b", after(1));
+    expect(await claimBody("c", after(2), [e1])).toBe(false);
+  });
+
+  it("forgets unheld entry claims older than an hour", async () => {
+    await claimBody("a", t, [e1]);
+    await claimBody("b", after(3_600_001), [e2]);
+    expect(await db.query("select nonce from relay_auth")).toEqual([{ nonce: "2" }]);
+  });
+
+  it("passes a database failure on instead of reading it as a claimed entry", async () => {
+    const broken: Db = { ...db, transaction: async () => Promise.reject(new Error("connection lost")) };
+    await expect(claimAuthEntries(broken, [e1], "a", t, 120_000)).rejects.toThrow("connection lost");
+  });
+});
+
+describe("daily fee budget", () => {
+  const day = "2026-10-07";
+
+  it("gives a reservation back on release, never below zero, and ignores a release of nothing", async () => {
+    expect(await reserveDailyFee(db, day, 500n, 1_000n)).toBe(true);
+    expect(await reserveDailyFee(db, day, 600n, 1_000n)).toBe(false);
+    await releaseDailyFee(db, day, 500n);
+    expect(await dailyFeeSpent(db, day)).toBe(0n);
+    expect(await reserveDailyFee(db, day, 600n, 1_000n)).toBe(true);
+    await releaseDailyFee(db, day, 10_000n);
+    expect(await dailyFeeSpent(db, day)).toBe(0n);
+    expect(await reserveDailyFee(db, day, 300n, 1_000n)).toBe(true);
+    await releaseDailyFee(db, day, 0n);
+    await releaseDailyFee(db, day, -300n);
+    expect(await dailyFeeSpent(db, day)).toBe(300n);
+    await releaseDailyFee(db, "2026-10-08", 100n);
+    expect(await dailyFeeSpent(db, "2026-10-08")).toBe(0n);
+  });
+});
+
+describe("per-address daily count", () => {
+  const counts = () => db.query("select address, day::text as day, count from address_day order by address, day");
+
+  it("counts every address of a request once, all or nothing, up to the limit per day", async () => {
+    expect(await countAuthoriserRelays(db, ["GA", "CB"], "2026-10-07", 2)).toBe(true);
+    expect(await countAuthoriserRelays(db, ["GA", "GA"], "2026-10-07", 2)).toBe(true);
+    expect(await countAuthoriserRelays(db, ["CB", "GA"], "2026-10-07", 2)).toBe(false);
+    expect(await counts()).toEqual([
+      { address: "CB", day: "2026-10-07", count: 1 },
+      { address: "GA", day: "2026-10-07", count: 2 },
+    ]);
+    expect(await countAuthoriserRelays(db, ["CB"], "2026-10-07", 2)).toBe(true);
+    expect(await countAuthoriserRelays(db, ["GA"], "2026-10-08", 2)).toBe(true);
+  });
+
+  it("gives one relay back per address, all at once, dropping a row that reaches zero and touching no other day", async () => {
+    await countAuthoriserRelays(db, ["GA", "CB"], "2026-10-07", 5);
+    await countAuthoriserRelays(db, ["GA"], "2026-10-07", 5);
+    await countAuthoriserRelays(db, ["GA"], "2026-10-08", 5);
+    await releaseAuthoriserRelays(db, ["GA", "CB", "GA", "CZ"], "2026-10-07");
+    expect(await counts()).toEqual([
+      { address: "GA", day: "2026-10-07", count: 1 },
+      { address: "GA", day: "2026-10-08", count: 1 },
+    ]);
+    await releaseAuthoriserRelays(db, ["CB"], "2026-10-07");
+    expect(await counts()).toHaveLength(2);
+  });
+
+  it("forgets days before yesterday", async () => {
+    for (const day of ["2026-10-05", "2026-10-06", "2026-10-07"]) await countAuthoriserRelays(db, ["GA"], day, 2);
+    expect((await counts()).map((r) => r.day)).toEqual(["2026-10-06", "2026-10-07"]);
+  });
+
+  it("passes a database failure on instead of reading it as the limit", async () => {
+    const broken: Db = { ...db, transaction: async () => Promise.reject(new Error("connection lost")) };
+    await expect(countAuthoriserRelays(broken, ["GA"], "2026-10-07", 2)).rejects.toThrow("connection lost");
+  });
+});
+
+describe("archive start", () => {
+  it("sets the start once, never covering from genesis, and records the start check once", async () => {
+    await setArchiveStart(db, 100, true);
+    await setArchiveStart(db, 50, false);
+    expect(await readArchiveState(db)).toMatchObject({ startLedger: 100, coversFromGenesis: false, startCheckPending: true });
+    expect(await settleArchiveStart(db, true)).toBe(true);
+    expect(await settleArchiveStart(db, false)).toBe(false);
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: true, startCheckPending: false });
+  });
+
+  it("never settles a start that had no check pending", async () => {
+    await setArchiveStart(db, 100, false);
+    expect(await settleArchiveStart(db, true)).toBe(false);
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: false, startCheckPending: false });
   });
 });
 
@@ -148,8 +306,10 @@ describe("the read-only role from the schema comment", () => {
         "insert into gaps values (1, 2, now())",
         "truncate ingested_ranges",
         "select * from ip_hour",
+        "select * from address_day",
         "select * from day_budget",
         "select * from relay_dedupe",
+        "select * from relay_auth",
       ]) {
         await expect(pg.query(write), write).rejects.toMatchObject({ code: "42501" });
       }

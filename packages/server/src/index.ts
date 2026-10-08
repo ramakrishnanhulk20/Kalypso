@@ -4,7 +4,7 @@ export { createRpcClient, RpcError, type RpcClient } from "./rpc.ts";
 export {
   sponsorHandler,
   sponsorStatusHandler,
-  DEDUPE_WINDOW_MS,
+  CLAIM_WINDOW_MS,
   type SponsorContext,
   type SponsorStatusContext,
 } from "./sponsor/handler.ts";

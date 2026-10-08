@@ -5,6 +5,7 @@
 -- base64 XDR exactly as RPC served it; the other columns are decoded copies
 -- used only to query. Nothing here is secret: it is a copy of public chain data.
 create table if not exists events (
+  -- No op_index in the id: a Soroban transaction holds exactly one operation; if one could hold more, a second operation's events would share ids with the first's and be silently dropped as duplicates.
   id text primary key,               -- ledger, tx hash and event index joined by "-"
   ledger integer not null check (ledger > 0),
   tx_hash text not null,
@@ -44,10 +45,16 @@ create table if not exists gaps (
   check (from_ledger > 0 and to_ledger >= from_ledger)
 );
 
+-- covers_from_genesis turns true only when the first token event read is in
+-- the configured start ledger and comes from the token's deploy transaction
+-- (TOKEN_DEPLOY_TX), which proves no token event can exist before it.
+-- start_check_pending is true from such a start until the first token event
+-- is read.
 create table if not exists archive_state (
   id smallint primary key check (id = 1),
   start_ledger integer,
   covers_from_genesis boolean not null default false,
+  start_check_pending boolean not null default false,
   latest_ledger integer,
   rpc_oldest_ledger integer,
   last_ingest_at timestamptz,
@@ -65,7 +72,7 @@ insert into archive_state (id) values (1) on conflict (id) do nothing;
 -- The API role can read the archive and nothing else: no writes anywhere, and
 -- no access to the sponsor tables below.
 
--- Sponsor counters. Both are bumped with one atomic statement each, so
+-- Sponsor counters. Each is bumped with one atomic statement, so
 -- concurrent requests on different server instances cannot overshoot.
 create table if not exists ip_hour (
   ip_bucket text not null,
@@ -75,18 +82,50 @@ create table if not exists ip_hour (
 );
 create index if not exists ip_hour_by_hour on ip_hour (hour_start);
 
+-- Relays per authorising address (G or C, in the server's one spelling) per
+-- UTC day, beside the per-IP count, so one worker cannot spend the budget
+-- from many IPs. A relay that provably never reached the network is given
+-- back; one that may have landed stays counted, like its fee.
+create table if not exists address_day (
+  address text not null,
+  day date not null,
+  count integer not null check (count > 0),
+  primary key (address, day)
+);
+create index if not exists address_day_by_day on address_day (day);
+
 create table if not exists day_budget (
   day date primary key,
   spent_stroops bigint not null check (spent_stroops >= 0)
 );
 
 -- One row per relayed body, keyed by the sha256 of the exact bytes forwarded.
--- A second copy of the same body within 120 s gets the first transaction id
--- back instead of being relayed, and paid for, again.
+-- A second copy of the same body gets the first transaction id back instead
+-- of being relayed, and paid for, again: until the network passes
+-- hold_until_ledger, the earliest expiry of the body's auth entries, or for
+-- 120 s when no entry carries an expiry.
 create table if not exists relay_dedupe (
   digest text primary key,
   claimed_at timestamptz not null,
+  hold_until_ledger integer,
   transaction_id text,
   status text
 );
 create index if not exists relay_dedupe_by_time on relay_dedupe (claimed_at);
+create index if not exists relay_dedupe_by_hold on relay_dedupe (hold_until_ledger);
+
+-- One row per signed auth entry in a claimed body, keyed by the pair the
+-- network uses up once: the signing address and its nonce. The same entry
+-- rewrapped in another body is refused while its row stands: held rows until
+-- expiry_ledger, the entry's own signature expiration, and unheld rows for
+-- 120 s.
+create table if not exists relay_auth (
+  address text not null,
+  nonce text not null,
+  digest text not null,
+  claimed_at timestamptz not null,
+  expiry_ledger integer not null,
+  held boolean not null default false,
+  primary key (address, nonce)
+);
+create index if not exists relay_auth_by_claim on relay_auth (digest, claimed_at);

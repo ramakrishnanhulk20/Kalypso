@@ -15,3 +15,6 @@ soroban-sdk = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = "=1.11.0"
+# The real registry, so create_company's owner check runs against the code
+# deployed on testnet. Tests only: the payroll's wasm does not link it.
+kalypso-auditor = { path = "../auditor" }

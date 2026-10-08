@@ -6,7 +6,7 @@ import type { ChainPort, InFlightPay, OpeningStore, SavedOpening } from '../chai
 import { requireAccount, requireU64 } from '../chain/scval.js';
 import { confidentialBalance } from '../chain/token.js';
 
-export type HistoryIncompleteReason = 'NOT_REGISTERED' | 'NO_SAVED_OPENING' | 'DOES_NOT_OPEN';
+export type HistoryIncompleteReason = 'NOT_REGISTERED' | 'NO_SAVED_OPENING' | 'DOES_NOT_OPEN' | 'NOT_REBUILT';
 
 // Messages never carry a balance, a blinding factor or a commitment (threat model C12).
 const HISTORY_MESSAGES: Record<HistoryIncompleteReason, string> = {
@@ -14,16 +14,24 @@ const HISTORY_MESSAGES: Record<HistoryIncompleteReason, string> = {
   NO_SAVED_OPENING: 'History incomplete: this device has no saved treasury balance. Rebuild it from the token history first.',
   DOES_NOT_OPEN:
     'History incomplete: the saved treasury balance does not match the balance on chain. Rebuild it from the token history first.',
+  NOT_REBUILT:
+    'History incomplete: the token history could not be read in full, or the balance it rebuilds does not match the balance on chain, so nothing was saved. Try the rebuild again later.',
 };
 
-/** The treasury balance known to this device does not open the on-chain commitment (threat model C16). */
+/**
+ * The treasury balance known to this device does not open the on-chain commitment (threat model
+ * C16). rebuildable is true for NO_SAVED_OPENING and DOES_NOT_OPEN, the two a rebuild from the
+ * token history (rebuildTreasuryOpening) can clear, so the console offers it for those only.
+ */
 export class HistoryIncompleteError extends Error {
   readonly reason: HistoryIncompleteReason;
+  readonly rebuildable: boolean;
 
   constructor(reason: HistoryIncompleteReason) {
     super(HISTORY_MESSAGES[reason]);
     this.name = 'HistoryIncompleteError';
     this.reason = reason;
+    this.rebuildable = reason === 'NO_SAVED_OPENING' || reason === 'DOES_NOT_OPEN';
   }
 }
 
@@ -80,10 +88,53 @@ export function readInFlight(saved: unknown): InFlightPay | undefined {
   const { hash, maxTime, batchKey } = saved as Partial<InFlightPay>;
   if (typeof hash !== 'string' || !TX_HASH.test(hash)) return undefined;
   if (typeof maxTime !== 'number' || !Number.isSafeInteger(maxTime) || maxTime <= 0) return undefined;
-  if (typeof batchKey !== 'string' || !batchKey.startsWith(BATCH_PREFIX) || !batchKey.endsWith(`/${hash}`) || batchKey.length > MAX_BATCH_KEY_LENGTH) {
-    return undefined;
-  }
+  if (!isBatchKey(batchKey) || !batchKey.endsWith(`/${hash}`)) return undefined;
   return { hash, maxTime, batchKey };
+}
+
+// One shape check for every batch key read back from the store, in a record or in the attempts list.
+function isBatchKey(key: unknown): key is string {
+  return (
+    typeof key === 'string' &&
+    key.startsWith(BATCH_PREFIX) &&
+    key.length <= MAX_BATCH_KEY_LENGTH &&
+    key.charAt(key.length - 65) === '/' &&
+    TX_HASH.test(key.slice(-64))
+  );
+}
+
+/**
+ * Store key of the treasury's attempts list: the batch openings this device wrote that may still
+ * be the one the chain holds (threat model C13, C29). Per token and treasury, like inFlightKey.
+ *
+ * @throws AddressError when token is not a C address or treasury is not a G or C address.
+ */
+export function attemptsKey(token: string, treasury: string): string {
+  return `kalypso/v1/attempts/${requireAccount(token, ['C'])}/${requireAccount(treasury, ['G', 'C'])}`;
+}
+
+/**
+ * Parses a stored attempts list: at most MAX_PENDING_KEYS distinct batch keys, oldest first.
+ * Returns undefined for anything else, so a damaged list offers no candidate rather than a guess.
+ */
+export function readAttempts(saved: unknown): string[] | undefined {
+  if (!Array.isArray(saved) || saved.length > MAX_PENDING_KEYS) return undefined;
+  if (!saved.every(isBatchKey) || new Set(saved).size !== saved.length) return undefined;
+  return [...saved];
+}
+
+/**
+ * Saves the treasury's attempts list, oldest first. A repeated key keeps its first place, and only
+ * the newest MAX_PENDING_KEYS are kept, so the list can always be passed to loadTreasuryOpening as
+ * pendingKeys and readAttempts always reads it back.
+ *
+ * @throws TypeError when an entry is not a batch key batchOpeningKey could build. Nothing is written then.
+ */
+export async function saveAttempts(store: OpeningStore, token: string, treasury: string, keys: readonly string[]): Promise<void> {
+  const key = attemptsKey(token, treasury);
+  if (!keys.every(isBatchKey)) throw new TypeError('the attempts list takes batch opening keys only');
+  const kept = [...new Set(keys)].slice(-MAX_PENDING_KEYS);
+  await store.put(key, kept);
 }
 
 export function toSavedOpening(v: bigint, r: bigint): SavedOpening {

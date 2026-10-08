@@ -85,6 +85,8 @@ describe("POST /api/archive/ingest", () => {
     expect(INGEST_CRON_DEADLINE_MS).toBe(25_000);
     expect(timeout).toHaveBeenCalledWith(25_000);
     expect(logs.at(-1)).toContain('"event":"archive_cron_ingested"');
+    // The pass reports its start check through the route's own logger.
+    expect(logs.some((l) => l.includes('"event":"archive_start_unproven"') && l.includes('"startLedger":100'))).toBe(true);
   });
 
   it("stops starting RPC calls at the deadline and still answers", async () => {

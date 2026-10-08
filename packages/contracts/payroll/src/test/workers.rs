@@ -1,5 +1,5 @@
-//! invite_worker, revoke_invite, accept_invite, remove_worker, worker_status
-//! and get_roster.
+//! invite_worker, revoke_invite, accept_invite, remove_worker, worker_status,
+//! get_roster and memberships_of.
 //!
 //! Not covered here: a real token registration, and wrong-signer cases,
 //! which are in auth.rs.
@@ -551,4 +551,98 @@ fn a_worker_in_one_company_is_unknown_to_another() {
 
     assert_eq!(s.client().worker_status(&other, &t.workers[0]), None);
     assert_eq!(s.client().get_roster(&other, &0, &50).len(), 0);
+}
+
+/// History readers compare memberships_of with the companies they hold for
+/// a worker. It counts each company the worker joins for the first time; a
+/// revoked invite, a refused accept, a removal and a rejoin after removal
+/// leave it alone, and a stranger reads 0.
+#[test]
+fn memberships_of_counts_first_joins_across_companies_and_nothing_else() {
+    let s = Setup::new();
+    let a = s.team(0);
+    let b_admin = s.account(OTHER_AUDITOR);
+    let b = s.create_company(&b_admin, OTHER_AUDITOR, "Beta");
+    let c_admin = s.account(COMPANY_AUDITOR);
+    let c = s.create_company(&c_admin, COMPANY_AUDITOR, "Gamma");
+    let worker = s.account(WORKER_AUDITOR);
+    let memberships = || s.client().memberships_of(&worker);
+    assert_eq!(s.client().memberships_of(&s.unregistered()), 0);
+    assert_eq!(memberships(), 0);
+
+    s.invite(a.company_id, &a.admin, &worker);
+    s.revoke(a.company_id, &a.admin, &worker);
+    s.sign(
+        &worker,
+        "accept_invite",
+        (a.company_id, &worker).into_val(&s.e),
+    );
+    assert_eq!(
+        s.client().try_accept_invite(&a.company_id, &worker),
+        Err(Ok(err(PayrollError::InviteNotFound)))
+    );
+    assert_eq!(memberships(), 0);
+
+    s.join(a.company_id, &a.admin, &worker);
+    assert_eq!(memberships(), 1);
+    s.remove(a.company_id, &a.admin, &worker);
+    assert_eq!(memberships(), 1);
+    s.join(a.company_id, &a.admin, &worker);
+    assert_eq!(memberships(), 1);
+
+    s.join(b, &b_admin, &worker);
+    s.join(c, &c_admin, &worker);
+    assert_eq!(memberships(), 3);
+    s.remove(b, &b_admin, &worker);
+    assert_eq!(memberships(), 3);
+}
+
+/// The worker's membership count is forced to the u32 limit. A first join is
+/// refused with CounterOverflow, and the roster entry written before the
+/// check is undone with the rest of the call. A worker already on a roster
+/// can still rejoin at the limit, because a rejoin does not count.
+#[test]
+fn accept_invite_refuses_a_first_join_when_the_membership_count_is_at_its_limit() {
+    let s = Setup::new();
+    let t = s.team(1);
+    let newcomer = s.account(WORKER_AUDITOR);
+    s.invite(t.company_id, &t.admin, &newcomer);
+    let returning = t.workers[0].clone();
+    s.remove(t.company_id, &t.admin, &returning);
+    s.invite(t.company_id, &t.admin, &returning);
+    for worker in [&newcomer, &returning] {
+        s.e.as_contract(&s.payroll, || {
+            crate::storage::set_memberships(&s.e, worker, u32::MAX)
+        });
+    }
+    s.sign(
+        &newcomer,
+        "accept_invite",
+        (t.company_id, &newcomer).into_val(&s.e),
+    );
+
+    assert_eq!(
+        s.client().try_accept_invite(&t.company_id, &newcomer),
+        Err(Ok(err(PayrollError::CounterOverflow)))
+    );
+    assert!(s.payroll_events().events().is_empty());
+    assert_eq!(
+        s.client().worker_status(&t.company_id, &newcomer),
+        Some(WorkerStatus::Invited)
+    );
+    assert_eq!(s.client().memberships_of(&newcomer), u32::MAX);
+    let company = s.client().get_company(&t.company_id);
+    assert_eq!(company.roster_len, 1);
+    assert_eq!(company.active_workers, 0);
+    let slot = s.key("RosterAt", (t.company_id, 1u32));
+    assert!(!s
+        .e
+        .as_contract(&s.payroll, || s.e.storage().persistent().has(&slot)));
+
+    s.accept(t.company_id, &returning);
+    assert_eq!(
+        s.client().worker_status(&t.company_id, &returning),
+        Some(WorkerStatus::Active)
+    );
+    assert_eq!(s.client().memberships_of(&returning), u32::MAX);
 }

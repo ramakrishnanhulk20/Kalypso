@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import { Address, Networks, SorobanDataBuilder, Transaction, xdr } from "@stellar/stellar-sdk";
 import type { RpcLedgerEntries, RpcSimulation, SimulationAuthMode } from "../../src/rpc.ts";
 import { TOKEN } from "../helpers.ts";
-import { LATEST_LEDGER, fakeCode, instanceEntry, type FakeCode, type Footprint } from "./fixtures.ts";
+import { LATEST_LEDGER, fakeCode, instanceEntry, type FakeCode, type Footprint, type Limits } from "./fixtures.ts";
 
 /**
  * A stand-in for simulateTransaction in both modes, shaped like the live
@@ -21,6 +21,8 @@ export interface FakeSimulationOptions {
   readWrite?: number;
   /** The whole enforce-mode footprint; overrides readWrite. */
   footprint?: Footprint;
+  /** The limits the enforce reply says the call used; all zero unless given. */
+  limits?: Limits;
   /** Overrides what record mode says the call needs. */
   requiredAuth?: (txBase64: string) => string[];
   /** What each contract instance runs. */
@@ -38,7 +40,7 @@ export function fakeSimulation(opts: FakeSimulationOptions = {}) {
     return {
       latestLedger: LATEST_LEDGER,
       minResourceFee: "490000",
-      transactionData: opts.footprint ? transactionData(opts.footprint) : footprintData(opts.readWrite ?? 1),
+      transactionData: transactionData(opts.footprint ?? defaultFootprint(opts.readWrite ?? 1), opts.limits),
       results: [{ auth: [], xdr: "AAAAAQ==" }],
       ...opts.enforce,
     };
@@ -62,15 +64,14 @@ export function instanceEntries(keys: readonly string[], code: (contract: string
   });
 }
 
-export function transactionData(footprint: Footprint): string {
-  return new SorobanDataBuilder()
-    .setFootprint(footprint.readOnly, footprint.readWrite)
-    .setResourceFee(490_000)
-    .build()
-    .toXDR("base64");
+export function transactionData(footprint: Footprint, limits?: Limits): string {
+  const data = new SorobanDataBuilder().setFootprint(footprint.readOnly, footprint.readWrite).setResourceFee(490_000);
+  if (limits) data.setResources(limits.instructions, limits.diskReadBytes, limits.writeBytes);
+  return data.build().toXDR("base64");
 }
 
-export function footprintData(readWrite: number): string {
+/** The footprint the enforce reply carries unless a test gives one: token storage only. */
+export function defaultFootprint(readWrite = 1): Footprint {
   const key = (i: number) =>
     xdr.LedgerKey.contractData(
       new xdr.LedgerKeyContractData({
@@ -79,7 +80,11 @@ export function footprintData(readWrite: number): string {
         durability: xdr.ContractDataDurability.persistent(),
       }),
     );
-  return transactionData({ readOnly: [key(100)], readWrite: Array.from({ length: readWrite }, (_, i) => key(i)) });
+  return { readOnly: [key(100)], readWrite: Array.from({ length: readWrite }, (_, i) => key(i)) };
+}
+
+export function footprintData(readWrite: number): string {
+  return transactionData(defaultFootprint(readWrite));
 }
 
 export function recordedAuthOf(txBase64: string): string[] {

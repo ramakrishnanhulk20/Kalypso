@@ -5,6 +5,7 @@ import {
   Keypair,
   Operation,
   StrKey,
+  SorobanDataBuilder,
   TransactionBuilder,
   hash,
   rpc,
@@ -82,13 +83,18 @@ async function readEntries(keys) {
   return { latestLedger: res.latestLedger, get: (k) => byKey.get(keyId(k)) ?? null };
 }
 
+export const instanceLedgerKey = (contractId) =>
+  contractDataKey(contractId, xdr.ScVal.scvLedgerKeyContractInstance(), "persistent");
+export const codeLedgerKey = (wasmHash) =>
+  xdr.LedgerKey.contractCode(new xdr.LedgerKeyContractCode({ hash: Buffer.from(wasmHash, "hex") }));
+
 /**
  * Reads a contract's instance entry straight from the ledger. Returns null if
  * there is none. `wasmHash` is set only for plain wasm executables; any other
  * kind is reported in `executable` so callers can refuse it.
  */
 export async function readInstance(contractId) {
-  const key = contractDataKey(contractId, xdr.ScVal.scvLedgerKeyContractInstance(), "persistent");
+  const key = instanceLedgerKey(contractId);
   const { latestLedger, get } = await readEntries([key]);
   const entry = get(key);
   if (!entry) return null;
@@ -118,15 +124,42 @@ export async function readContractData(contractId, requests) {
 
 /** The uploaded code entry for `wasmHash`, or null. Includes the bytes. */
 export async function readCode(wasmHash) {
-  const key = xdr.LedgerKey.contractCode(new xdr.LedgerKeyContractCode({ hash: Buffer.from(wasmHash, "hex") }));
+  const key = codeLedgerKey(wasmHash);
   const { latestLedger, get } = await readEntries([key]);
   const entry = get(key);
   if (!entry) return null;
   return {
     bytes: entry.val.contractCode().code(),
     liveUntilLedger: entry.liveUntilLedgerSeq,
+    latestLedger,
     live: entry.liveUntilLedgerSeq === undefined || entry.liveUntilLedgerSeq >= latestLedger,
   };
+}
+
+/**
+ * The last ledger each key lives to, read in one call so every value is
+ * measured against the same `latestLedger`. A key with no entry maps to null.
+ */
+export async function readLiveUntil(keys) {
+  const { latestLedger, get } = await readEntries(keys);
+  return { latestLedger, liveUntil: keys.map((k) => get(k)?.liveUntilLedgerSeq ?? null) };
+}
+
+/**
+ * The network's longest entry lifetime in ledgers, read from its state
+ * archival setting. An entry extended now can live to the current ledger plus
+ * this minus one, which is the host's max_live_until_ledger.
+ */
+export async function readMaxEntryTtl() {
+  const key = xdr.LedgerKey.configSetting(
+    new xdr.LedgerKeyConfigSetting({ configSettingId: xdr.ConfigSettingId.configSettingStateArchival() }),
+  );
+  const { get } = await readEntries([key]);
+  const entry = get(key);
+  if (!entry) throw new Error("RPC returned no state archival setting");
+  const ttl = entry.val.configSetting().stateArchivalSettings().maxEntryTtl();
+  if (!Number.isSafeInteger(ttl) || ttl < 2) throw new Error(`the network's max entry lifetime reads as ${ttl}`);
+  return ttl;
 }
 
 // The SDK's getAccount reports every failure, a network error included, as
@@ -211,14 +244,15 @@ export async function settle(txHash, validUntilUnix) {
  * `source`, then waits for it. `onPending` receives the transaction hash and
  * its deadline before anything is sent, so a crashed run can find it again.
  * Archived state in the footprint is restored first in its own transaction.
+ * `readOnly` is the footprint for an operation that names no contract call,
+ * such as a TTL extension, which acts on exactly the keys listed there.
  */
-export async function submit({ source, operation, sign, label, onPending, log }) {
+export async function submit({ source, operation, sign, label, onPending, log, readOnly }) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const account = await server.getAccount(source);
-    const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: NETWORK_PASSPHRASE })
-      .addOperation(operation)
-      .setTimeout(TX_WINDOW_SECONDS)
-      .build();
+    const builder = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: NETWORK_PASSPHRASE });
+    if (readOnly) builder.setSorobanData(new SorobanDataBuilder().setReadOnly(readOnly).build());
+    const tx = builder.addOperation(operation).setTimeout(TX_WINDOW_SECONDS).build();
     const sim = await server.simulateTransaction(tx);
     if (rpc.Api.isSimulationError(sim)) throw new Error(`${label}: simulation failed: ${firstLine(sim.error)}`);
     if (rpc.Api.isSimulationRestore(sim)) {

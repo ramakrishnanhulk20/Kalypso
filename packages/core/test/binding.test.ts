@@ -7,7 +7,7 @@ import { Server, type Api } from '@stellar/stellar-sdk/rpc';
 import { FR_MODULUS, H, StateEngine, commit } from 'stellar-confidential-token-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decodeContractEvent } from '../src/history/decode.js';
-import { bindTransferToTransaction, createTxSourcePort, oncePerHash, type TransferEventFields, type TxSourcePort } from '../src/history/tx-binding.js';
+import { bindTransferToTransaction, createTxSourcePort, oncePerHash, type TransferEventFields, type TxRecord, type TxSourcePort } from '../src/history/tx-binding.js';
 import type { FakeCall } from './fake-ledger.js';
 import { PASSPHRASE, raw, testAccount, testContract } from './independent-xdr.js';
 import { COMPANY, CONTRACTS, PAY, RUN, keysFor, scenario, type Scenario } from './scenario.js';
@@ -37,7 +37,7 @@ function payArgs(s: Scenario): xdr.ScVal[] {
 /** Puts `call` on the ledger as its own successful transaction, with no events, and returns its hash. */
 function onChain(s: Scenario, call: FakeCall, successful = true): string {
   const { envelopeXdr, txHash } = s.ledger.envelope(call, 9_000 + s.ledger.transactions.size);
-  s.ledger.transactions.set(txHash, { envelopeXdr, successful });
+  s.ledger.transactions.set(txHash, { envelopeXdr, successful, ledger: s.ledger.ledger });
   return txHash;
 }
 
@@ -52,6 +52,7 @@ describe('bindTransferToTransaction: what binds', () => {
       const bound = await bind(s, s.payTx, event);
       if (!bound.ok) throw new Error(`expected a binding, got ${bound.reason}`);
       expect(bound.call).toEqual({ kind: 'payroll_pay', companyId: COMPANY, runId: RUN });
+      expect(bound.ledger).toBe(s.ledger.transactions.get(s.payTx)?.ledger);
       const { vTx, rTx } = new StateEngine({ address: worker, keys: keysFor(worker) }).decryptIncoming(bound.payload.rE, bound.payload.vTilde, bound.payload.sigma);
       expect(vTx).toBe(PAY[i]);
       expect(bound.payload.cTransfer.equals(commit(vTx, rTx))).toBe(true);
@@ -69,7 +70,7 @@ describe('bindTransferToTransaction: what binds', () => {
     const s = scenario();
     const inner = TransactionBuilder.fromXDR(s.ledger.transactions.get(s.payTx)?.envelopeXdr as string, PASSPHRASE) as Transaction;
     const bump = TransactionBuilder.buildFeeBumpTransaction(testAccount('fee sponsor').publicKey(), '200', inner, PASSPHRASE);
-    const record = { envelopeXdr: bump.toXDR(), successful: true };
+    const record = { envelopeXdr: bump.toXDR(), successful: true, ledger: s.ledger.ledger };
     const outer = bump.hash().toString('hex');
     const event = transferIn(s, s.payTx, s.workers[0] as string);
     const txSource = s.ledger.txSource({ serve: new Map([[outer, record], [s.payTx, record]]) });
@@ -98,7 +99,7 @@ describe('bindTransferToTransaction: what does not', () => {
   it('refuses an envelope whose recomputed hash differs: another transaction, or the same call on another network', async () => {
     const s = scenario();
     const event = transferIn(s, s.payTx, s.workers[0] as string);
-    const other = s.ledger.transactions.get(s.ledger.transfer(s.treasury, s.outsider, 1n)) as { envelopeXdr: string; successful: boolean };
+    const other = s.ledger.transactions.get(s.ledger.transfer(s.treasury, s.outsider, 1n)) as TxRecord;
     expect(await bind(s, s.payTx, event, s.ledger.txSource({ serve: new Map([[s.payTx, other]]) }))).toEqual({ ok: false, reason: 'hash_mismatch' });
 
     const mainnet = new TransactionBuilder(new Account(testAccount('fee sponsor').publicKey(), '7'), { fee: BASE_FEE, networkPassphrase: Networks.PUBLIC })
@@ -106,7 +107,7 @@ describe('bindTransferToTransaction: what does not', () => {
       .setTimeout(TimeoutInfinite)
       .build();
     const mainnetHash = mainnet.hash().toString('hex');
-    const served = s.ledger.txSource({ serve: new Map([[mainnetHash, { envelopeXdr: mainnet.toXDR(), successful: true }]]) });
+    const served = s.ledger.txSource({ serve: new Map([[mainnetHash, { envelopeXdr: mainnet.toXDR(), successful: true, ledger: s.ledger.ledger }]]) });
     expect(await bind(s, mainnetHash, event, served)).toEqual({ ok: false, reason: 'hash_mismatch' });
   });
 
@@ -123,9 +124,19 @@ describe('bindTransferToTransaction: what does not', () => {
     expect(asked.calls).toEqual([]);
   });
 
+  it('refuses a record whose ledger is missing or is no ledger at all', async () => {
+    const s = scenario();
+    const event = transferIn(s, s.payTx, s.workers[0] as string);
+    const real = s.ledger.transactions.get(s.payTx) as TxRecord;
+    for (const ledger of [undefined, 1.5, 0, -1, 0x1_0000_0000, '6000010']) {
+      const record = { ...real, ledger } as unknown as TxRecord;
+      expect(await bind(s, s.payTx, event, s.ledger.txSource({ serve: new Map([[s.payTx, record]]) }))).toEqual({ ok: false, reason: 'transaction_unavailable' });
+    }
+  });
+
   it('refuses a transaction that failed on chain', async () => {
     const s = scenario();
-    const record = { ...(s.ledger.transactions.get(s.payTx) as { envelopeXdr: string }), successful: false };
+    const record = { ...(s.ledger.transactions.get(s.payTx) as TxRecord), successful: false };
     const event = transferIn(s, s.payTx, s.workers[0] as string);
     expect(await bind(s, s.payTx, event, s.ledger.txSource({ serve: new Map([[s.payTx, record]]) }))).toEqual({ ok: false, reason: 'transaction_failed' });
   });
@@ -150,7 +161,7 @@ describe('bindTransferToTransaction: what does not', () => {
       .addOperation(Operation.bumpSequence({ bumpTo: '100' }))
       .setTimeout(TimeoutInfinite)
       .build();
-    const serve = new Map([twoCalls, upload, classic].map((tx) => [tx.hash().toString('hex'), { envelopeXdr: tx.toXDR(), successful: true }]));
+    const serve = new Map([twoCalls, upload, classic].map((tx) => [tx.hash().toString('hex'), { envelopeXdr: tx.toXDR(), successful: true, ledger: s.ledger.ledger }]));
     const txSource = s.ledger.txSource({ serve });
     for (const txHash of [copycat, deposit, close, ...serve.keys()]) {
       expect(await bind(s, txHash, event, txSource)).toEqual({ ok: false, reason: 'not_our_call' });
@@ -192,9 +203,9 @@ describe('bindTransferToTransaction: what does not', () => {
     }
     const shortTransfer = onChain(s, { contract: 'token', method: 'confidential_transfer', args: [raw.address(s.treasury), raw.address(worker)] });
     expect(await bind(s, shortTransfer, event)).toEqual({ ok: false, reason: 'envelope_unreadable' });
-    const garbage = s.ledger.txSource({ serve: new Map([[s.payTx, { envelopeXdr: 'not an envelope', successful: true }]]) });
+    const garbage = s.ledger.txSource({ serve: new Map([[s.payTx, { envelopeXdr: 'not an envelope', successful: true, ledger: s.ledger.ledger }]]) });
     expect(await bind(s, s.payTx, event, garbage)).toEqual({ ok: false, reason: 'envelope_unreadable' });
-    const huge = s.ledger.txSource({ serve: new Map([[s.payTx, { envelopeXdr: 'A'.repeat(180_001), successful: true }]]) });
+    const huge = s.ledger.txSource({ serve: new Map([[s.payTx, { envelopeXdr: 'A'.repeat(180_001), successful: true, ledger: s.ledger.ledger }]]) });
     expect(await bind(s, s.payTx, event, huge)).toEqual({ ok: false, reason: 'envelope_unreadable' });
   });
 
@@ -229,33 +240,38 @@ describe('createTxSourcePort', () => {
     vi.stubGlobal('fetch', fetch);
     const port = createTxSourcePort(config);
 
-    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'SUCCESS' as never, envelopeXdr: 'AAAA' }));
-    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'AAAA', successful: true });
-    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'FAILED' as never, envelopeXdr: 'AAAB' }));
-    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'AAAB', successful: false });
+    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'SUCCESS' as never, envelopeXdr: 'AAAA', ledger: 101 }));
+    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'AAAA', successful: true, ledger: 101 });
+    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'FAILED' as never, envelopeXdr: 'AAAB', ledger: 102 }));
+    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'AAAB', successful: false, ledger: 102 });
     expect(fetch).not.toHaveBeenCalled();
 
     getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'NOT_FOUND' as never }));
-    fetch.mockResolvedValueOnce(horizonAnswer(200, { hash, successful: true, envelope_xdr: 'BBBB' }));
-    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'BBBB', successful: true });
+    fetch.mockResolvedValueOnce(horizonAnswer(200, { hash, successful: true, envelope_xdr: 'BBBB', ledger: 103 }));
+    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'BBBB', successful: true, ledger: 103 });
     expect(fetch.mock.calls[0]).toEqual([`${config.horizonUrl}/transactions/${hash}`, expect.objectContaining({ redirect: 'error' })]);
 
     getTransaction.mockRejectedValueOnce(new Error('rpc down'));
     fetch.mockResolvedValueOnce(horizonAnswer(404, { status: 404 }));
     expect(await port.transaction(hash)).toBeNull();
 
-    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'SUCCESS' as never }));
-    fetch.mockResolvedValueOnce(horizonAnswer(200, { hash, successful: false, envelope_xdr: 'CCCC' }));
-    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'CCCC', successful: false });
+    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'SUCCESS' as never, ledger: 104 }));
+    fetch.mockResolvedValueOnce(horizonAnswer(200, { hash, successful: false, envelope_xdr: 'CCCC', ledger: 104 }));
+    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'CCCC', successful: false, ledger: 104 });
+
+    // An RPC answer with no ledger is out of shape, so Horizon is asked instead.
+    getTransaction.mockResolvedValueOnce(rpcAnswer({ status: 'SUCCESS' as never, envelopeXdr: 'AAAC' }));
+    fetch.mockResolvedValueOnce(horizonAnswer(200, { hash, successful: true, envelope_xdr: 'AAAC', ledger: 105 }));
+    expect(await port.transaction(hash)).toEqual({ envelopeXdr: 'AAAC', successful: true, ledger: 105 });
   });
 
   it('gives up on a slow RPC after the timeout and asks Horizon', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     vi.spyOn(Server.prototype, '_getTransaction').mockReturnValueOnce(new Promise(() => {}));
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(horizonAnswer(200, { successful: true, envelope_xdr: 'DDDD' })));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(horizonAnswer(200, { successful: true, envelope_xdr: 'DDDD', ledger: 106 })));
     const read = createTxSourcePort(config).transaction(hash);
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(await read).toEqual({ envelopeXdr: 'DDDD', successful: true });
+    expect(await read).toEqual({ envelopeXdr: 'DDDD', successful: true, ledger: 106 });
   });
 
   it('fails when Horizon answers an error, out of shape or too large, and refuses bad settings', async () => {
@@ -265,8 +281,10 @@ describe('createTxSourcePort', () => {
     const port = createTxSourcePort(config);
     fetch.mockResolvedValueOnce(horizonAnswer(500, {}));
     await expect(port.transaction(hash)).rejects.toThrow(/status 500/);
-    fetch.mockResolvedValueOnce(horizonAnswer(200, { successful: 'true', envelope_xdr: 'EEEE' }));
+    fetch.mockResolvedValueOnce(horizonAnswer(200, { successful: 'true', envelope_xdr: 'EEEE', ledger: 107 }));
     await expect(port.transaction(hash)).rejects.toThrow(/no envelope/);
+    fetch.mockResolvedValueOnce(horizonAnswer(200, { successful: true, envelope_xdr: 'EEEE' }));
+    await expect(port.transaction(hash)).rejects.toThrow(/no envelope or ledger/);
     fetch.mockResolvedValueOnce(horizonAnswer(200, null));
     await expect(port.transaction(hash)).rejects.toThrow(/no envelope/);
     fetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'x'.repeat(4_000_001) });

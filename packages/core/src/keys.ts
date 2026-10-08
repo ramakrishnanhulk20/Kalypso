@@ -45,7 +45,8 @@ export type KeyErrorCode =
   | 'TOKEN'
   | 'ACCOUNT'
   | 'DOMAIN'
-  | 'NETWORK';
+  | 'NETWORK'
+  | 'NOT_REPRODUCIBLE';
 
 // Messages never carry the bytes involved: they are key material.
 const KEY_MESSAGES: Record<KeyErrorCode, string> = {
@@ -59,6 +60,8 @@ const KEY_MESSAGES: Record<KeyErrorCode, string> = {
   ACCOUNT: 'The account is not a valid address of the kind this sign-in method supports.',
   DOMAIN: 'The domain must be a lowercase host name such as kalypso-payroll.vercel.app, with no scheme or path.',
   NETWORK: 'Kalypso keys are only derived for testnet.',
+  NOT_REPRODUCIBLE:
+    'This wallet gave two different signatures for the same message, so it cannot rebuild your key next time. Use a wallet that signs deterministically, such as Freighter.',
 };
 
 export class KeyError extends Error {
@@ -170,26 +173,51 @@ export function walletKeyMessage(p: { domain: string; network: 'testnet'; token:
 type SignatureBytes = Parameters<Keypair['verifyMessage']>[1];
 
 /**
- * Derives a Freighter user's confidential keys. It rebuilds walletKeyMessage(p), checks with the
- * Stellar SDK's SEP-53 verifyMessage (strict ed25519) that the signature is p.account's over
- * exactly that text, and only then uses the 64-byte signature as the root for the confidential
- * SDK's deriveSk(root, token, account), with deriveKeys giving the KeyPair. A fake wallet cannot
- * hand over a root it knows, and the same wallet always derives the same keys here.
+ * Derives a Freighter user's confidential keys from two signatures of the same key message, asked
+ * of the wallet one after the other. It rebuilds walletKeyMessage(p), checks with the Stellar
+ * SDK's SEP-53 verifyMessage (strict ed25519) that each signature is p.account's over exactly that
+ * text, then requires the two to be the same bytes (requireReproducible), and only then uses the
+ * 64-byte signature as the root for the confidential SDK's deriveSk(root, token, account), with
+ * deriveKeys giving the KeyPair. A fake wallet cannot hand over a root it knows, and a wallet that
+ * randomises its nonce can never derive a key it would not rebuild next session (threat model
+ * C15, C40). There is no single-signature form, so no caller can skip the second signature.
  *
  * @throws KeyError NOT_BYTES, SIGNATURE_LENGTH (not 64 bytes), ALL_ZERO, DOMAIN, NETWORK, TOKEN
- *   (not a C address), ACCOUNT (not a G address), or BAD_SIGNATURE when the signature does not
- *   verify. Nothing is derived when it throws.
+ *   (not a C address), ACCOUNT (not a G address), BAD_SIGNATURE when either signature does not
+ *   verify, or NOT_REPRODUCIBLE when both verify but differ. Nothing is derived when it throws.
  */
-export function deriveFromWalletSignature(
-  signature: Uint8Array,
+export function deriveFromWalletSignatures(
+  first: Uint8Array,
+  second: Uint8Array,
   p: { domain: string; network: 'testnet'; token: string; account: string },
 ): KalypsoKeys {
-  const root = copyOfLength(signature, SIGNATURE_BYTES, 'SIGNATURE_LENGTH');
+  const roots = [first, second].map((signature) => copyOfLength(signature, SIGNATURE_BYTES, 'SIGNATURE_LENGTH'));
   const { message, token, account } = buildWalletKeyMessage(p);
-  if (!Keypair.fromPublicKey(account).verifyMessage(message, root as SignatureBytes)) {
-    throw new KeyError('BAD_SIGNATURE');
+  const signer = Keypair.fromPublicKey(account);
+  for (const root of roots) {
+    if (!signer.verifyMessage(message, root as SignatureBytes)) throw new KeyError('BAD_SIGNATURE');
   }
+  const [root, again] = roots as [Uint8Array, Uint8Array];
+  requireReproducible(root, again);
   return keysFromRoot(root, token, account);
+}
+
+/**
+ * Checks that a wallet signs the key message the same way twice (threat model C15).
+ * deriveFromWalletSignatures runs it on every derivation; it stays exported so a screen can test a
+ * wallet before asking for anything else. A wallet that randomises its ed25519 nonce still passes
+ * strict verification, but would derive a different key every session and leave the pay unreadable.
+ *
+ * @throws KeyError NOT_REPRODUCIBLE unless both are 64-byte Uint8Arrays with the same bytes.
+ */
+export function requireReproducible(first: Uint8Array, second: Uint8Array): void {
+  const same =
+    isUint8Array(first) &&
+    isUint8Array(second) &&
+    first.length === SIGNATURE_BYTES &&
+    second.length === SIGNATURE_BYTES &&
+    first.every((byte, i) => byte === second[i]);
+  if (!same) throw new KeyError('NOT_REPRODUCIBLE');
 }
 
 function bytesFrom(value: unknown): Uint8Array | undefined {

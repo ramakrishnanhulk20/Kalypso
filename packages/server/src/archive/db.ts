@@ -83,6 +83,55 @@ export async function countSponsorRequest(db: Db, bucket: string, hourStart: Dat
   return rows.length === 1;
 }
 
+const BUMP_ADDRESS_DAY =
+  "insert into address_day (address, day, count) select t.address, $2::date, 1 " +
+  "from jsonb_array_elements_text($1::jsonb) as t(address) " +
+  "on conflict (address, day) do update set count = address_day.count + 1 " +
+  "where address_day.count < $3 returning address";
+const PRUNE_ADDRESS_DAY = "delete from address_day where day < $1::date - 1";
+
+class AddressLimitReached extends Error {}
+
+/**
+ * Counts one relay on `day` for each authorising address. All or nothing:
+ * when any of them has already used `limit` relays that day, nothing is
+ * counted and it returns false. Each bump is conditional on the row's own
+ * count and they share one transaction, so concurrent relays cannot push an
+ * address past the limit or leave half a request counted.
+ */
+export async function countAuthoriserRelays(db: Db, addresses: readonly string[], day: string, limit: number): Promise<boolean> {
+  const unique = [...new Set(addresses)];
+  let counted = true;
+  try {
+    await db.transaction(async (tx) => {
+      const rows = await tx.query(BUMP_ADDRESS_DAY, [JSON.stringify(unique), day, limit]);
+      if (rows.length !== unique.length) throw new AddressLimitReached();
+    });
+  } catch (err) {
+    if (!(err instanceof AddressLimitReached)) throw err;
+    counted = false;
+  }
+  await db.query(PRUNE_ADDRESS_DAY, [day]);
+  return counted;
+}
+
+// One statement, so all or nothing. Both halves read the same snapshot, so a
+// row at 1 is deleted and never also decremented.
+const RELEASE_ADDRESS_DAY =
+  "with wanted as (select distinct t.address from jsonb_array_elements_text($1::jsonb) as t(address)), " +
+  "dropped as (delete from address_day where day = $2::date and count = 1 and address in (select address from wanted) returning address) " +
+  "update address_day set count = address_day.count - 1 where day = $2::date and count > 1 and address in (select address from wanted)";
+
+/**
+ * Gives back the relay countAuthoriserRelays counted on `day` for each
+ * address, when that relay provably never reached the network (the daily
+ * budget refused it, or Channels refused it before submission). A count reaching zero
+ * removes its row, so no count ever goes below zero.
+ */
+export async function releaseAuthoriserRelays(db: Db, addresses: readonly string[], day: string): Promise<void> {
+  await db.query(RELEASE_ADDRESS_DAY, [JSON.stringify([...new Set(addresses)]), day]);
+}
+
 const RESERVE_DAY_BUDGET =
   "insert into day_budget (day, spent_stroops) values ($1::date, $2::bigint) " +
   "on conflict (day) do update set spent_stroops = day_budget.spent_stroops + excluded.spent_stroops " +
@@ -91,8 +140,9 @@ const RESERVE_DAY_BUDGET =
 /**
  * Reserves `stroops` of the day's fee budget before a relay, so concurrent
  * relays cannot overspend it. Returns false when the reservation would pass
- * `budget`. Reservations are never refunded: when Channels fails we cannot
- * always know whether the fee was spent, and keeping it is the safe side.
+ * `budget`. A reservation is kept whenever the relay's outcome is unknown
+ * (a timeout, a 5xx, a garbled reply), because the fee may have been spent;
+ * only releaseDailyFee gives one back.
  */
 export async function reserveDailyFee(db: Db, day: string, stroops: bigint, budget: bigint): Promise<boolean> {
   if (stroops > budget || stroops < 0n) return false;
@@ -100,29 +150,126 @@ export async function reserveDailyFee(db: Db, day: string, stroops: bigint, budg
   return rows.length === 1;
 }
 
+const RELEASE_DAY_BUDGET =
+  "update day_budget set spent_stroops = greatest(day_budget.spent_stroops - $2::bigint, 0) where day = $1::date";
+
+/**
+ * Gives back a reservation made on `day` for a relay that provably never
+ * reached the network (Channels refused it before submission). Floored at zero, so
+ * no release can leave the day with more budget than it started with.
+ */
+export async function releaseDailyFee(db: Db, day: string, stroops: bigint): Promise<void> {
+  if (stroops <= 0n) return;
+  await db.query(RELEASE_DAY_BUDGET, [day, stroops.toString()]);
+}
+
 const CLAIM_RELAY =
   "insert into relay_dedupe (digest, claimed_at) values ($1, $2::timestamptz) " +
-  "on conflict (digest) do update set claimed_at = excluded.claimed_at, transaction_id = null, status = null " +
-  "where relay_dedupe.claimed_at <= $3::timestamptz returning digest";
+  "on conflict (digest) do update set claimed_at = excluded.claimed_at, hold_until_ledger = null, " +
+  "transaction_id = null, status = null " +
+  "where relay_dedupe.hold_until_ledger is null and relay_dedupe.claimed_at <= $3::timestamptz returning digest";
 const READ_RELAY = "select transaction_id, status from relay_dedupe where digest = $1";
-const PRUNE_RELAYS = "delete from relay_dedupe where claimed_at < $1::timestamptz";
+const PRUNE_UNHELD_RELAYS = "delete from relay_dedupe where hold_until_ledger is null and claimed_at < $1::timestamptz";
 
 export type RelayClaim =
   | { claimed: true; claimedAt: Date }
   | { claimed: false; transactionId: string | null; status: string | null };
 
 /**
- * Claims the right to relay the body with this digest. Fails when the same
- * digest was claimed less than `windowMs` ago, and then returns what that
- * first relay got back (no transaction id yet means it is still in flight).
- * One atomic statement, so two copies arriving together cannot both relay.
+ * Claims the right to relay the body with this digest. Fails while an
+ * earlier claim on it stands: one held to a ledger by holdRelay stands until
+ * forgetExpiredRelays removes it, and one not held stands for `windowMs`.
+ * A failed claim returns what the earlier relay got back (no transaction id
+ * means it is still in flight, or its outcome is unknown). One atomic
+ * statement, so two copies arriving together cannot both relay.
  */
 export async function claimRelay(db: Db, digest: string, now: Date, windowMs: number): Promise<RelayClaim> {
-  await db.query(PRUNE_RELAYS, [new Date(now.getTime() - 3_600_000).toISOString()]);
+  await db.query(PRUNE_UNHELD_RELAYS, [new Date(now.getTime() - 3_600_000).toISOString()]);
   const claimed = await db.query(CLAIM_RELAY, [digest, now.toISOString(), new Date(now.getTime() - windowMs).toISOString()]);
   if (claimed.length === 1) return { claimed: true, claimedAt: now };
   const rows = await db.query<{ transaction_id: string | null; status: string | null }>(READ_RELAY, [digest]);
   return { claimed: false, transactionId: rows[0]?.transaction_id ?? null, status: rows[0]?.status ?? null };
+}
+
+const CLAIM_AUTH =
+  "insert into relay_auth (address, nonce, digest, claimed_at, expiry_ledger) " +
+  "select e.address, e.nonce, $2, $3::timestamptz, e.expiry_ledger " +
+  "from jsonb_to_recordset($1::jsonb) as e(address text, nonce text, expiry_ledger integer) " +
+  "on conflict (address, nonce) do update set digest = excluded.digest, claimed_at = excluded.claimed_at, " +
+  "expiry_ledger = excluded.expiry_ledger, held = false " +
+  "where not relay_auth.held and relay_auth.claimed_at <= $4::timestamptz returning address";
+const PRUNE_UNHELD_AUTH = "delete from relay_auth where not held and claimed_at < $1::timestamptz";
+
+class AuthEntryInUse extends Error {}
+
+/** One signed auth entry: who signed it, its nonce, and its own expiry ledger. */
+export interface AuthEntryKey {
+  address: string;
+  nonce: string;
+  expiryLedger: number;
+}
+
+/**
+ * Claims every signed auth entry of the body with this digest, made by the
+ * claim at `claimedAt`. All or nothing: false when any entry is already
+ * claimed by another body, held until its own expiry or claimed less than
+ * `windowMs` ago, and then nothing is claimed. The network uses an entry up
+ * once per (address, nonce) whatever body carries it, so this is what stops
+ * one signed entry rewrapped in a new body from being relayed twice.
+ */
+export async function claimAuthEntries(
+  db: Db,
+  entries: readonly AuthEntryKey[],
+  digest: string,
+  claimedAt: Date,
+  windowMs: number,
+): Promise<boolean> {
+  await db.query(PRUNE_UNHELD_AUTH, [new Date(claimedAt.getTime() - 3_600_000).toISOString()]);
+  const records = entries.map((e) => ({ address: e.address, nonce: e.nonce, expiry_ledger: e.expiryLedger }));
+  try {
+    await db.transaction(async (tx) => {
+      const rows = await tx.query(CLAIM_AUTH, [
+        JSON.stringify(records),
+        digest,
+        claimedAt.toISOString(),
+        new Date(claimedAt.getTime() - windowMs).toISOString(),
+      ]);
+      if (rows.length !== records.length) throw new AuthEntryInUse();
+    });
+  } catch (err) {
+    if (!(err instanceof AuthEntryInUse)) throw err;
+    return false;
+  }
+  return true;
+}
+
+// One statement each, so a claim's body and its entries are held or let go together.
+const HOLD_RELAY =
+  "with body as (update relay_dedupe set hold_until_ledger = $3 where digest = $1 and claimed_at = $2::timestamptz returning digest) " +
+  "update relay_auth set held = true where digest = $1 and claimed_at = $2::timestamptz";
+const RELEASE_RELAY =
+  "with body as (delete from relay_dedupe where digest = $1 and claimed_at = $2::timestamptz and transaction_id is null returning digest) " +
+  "delete from relay_auth where digest = $1 and claimed_at = $2::timestamptz and exists (select 1 from body)";
+
+/**
+ * Keeps a claimed body from being relayed again until the network passes
+ * `untilLedger`, the last ledger its auth entries can be used in, and keeps
+ * each of its signed entries until that entry's own expiry ledger. Called
+ * before the relay, so a timeout or a 5xx leaves them held too.
+ */
+export async function holdRelay(db: Db, digest: string, claimedAt: Date, untilLedger: number): Promise<void> {
+  await db.query(HOLD_RELAY, [digest, claimedAt.toISOString(), untilLedger]);
+}
+
+/**
+ * Forgets every held body and every held entry whose last usable ledger the
+ * network has reached (`latestLedger`, from a simulation). None of them can
+ * land any more, and simulation refuses a later copy as auth_expired, so it
+ * never reaches Channels.
+ */
+export async function forgetExpiredRelays(db: Db, latestLedger: number): Promise<void> {
+  await db.query("delete from relay_dedupe where hold_until_ledger <= $1", [latestLedger]);
+  await db.query("delete from relay_auth where held and expiry_ledger <= $1", [latestLedger]);
 }
 
 export async function recordRelay(db: Db, digest: string, claimedAt: Date, transactionId: string, status: string): Promise<void> {
@@ -132,12 +279,13 @@ export async function recordRelay(db: Db, digest: string, claimedAt: Date, trans
   );
 }
 
-/** Gives a claim back when nothing was relayed, so the same body can be sent again at once. */
+/**
+ * Gives a claim back, its signed entries with it, when nothing was relayed,
+ * so the same body or the same entries can be sent again at once. A claim
+ * that already recorded a relay is never given back.
+ */
 export async function releaseRelay(db: Db, digest: string, claimedAt: Date): Promise<void> {
-  await db.query(
-    "delete from relay_dedupe where digest = $1 and claimed_at = $2::timestamptz and transaction_id is null",
-    [digest, claimedAt.toISOString()],
-  );
+  await db.query(RELEASE_RELAY, [digest, claimedAt.toISOString()]);
 }
 
 /** One archived event: the verbatim XDR plus the decoded columns used to query it. */
@@ -218,7 +366,10 @@ export async function recordGap(db: Db, fromLedger: number, toLedger: number, de
 
 export interface ArchiveState {
   startLedger: number | null;
+  /** Proven by the start check, never assumed: see settleArchiveStart. */
   coversFromGenesis: boolean;
+  /** The archive began at a configured ledger and has not yet read a token event. */
+  startCheckPending: boolean;
   latestLedger: number | null;
   rpcOldestLedger: number | null;
   lastIngestAt: Date | null;
@@ -228,28 +379,52 @@ export async function readArchiveState(db: Db): Promise<ArchiveState> {
   const rows = await db.query<{
     start_ledger: number | null;
     covers_from_genesis: boolean;
+    start_check_pending: boolean;
     latest_ledger: number | null;
     rpc_oldest_ledger: number | null;
     last_ingest_at: Date | null;
   }>(
-    "select start_ledger, covers_from_genesis, latest_ledger, rpc_oldest_ledger, last_ingest_at from archive_state where id = 1",
+    "select start_ledger, covers_from_genesis, start_check_pending, latest_ledger, rpc_oldest_ledger, last_ingest_at " +
+      "from archive_state where id = 1",
   );
   const row = rows[0];
   return {
     startLedger: row?.start_ledger ?? null,
     coversFromGenesis: row?.covers_from_genesis ?? false,
+    startCheckPending: row?.start_check_pending ?? false,
     latestLedger: row?.latest_ledger ?? null,
     rpcOldestLedger: row?.rpc_oldest_ledger ?? null,
     lastIngestAt: row?.last_ingest_at ? new Date(row.last_ingest_at) : null,
   };
 }
 
-/** Sets where the archive begins, once. Later calls change nothing. */
-export async function setArchiveStart(db: Db, startLedger: number, coversFromGenesis: boolean): Promise<void> {
-  await db.query(
-    "update archive_state set start_ledger = $1, covers_from_genesis = $2 where id = 1 and start_ledger is null",
-    [startLedger, coversFromGenesis],
+/**
+ * Sets where the archive begins, once; later calls change nothing and return
+ * false. It never covers from genesis at this point. `checkStart` marks the
+ * start check as pending, for an archive begun at a configured ledger with
+ * the token's deploy transaction known.
+ */
+export async function setArchiveStart(db: Db, startLedger: number, checkStart: boolean): Promise<boolean> {
+  const rows = await db.query(
+    "update archive_state set start_ledger = $1, covers_from_genesis = false, start_check_pending = $2 " +
+      "where id = 1 and start_ledger is null returning id",
+    [startLedger, checkStart],
   );
+  return rows.length === 1;
+}
+
+/**
+ * Records the start check's outcome, once: `proven` when the first token
+ * event the archive read came from the token's own deploy transaction. Returns false
+ * when another pass already recorded it, so only the pass that decided it
+ * reports it.
+ */
+export async function settleArchiveStart(db: Db, proven: boolean): Promise<boolean> {
+  const rows = await db.query(
+    "update archive_state set covers_from_genesis = $1, start_check_pending = false where id = 1 and start_check_pending returning id",
+    [proven],
+  );
+  return rows.length === 1;
 }
 
 export async function recordIngestProgress(db: Db, latestLedger: number, rpcOldestLedger: number, at: Date): Promise<void> {

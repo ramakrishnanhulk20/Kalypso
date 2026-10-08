@@ -9,9 +9,9 @@ import type { EventPosition, RawContractEvent } from './rpc-events.js';
 /** A confidential token event in the SDK StateEngine's own shape, so it can be replayed as is. */
 export type TokenEvent = ConfidentialEvent;
 
-/** The payroll contract's events that history readers act on (packages/contracts/payroll/src/events.rs). */
+/** The payroll contract's events that history readers act on (packages/contracts/payroll/src/events.rs, v0.1.1). */
 export type PayrollEvent =
-  | { type: 'company_created'; companyId: bigint; admin: string; auditorId: number; label: string }
+  | { type: 'company_created'; companyId: bigint; admin: string; accountant: string; auditorId: number; label: string }
   | { type: 'admin_changed'; companyId: bigint; previousAdmin: string; newAdmin: string }
   | { type: 'run_opened'; companyId: bigint; runId: bigint; periodLabel: string; expectedCount: number }
   | { type: 'payslip_issued'; companyId: bigint; runId: bigint; worker: string };
@@ -144,11 +144,12 @@ function decodePayroll(name: string, topics: xdr.ScVal[], data: xdr.ScVal): Payr
   switch (name) {
     case 'company_created': {
       requireTopicCount(topics, 2, name);
-      const f = fromStruct(data, ['admin', 'auditor_id', 'label'] as const, name);
+      const f = fromStruct(data, ['accountant', 'admin', 'auditor_id', 'label'] as const, name);
       return {
         type: 'company_created',
         companyId,
         admin: fromAddress(f.admin, 'admin'),
+        accountant: fromAddress(f.accountant, 'accountant'),
         auditorId: fromU32(f.auditor_id, 'auditor_id'),
         label: label(f.label, 'label', MAX_COMPANY_LABEL_BYTES),
       };

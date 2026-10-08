@@ -64,7 +64,10 @@ fn every_event_has_its_name_then_the_company_id_as_a_u64() {
 
     let id = s.create_company(&admin, COMPANY_AUDITOR, "Acme");
     assert_eq!(id, 1);
-    expect(&["company_created", "u64 1"], &["admin", "auditor_id", "label"]);
+    expect(
+        &["company_created", "u64 1"],
+        &["accountant", "admin", "auditor_id", "label"],
+    );
     s.invite(id, &admin, &worker);
     expect(&["worker_invited", "u64 1", "Address"], &[]);
     s.revoke(id, &admin, &worker);

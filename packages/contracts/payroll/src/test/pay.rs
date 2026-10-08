@@ -411,6 +411,7 @@ fn every_record_is_persistent_and_extended_when_written() {
         s.key("Run", (id, 7u64)),
         s.key("Paid", (id, 7u64, worker)),
         s.key("PendingAdmin", (id,)),
+        s.key("Memberships", (worker,)),
     ] {
         assert_eq!(s.record_ttl(key), RECORD_EXTEND_TO);
     }

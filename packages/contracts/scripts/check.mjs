@@ -1,13 +1,20 @@
 // Proves from on-chain state that nobody, the deployer included, holds an
-// admin key over the Kalypso stack or can change the proof rules. Only the
-// contract ids come from deployments/testnet.json; every claim is read from
-// the chain and compared with a pin in lib/network.mjs or with our own build.
-// Any error while checking counts as a FAIL, never as a skip.
+// admin key over the Kalypso stack or can change the proof rules, that the
+// payroll and the token read auditor ids from one registry, and that no
+// contract is close to archiving. Only the contract ids come from
+// deployments/testnet.json; every claim is read from the chain's ledger
+// entries, never from events, and compared with a pin in lib/network.mjs or
+// with our own build. Any error while checking counts as a FAIL, never as a skip.
 //
-//   npm run check:testnet [-- --wasm-dir <dir>]
+// Our two contracts ship from their own releases: --wasm-dir holds the payroll's
+// release and --auditor-wasm-dir the registry's (default: the same folder).
+//
+//   npm run check:testnet [-- --wasm-dir <dir>] [--auditor-wasm-dir <dir>]
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  KEEPALIVE_MIN_DAYS,
+  LEDGERS_PER_DAY,
   MANAGER_ROLE,
   OUR_PACKAGES,
   TOKEN_WASM,
@@ -19,7 +26,17 @@ import {
   defaultWasmDir,
 } from "./lib/network.mjs";
 import { findBuiltWasm, inspectWasm, privilegeFindings, sha256hex } from "./lib/wasm.mjs";
-import { normalizeAddress, readCode, readInstance, scv, simulateCall } from "./lib/chain.mjs";
+import {
+  addressOf,
+  codeLedgerKey,
+  instanceLedgerKey,
+  normalizeAddress,
+  readCode,
+  readInstance,
+  readLiveUntil,
+  scv,
+  simulateCall,
+} from "./lib/chain.mjs";
 import {
   addressesInInstance,
   readVerificationKey,
@@ -43,6 +60,12 @@ const AUDITOR_INTERFACE = [
   "rotate_key",
 ];
 
+// Covers any export whose name speaks of the token's verifier, its auditor registry, its underlying
+// asset or an upgrade, which takes in set_verifier, set_auditor, set_underlying_asset and upgrade
+// under any spelling. Does not cover an innocently named function that rewrites the wiring inside;
+// the pinned code hash, checked above, and OpenZeppelin's source cover that.
+const REWIRES_TOKEN = /verifier|auditor|underlying|upgrade/i;
+
 const short = (h) => `${h.slice(0, 8)}...`;
 const results = [];
 
@@ -58,14 +81,32 @@ async function check(title, run) {
 }
 
 function parseFlags(argv) {
-  const flags = { wasmDir: null };
+  const flags = { wasmDir: null, auditorWasmDir: null };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] !== "--wasm-dir") throw new Error(`unknown argument ${argv[i]}. Flags: --wasm-dir <dir>`);
+    const a = argv[i];
+    if (a !== "--wasm-dir" && a !== "--auditor-wasm-dir") {
+      throw new Error(`unknown argument ${a}. Flags: --wasm-dir <payroll release dir>, --auditor-wasm-dir <registry release dir>`);
+    }
     const v = argv[++i];
-    if (!v || v.startsWith("--")) throw new Error("--wasm-dir needs a value");
-    flags.wasmDir = path.resolve(v);
+    if (!v || v.startsWith("--")) throw new Error(`${a} needs a value`);
+    flags[a === "--wasm-dir" ? "wasmDir" : "auditorWasmDir"] = path.resolve(v);
   }
   return flags;
+}
+
+/**
+ * One of our contracts against its own release: the chain, the deployment record and the built
+ * wasm from that release's folder must all name the same code. The record's version is shown,
+ * not proven: the wasm carries none, so the folder is what ties the hash to a release.
+ */
+function sameRelease(name, instance, entry, build, dir) {
+  if (!build) return { pass: false, detail: `no built wasm for ${name} in ${dir}` };
+  const problems = [];
+  if (instance.wasmHash !== build.hash) problems.push(`on chain ${instance.wasmHash}, ${build.label} in ${dir} is ${build.hash}`);
+  if (entry?.wasmHash !== instance.wasmHash) problems.push(`deployments/testnet.json records ${entry?.wasmHash ?? "no hash"}`);
+  const version = entry?.version ? `v${entry.version}` : "no version recorded";
+  if (problems.length) return { pass: false, detail: `${problems.join("; ")} (${version})` };
+  return { pass: true, detail: `wasm ${short(build.hash)}, ${version} per deployments/testnet.json, same as ${build.label} in ${dir}` };
 }
 
 async function instanceOf(name, id) {
@@ -99,15 +140,16 @@ async function main() {
   const deployer = record.deployer?.publicKey;
   const ids = Object.fromEntries(Object.entries(record.contracts ?? {}).map(([k, v]) => [k, v.id]));
   const wasmDir = flags.wasmDir ?? defaultWasmDir();
-  const built = (pkg) => {
+  const auditorWasmDir = flags.auditorWasmDir ?? wasmDir;
+  const built = (dir, pkg) => {
     try {
-      return findBuiltWasm(wasmDir, pkg);
+      return findBuiltWasm(dir, pkg);
     } catch {
       return null;
     }
   };
-  const builtAuditor = built(OUR_PACKAGES.auditorRegistry);
-  const builtPayroll = built(OUR_PACKAGES.payroll);
+  const builtAuditor = built(auditorWasmDir, OUR_PACKAGES.auditorRegistry);
+  const builtPayroll = built(wasmDir, OUR_PACKAGES.payroll);
 
   console.log(`Kalypso testnet check, deployer ${deployer}`);
   console.log(`verifier ${ids.verifier}  auditor registry ${ids.auditorRegistry}  token ${ids.token}  payroll ${ids.payroll}`);
@@ -186,10 +228,9 @@ async function main() {
   }
 
   console.log("Auditor registry");
-  await check("auditor registry runs our built kalypso_auditor.wasm", async () => {
-    if (!builtAuditor) return { pass: false, detail: `no built kalypso_auditor.wasm in ${wasmDir}` };
-    return sameCode(await instanceOf("auditor registry", ids.auditorRegistry), builtAuditor.hash);
-  });
+  await check("auditor registry runs its own release of kalypso_auditor.wasm", async () =>
+    sameRelease("the auditor registry", await instanceOf("auditor registry", ids.auditorRegistry), record.contracts.auditorRegistry, builtAuditor, auditorWasmDir),
+  );
   await check("auditor registry exports exactly its nine interface functions, none an admin, contract owner, upgrade or setter", async () => {
     const instance = await instanceOf("auditor registry", ids.auditorRegistry);
     const { bytes, from } = await codeBytes(instance, builtAuditor);
@@ -207,25 +248,42 @@ async function main() {
   });
 
   console.log("Payroll");
-  await check("payroll runs our built kalypso_payroll.wasm", async () => {
-    if (!builtPayroll) return { pass: false, detail: `no built kalypso_payroll.wasm in ${wasmDir}` };
-    return sameCode(await instanceOf("payroll", ids.payroll), builtPayroll.hash);
-  });
+  await check("payroll runs its own release of kalypso_payroll.wasm", async () =>
+    sameRelease("the payroll", await instanceOf("payroll", ids.payroll), record.contracts.payroll, builtPayroll, wasmDir),
+  );
   await check("payroll has no admin or upgrade function", async () => {
     const instance = await instanceOf("payroll", ids.payroll);
     const { bytes, from } = await codeBytes(instance, builtPayroll);
     const inspected = inspectWasm(bytes);
     const findings = privilegeFindings(inspected, "company_id");
     const stored = addressesInInstance(instance);
-    const strangers = stored.filter((a) => a !== normalizeAddress(ids.token));
-    if (strangers.length) findings.push(`instance stores addresses other than the token: ${strangers.join(", ")}`);
-    if (!stored.length) findings.push("instance stores no token address");
+    const allowed = [ids.token, ids.auditorRegistry].map(normalizeAddress);
+    const strangers = stored.filter((a) => !allowed.includes(a));
+    if (strangers.length) findings.push(`instance stores addresses other than the token and the registry: ${strangers.join(", ")}`);
+    for (const [what, a] of [["token", allowed[0]], ["auditor registry", allowed[1]]]) {
+      if (!stored.includes(a)) findings.push(`instance stores no ${what} address`);
+    }
     if (findings.length) return { pass: false, detail: findings.join("; ") };
     const scoped = inspected.exportedFunctions.filter((f) => /admin/i.test(f));
     return {
       pass: true,
       detail: `${inspected.exportedFunctions.length} exports read from ${from}; ${scoped.join(", ")} act on one company_id; ` +
-        "code cannot replace itself; the only address in its instance is the token",
+        "code cannot replace itself; the only addresses in its instance are the token and the auditor registry",
+    };
+  });
+  await check("payroll asks the same auditor registry the token reads keys from", async () => {
+    const r = await simulateCall({ source: deployer, contractId: ids.payroll, method: "auditor_registry", args: [] });
+    if (!r.ok) return { pass: false, detail: `auditor_registry() failed: ${r.error}` };
+    const asked = addressOf(r.retval);
+    // The token's own instance entries (OpenZeppelin ConfidentialTokenStorageKey::Auditor and
+    // ::Verifier), read from the ledger, so the answer never ages out the way an event does.
+    const wired = tokenWiring(await instanceOf("token", ids.token));
+    const registry = normalizeAddress(ids.auditorRegistry);
+    const verifier = normalizeAddress(ids.verifier);
+    return {
+      pass: asked === registry && wired.auditor === registry && wired.verifier === verifier,
+      detail: `auditor_registry() ${asked}, token instance Auditor ${wired.auditor}, deployments/testnet.json ${registry}; ` +
+        `token instance Verifier ${wired.verifier}, deployments/testnet.json ${verifier}`,
     };
   });
 
@@ -239,6 +297,42 @@ async function main() {
     const wrong = Object.entries(want).filter(([k, v]) => !v || got[k] !== normalizeAddress(v));
     if (wrong.length) return { pass: false, detail: wrong.map(([k, v]) => `${k} is ${got[k]}, expected ${v}`).join("; ") };
     return { pass: true, detail: "UnderlyingAsset, Verifier and Auditor entries all match" };
+  });
+  await check("token code on chain has no setter for its verifier, registry or asset, and cannot replace itself", async () => {
+    const instance = await instanceOf("token", ids.token);
+    // On-chain bytes only: this claim is about the code that runs, not about the pin it should equal.
+    const { bytes } = await codeBytes(instance, null);
+    const inspected = inspectWasm(bytes);
+    const exported = inspected.exportedFunctions;
+    const findings = exported.filter((f) => REWIRES_TOKEN.test(f)).map((f) => `exports ${f}`);
+    if (inspected.canReplaceOwnCode) findings.push("imports update_current_contract_wasm");
+    return {
+      pass: findings.length === 0,
+      detail: `${findings.length ? `${findings.join("; ")}; ` : ""}${exported.length} exports read from on-chain code: ${exported.join(", ")}`,
+    };
+  });
+
+  console.log("Kept alive");
+  await check(`every instance and its code has at least ${KEEPALIVE_MIN_DAYS} days to live`, async () => {
+    const entries = [];
+    for (const [name, id] of [
+      ["payroll", ids.payroll],
+      ["auditor registry", ids.auditorRegistry],
+      ["token", ids.token],
+      ["verifier", ids.verifier],
+    ]) {
+      const instance = await instanceOf(name, id);
+      entries.push({ label: `${name} instance`, key: instanceLedgerKey(id) });
+      entries.push({ label: `${name} code`, key: codeLedgerKey(instance.wasmHash) });
+    }
+    const { latestLedger, liveUntil } = await readLiveUntil(entries.map((e) => e.key));
+    const days = liveUntil.map((until) => (until === null ? null : (until - latestLedger) / LEDGERS_PER_DAY));
+    const low = entries.filter((_, i) => days[i] === null || days[i] < KEEPALIVE_MIN_DAYS).map((e) => e.label);
+    return {
+      pass: low.length === 0,
+      detail: `${entries.map((e, i) => `${e.label} ${days[i] === null ? "missing" : `${days[i].toFixed(1)} days`}`).join(", ")}` +
+        `${low.length ? `; below ${KEEPALIVE_MIN_DAYS} days: ${low.join(", ")}, run npm run keepalive:testnet` : ""}`,
+    };
   });
 
   const passed = results.filter(Boolean).length;

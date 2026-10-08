@@ -1,5 +1,6 @@
 //! The two-step admin handover: propose_admin, cancel_admin_proposal,
-//! accept_admin and pending_admin, plus who pays after a handover.
+//! accept_admin and pending_admin, plus who pays after a handover and the
+//! company's admin_changes counter.
 //!
 //! Not covered here: a real token registration, and wrong-signer cases,
 //! which are in auth.rs.
@@ -81,6 +82,109 @@ fn propose_admin_rejects_a_live_until_not_after_the_current_ledger() {
         );
     }
     assert_eq!(s.client().pending_admin(&t.company_id), None);
+}
+
+/// C44: the furthest deadline accepted is the network's
+/// max_live_until_ledger, the same bound the auditor registry sets. One
+/// ledger past it, and u32::MAX, are refused and store nothing; exactly on
+/// it the proposal is stored.
+#[test]
+fn propose_admin_accepts_a_deadline_up_to_the_longest_entry_lifetime_and_no_further() {
+    let s = Setup::new();
+    let t = s.team(0);
+    let successor = s.account(COMPANY_AUDITOR);
+    let furthest = s.e.ledger().max_live_until_ledger();
+
+    for live_until in [furthest + 1, u32::MAX] {
+        s.sign(
+            &t.admin,
+            "propose_admin",
+            (t.company_id, &successor, live_until).into_val(&s.e),
+        );
+        assert_eq!(
+            s.client()
+                .try_propose_admin(&t.company_id, &successor, &live_until),
+            Err(Ok(err(PayrollError::InvalidLiveUntil)))
+        );
+        assert!(s.payroll_events().events().is_empty());
+    }
+    assert_eq!(s.client().pending_admin(&t.company_id), None);
+
+    s.propose_admin(t.company_id, &t.admin, &successor, furthest);
+
+    assert_eq!(
+        s.client().pending_admin(&t.company_id),
+        Some(PendingAdmin {
+            new_admin: successor,
+            live_until_ledger: furthest,
+        })
+    );
+}
+
+/// History readers compare admin_changes with the AdminChanged events they
+/// hold. It counts each completed handover; a proposal, a cancellation and
+/// an accept that comes too late leave it alone.
+#[test]
+fn admin_changes_counts_each_accepted_handover_and_nothing_else() {
+    let s = Setup::new();
+    let t = s.team(0);
+    let admin_changes = || s.client().get_company(&t.company_id).admin_changes;
+    let first = s.account(COMPANY_AUDITOR);
+    let second = s.account(COMPANY_AUDITOR);
+    assert_eq!(admin_changes(), 0);
+
+    s.propose_admin(t.company_id, &t.admin, &first, s.seq() + 10);
+    assert_eq!(admin_changes(), 0);
+    s.sign(
+        &t.admin,
+        "cancel_admin_proposal",
+        (t.company_id,).into_val(&s.e),
+    );
+    s.client().cancel_admin_proposal(&t.company_id);
+    assert_eq!(admin_changes(), 0);
+    s.propose_admin(t.company_id, &t.admin, &first, s.seq() + 10);
+    s.advance(11);
+    s.sign(&first, "accept_admin", (t.company_id,).into_val(&s.e));
+    assert_eq!(
+        s.client().try_accept_admin(&t.company_id),
+        Err(Ok(err(PayrollError::AdminTransferExpired)))
+    );
+    assert_eq!(admin_changes(), 0);
+
+    s.propose_admin(t.company_id, &t.admin, &first, s.seq() + 10);
+    s.accept_admin(t.company_id, &first);
+    assert_eq!(admin_changes(), 1);
+    s.propose_admin(t.company_id, &first, &second, s.seq() + 10);
+    s.accept_admin(t.company_id, &second);
+    assert_eq!(admin_changes(), 2);
+    assert_eq!(s.client().get_company(&t.company_id).admin, second);
+}
+
+/// admin_changes is forced to the u32 limit, which no real sequence of calls
+/// reaches. accept_admin is refused with CounterOverflow, the admin stays,
+/// and the proposal is still pending.
+#[test]
+fn accept_admin_refuses_when_admin_changes_is_at_its_limit() {
+    let s = Setup::new();
+    let t = s.team(0);
+    let successor = s.account(COMPANY_AUDITOR);
+    s.propose_admin(t.company_id, &t.admin, &successor, s.seq() + 10);
+    s.force_company(t.company_id, |company| company.admin_changes = u32::MAX);
+
+    s.sign(&successor, "accept_admin", (t.company_id,).into_val(&s.e));
+    assert_eq!(
+        s.client().try_accept_admin(&t.company_id),
+        Err(Ok(err(PayrollError::CounterOverflow)))
+    );
+
+    assert!(s.payroll_events().events().is_empty());
+    let company = s.client().get_company(&t.company_id);
+    assert_eq!(company.admin, t.admin);
+    assert_eq!(company.admin_changes, u32::MAX);
+    assert_eq!(
+        s.client().pending_admin(&t.company_id).map(|p| p.new_admin),
+        Some(successor)
+    );
 }
 
 #[test]

@@ -31,7 +31,7 @@ function chainWithSpendable(spendable: ReturnType<typeof commit> | 'unregistered
   } as unknown as ChainPort;
 }
 
-function memoryStore(entries: Record<string, SavedOpening | InFlightPay> = {}): OpeningStore & { data: Map<string, SavedOpening | InFlightPay> } {
+function memoryStore(entries: Record<string, SavedOpening | InFlightPay | readonly string[]> = {}): OpeningStore & { data: Map<string, SavedOpening | InFlightPay | readonly string[]> } {
   const data = new Map(Object.entries(entries));
   return { data, get: async (key) => data.get(key), put: async (key, value) => void data.set(key, value), delete: async (key) => void data.delete(key) };
 }

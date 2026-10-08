@@ -9,6 +9,7 @@ import {
   type TransferWitness,
   type WithdrawWitness,
 } from 'stellar-confidential-token-sdk';
+import { requireAuditorBinding } from './auditor.js';
 import { ContractCallError, type ChainPort } from './ports.js';
 import {
   DecodeError,
@@ -87,13 +88,36 @@ function dataBytes<W>(
 
 const account = (address: string) => toScVal.address(requireAccount(address, ['G', 'C']));
 
-/** register(account, auditor_id, data). The account signs. */
+/**
+ * register(account, auditor_id, data). The account signs, and its auditor id can never change
+ * afterwards. This checks nothing about who owns auditorId. Apps call buildCheckedRegister,
+ * the only registration builder an app should use; this one stays exported for scripts that
+ * check the binding by hand with requireAuditorBinding first.
+ */
 export function buildRegister(base: InvocationBase, p: { account: string; auditorId: number; data: RegisterProof }): string {
   return buildInvocation(base, 'register', [
     account(p.account),
     toScVal.u32(requireU32(p.auditorId, 'auditorId')),
     toScVal.bytes(dataBytes(p.data, encodeRegisterData)),
   ]);
+}
+
+/**
+ * register(account, auditor_id, data), built only after requireAuditorBinding confirms on chain
+ * that auditorOwner owns auditorId and holds auditorKey under it (threat model C33, C43). This
+ * is the only registration builder an app should call, for a treasury and for a worker alike:
+ * an id somebody else took first is refused before any transaction exists.
+ *
+ * @throws AuditorBindingError, or the registry read's own error, with no transaction built;
+ *   then anything buildRegister throws.
+ */
+export async function buildCheckedRegister(
+  port: ChainPort,
+  base: InvocationBase,
+  p: { account: string; auditorId: number; data: RegisterProof; registry: string; auditorOwner: string; auditorKey: Point },
+): Promise<string> {
+  await requireAuditorBinding(port, p.registry, p.auditorId, { owner: p.auditorOwner, key: p.auditorKey });
+  return buildRegister(base, { account: p.account, auditorId: p.auditorId, data: p.data });
 }
 
 /** deposit(from, to, amount). `from` signs and pays `amount` stroops of the underlying token. The amount is public. */

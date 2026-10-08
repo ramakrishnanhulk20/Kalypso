@@ -1,11 +1,17 @@
-// Live check against real Stellar testnet RPC: ingests the M1a spike token's
-// events into an in-memory archive (PGlite), then reads one account's history
-// back through the archive API. Proves real RPC event shapes parse end to end.
+// Live check against real Stellar testnet RPC: ingests our deployed token's
+// and payroll's events into an in-memory archive (PGlite), then reads one
+// account's history back through the archive API. Proves real RPC event
+// shapes parse end to end, and that the archive proves its own start from
+// the token's deploy transaction. Contract ids and the token's deploy ledger
+// and hash come from packages/contracts/deployments/testnet.json. Fails once
+// that ledger leaves RPC's retention window (about 7 days), because the
+// archive can then no longer prove where the token's history begins.
 // Needs network access only: no keys, no database server, no Channels calls.
 //
 //   node scripts/smoke-rpc.mjs
+import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { StrKey, hash, xdr } from "@stellar/stellar-sdk";
+import { xdr } from "@stellar/stellar-sdk";
 import {
   applySchema,
   archiveHandler,
@@ -16,22 +22,27 @@ import {
   pgliteDb,
 } from "../src/index.ts";
 
-const SPIKE_TOKEN = "CCFD5X2XSCS6N6S67UQ3P3PMTNCN7O2NA5ZOET4LIHLMCEPFKXVFAEEN";
-const SPIKE_AUDITOR = "CCMJNKU7DDERYUUMRLDUKM7FVXFOHK7HUH6TFH2XEYBBXZNTTKY2MGWV";
-// First ledger of the M1a deploy run that created the spike token (token deployed at 5070103).
-const SPIKE_START_LEDGER = 5_070_101;
-// A valid contract id that was never deployed, so it has no events.
-const DUMMY_PAYROLL = StrKey.encodeContract(hash(Buffer.from("kalypso smoke: payroll with no events")));
-// The archive never reads the verifier; the config only needs a distinct id.
-const DUMMY_VERIFIER = StrKey.encodeContract(hash(Buffer.from("kalypso smoke: verifier the archive never reads")));
+const deployment = JSON.parse(readFileSync(new URL("../../contracts/deployments/testnet.json", import.meta.url), "utf8"));
+const contracts = deployment.contracts ?? {};
+const TOKEN = contracts.token?.id;
+const PAYROLL = contracts.payroll?.id;
+const START_LEDGER = contracts.token?.deployTx?.ledger;
+const DEPLOY_TX = contracts.token?.deployTx?.hash;
+if (!Number.isInteger(START_LEDGER) || typeof DEPLOY_TX !== "string") {
+  console.log("FAIL: deployments/testnet.json has no contracts.token.deployTx ledger and hash");
+  process.exit(1);
+}
 
+// loadConfig checks every id, the ledger and the hash, and fails loudly on any of them.
 const cfg = loadConfig({
   NETWORK: "testnet",
   RPC_URL: process.env.RPC_URL,
-  TOKEN_CONTRACT_ID: SPIKE_TOKEN,
-  PAYROLL_CONTRACT_ID: DUMMY_PAYROLL,
-  AUDITOR_CONTRACT_ID: SPIKE_AUDITOR,
-  VERIFIER_CONTRACT_ID: DUMMY_VERIFIER,
+  TOKEN_CONTRACT_ID: TOKEN,
+  PAYROLL_CONTRACT_ID: PAYROLL,
+  AUDITOR_CONTRACT_ID: contracts.auditorRegistry?.id,
+  VERIFIER_CONTRACT_ID: contracts.verifier?.id,
+  ARCHIVE_START_LEDGER: String(START_LEDGER),
+  TOKEN_DEPLOY_TX: DEPLOY_TX,
   CHANNELS_API_KEY: "smoke-run-makes-no-relay-calls",
   DATABASE_URL_INGEST: "postgres://unused@localhost/smoke",
   DATABASE_URL_API: "postgres://unused@localhost/smoke",
@@ -46,7 +57,7 @@ const warnings = [];
 const log = createLogger([], (line) => warnings.push(line));
 
 const started = Date.now();
-const result = await ingestOnce(db, rpc, cfg, { startLedger: SPIKE_START_LEDGER });
+const result = await ingestOnce(db, rpc, cfg, { log });
 console.log(
   "ingestOnce: " + result.eventsStored + " events stored in " + result.pages + " RPC pages, ingested through ledger " +
     result.ingestedThrough + ", gaps: " + result.gaps.length + ", caught up: " + result.caughtUp + " (" + (Date.now() - started) + " ms)",
@@ -54,7 +65,7 @@ console.log(
 
 const busiest = await db.query(
   "select a as account, count(*)::int as n from events, unnest(accounts) a where contract_id = $1 group by a order by n desc, a limit 1",
-  [SPIKE_TOKEN],
+  [TOKEN],
 );
 if (busiest.length === 0) {
   console.log("FAIL: no token events were archived");
@@ -62,7 +73,7 @@ if (busiest.length === 0) {
 }
 const account = busiest[0].account;
 
-const ctx = { cfg, db: { ingest: db, api: db }, rpc, log, archiveStartLedger: SPIKE_START_LEDGER };
+const ctx = { cfg, db: { ingest: db, api: db }, rpc, log };
 const call = async (path) => {
   const res = await archiveHandler(new Request("http://archive.local" + path), ctx);
   return { status: res.status, body: await res.json() };
@@ -74,7 +85,7 @@ let cursor = null;
 let ingestedThrough = 0;
 do {
   const { status, body } = await call(
-    "/v1/tokens/" + SPIKE_TOKEN + "/accounts/" + account + "/events?from_ledger=0&limit=200" + (cursor ? "&cursor=" + cursor : ""),
+    "/v1/tokens/" + TOKEN + "/accounts/" + account + "/events?from_ledger=0&limit=200" + (cursor ? "&cursor=" + cursor : ""),
   );
   if (status !== 200) {
     console.log("FAIL: events endpoint answered " + status + " " + JSON.stringify(body));
@@ -100,14 +111,14 @@ console.log(
   "health: latest " + health.latest_ledger + ", ingested_from " + health.ingested_from + ", complete " + health.complete +
     ", alarm " + health.alarm,
 );
-const checkpoint = (await call("/v1/tokens/" + SPIKE_TOKEN + "/accounts/" + account + "/checkpoint")).body;
+const checkpoint = (await call("/v1/tokens/" + TOKEN + "/accounts/" + account + "/checkpoint")).body;
 console.log("checkpoint: " + (checkpoint.event ? "ledger " + checkpoint.event.ledger_seq : "none") + ", complete " + checkpoint.complete);
-const payroll = (await call("/v1/payroll/" + DUMMY_PAYROLL + "/companies/1/events?from_ledger=0")).body;
-console.log("dummy payroll company 1: " + payroll.events.length + " events, complete " + payroll.complete);
-const stream = (await call("/contracts/" + SPIKE_TOKEN + "/events?startLedger=" + SPIKE_START_LEDGER)).body;
+const payroll = (await call("/v1/payroll/" + PAYROLL + "/companies/1/events?from_ledger=0")).body;
+console.log("payroll company 1: " + payroll.events.length + " events, complete " + payroll.complete);
+const stream = (await call("/contracts/" + TOKEN + "/events?startLedger=" + START_LEDGER)).body;
 console.log("token stream (SDK IndexerClient shape): " + stream.events.length + " events, complete " + stream.complete);
 for (const line of warnings) console.log("log: " + line);
 
-const pass = rows.length > 0 && complete && health.complete && !health.alarm && payroll.complete;
+const pass = rows.length > 0 && complete && health.ingested_from === 1 && health.complete && !health.alarm && payroll.complete;
 console.log(pass ? "RESULT: PASS" : "RESULT: FAIL");
 process.exit(pass ? 0 : 1);

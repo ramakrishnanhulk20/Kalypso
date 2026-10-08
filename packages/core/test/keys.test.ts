@@ -11,9 +11,10 @@ import {
   KeyError,
   PrfUnavailableError,
   deriveFromPrf,
-  deriveFromWalletSignature,
+  deriveFromWalletSignatures,
   prfEvalSalt,
   requirePrfOutput,
+  requireReproducible,
   walletKeyMessage,
   type KeyErrorCode,
   type PrfUnavailableReason,
@@ -39,6 +40,8 @@ const signature = fromHex(wallet.signatureHex);
 const prfOutput = fromHex(prf.prfOutputHex);
 const messageParams = { domain: wallet.domain, network: 'testnet' as const, token: wallet.token, account: wallet.account };
 const testWallet = seededWallet('kalypso test vector wallet, testnet only');
+// The test wallet signs deterministically, so asking it twice gives these same bytes twice.
+const derive = (sig: Uint8Array, p: typeof messageParams = messageParams) => deriveFromWalletSignatures(sig, sig, p);
 
 function keyCode(fn: () => unknown): KeyErrorCode | undefined {
   try {
@@ -104,7 +107,7 @@ describe('pinned vectors', () => {
 
   it('derives the pinned keys from the valid signature', () => {
     vi.mocked(deriveSk).mockClear();
-    const keys = deriveFromWalletSignature(signature, messageParams);
+    const keys = derive(signature, messageParams);
     expect(deriveSk).toHaveBeenCalledTimes(1);
     expect(field(keys.addrF)).toBe(wallet.addrF);
     expect(field(keys.acctF)).toBe(wallet.acctF);
@@ -169,9 +172,9 @@ describe('walletKeyMessage', () => {
   });
 });
 
-describe('deriveFromWalletSignature', () => {
+describe('deriveFromWalletSignatures', () => {
   it('returns the SDK key pair for (token, account), usable as the SDK derives it', () => {
-    const keys = deriveFromWalletSignature(signature, messageParams);
+    const keys = derive(signature, messageParams);
     expect(keys.addrF).toBe(addressToField(wallet.token));
     expect(keys.acctF).toBe(addressToField(wallet.account));
     const again = deriveKeys(keys.sk, keys.addrF, keys.acctF);
@@ -181,7 +184,7 @@ describe('deriveFromWalletSignature', () => {
 
   it('decodes the addresses before verifying, so padded inputs give the same keys', () => {
     const padded = { ...messageParams, token: ` ${wallet.token} `, account: `${wallet.account}\n` };
-    expect(yOf(deriveFromWalletSignature(signature, padded))).toBe(wallet.Y);
+    expect(yOf(derive(signature, padded))).toBe(wallet.Y);
   });
 
   it.each<[string, () => Uint8Array]>([
@@ -198,39 +201,50 @@ describe('deriveFromWalletSignature', () => {
     expect(bad).toHaveLength(64);
     expect(toHex(bad)).not.toBe(wallet.signatureHex);
     vi.mocked(deriveSk).mockClear();
-    expect(keyCode(() => deriveFromWalletSignature(bad, messageParams))).toBe('BAD_SIGNATURE');
+    expect(keyCode(() => derive(bad, messageParams))).toBe('BAD_SIGNATURE');
     expect(deriveSk).not.toHaveBeenCalled();
   });
 
   it('is bound to this app: the same wallet signing for another domain gets a different key', () => {
     const otherParams = { ...messageParams, domain: 'kalypso-pay.app' };
     const otherSignature = signWith(testWallet, walletKeyMessage(otherParams));
-    expect(yOf(deriveFromWalletSignature(otherSignature, otherParams))).not.toBe(wallet.Y);
+    expect(yOf(derive(otherSignature, otherParams))).not.toBe(wallet.Y);
   });
 
   it('gives different keys for a different token or account', () => {
     const tokenParams = { ...messageParams, token: StrKey.encodeContract(Buffer.alloc(32, 9)) };
-    expect(yOf(deriveFromWalletSignature(signWith(testWallet, walletKeyMessage(tokenParams)), tokenParams))).not.toBe(wallet.Y);
+    expect(yOf(derive(signWith(testWallet, walletKeyMessage(tokenParams)), tokenParams))).not.toBe(wallet.Y);
 
     const otherWallet = seededWallet('another wallet');
     const accountParams = { ...messageParams, account: otherWallet.publicKey() };
-    expect(yOf(deriveFromWalletSignature(signWith(otherWallet, walletKeyMessage(accountParams)), accountParams))).not.toBe(wallet.Y);
+    expect(yOf(derive(signWith(otherWallet, walletKeyMessage(accountParams)), accountParams))).not.toBe(wallet.Y);
   });
 
   it('refuses a signature that is not 64 bytes, all zero, or not bytes', () => {
-    expect(keyCode(() => deriveFromWalletSignature(signature.slice(0, 63), messageParams))).toBe('SIGNATURE_LENGTH');
-    expect(keyCode(() => deriveFromWalletSignature(new Uint8Array(65).fill(1), messageParams))).toBe('SIGNATURE_LENGTH');
-    expect(keyCode(() => deriveFromWalletSignature(new Uint8Array(64), messageParams))).toBe('ALL_ZERO');
-    expect(keyCode(() => deriveFromWalletSignature([...signature] as unknown as Uint8Array, messageParams))).toBe('NOT_BYTES');
-    expect(keyCode(() => deriveFromWalletSignature(wallet.signatureHex as unknown as Uint8Array, messageParams))).toBe('NOT_BYTES');
-    expect(yOf(deriveFromWalletSignature(Buffer.from(signature), messageParams))).toBe(wallet.Y);
+    expect(keyCode(() => derive(signature.slice(0, 63), messageParams))).toBe('SIGNATURE_LENGTH');
+    expect(keyCode(() => derive(new Uint8Array(65).fill(1), messageParams))).toBe('SIGNATURE_LENGTH');
+    expect(keyCode(() => derive(new Uint8Array(64), messageParams))).toBe('ALL_ZERO');
+    expect(keyCode(() => derive([...signature] as unknown as Uint8Array, messageParams))).toBe('NOT_BYTES');
+    expect(keyCode(() => derive(wallet.signatureHex as unknown as Uint8Array, messageParams))).toBe('NOT_BYTES');
+    expect(yOf(derive(Buffer.from(signature), messageParams))).toBe(wallet.Y);
+  });
+
+  it('refuses a second signature that does not verify, or is not 64 bytes, before deriving anything', () => {
+    const flipped = signature.slice();
+    flipped[9] = (flipped[9] ?? 0) ^ 0x04;
+    vi.mocked(deriveSk).mockClear();
+    expect(keyCode(() => deriveFromWalletSignatures(signature, flipped, messageParams))).toBe('BAD_SIGNATURE');
+    expect(keyCode(() => deriveFromWalletSignatures(flipped, signature, messageParams))).toBe('BAD_SIGNATURE');
+    expect(keyCode(() => deriveFromWalletSignatures(signature, signature.slice(0, 63), messageParams))).toBe('SIGNATURE_LENGTH');
+    expect(deriveSk).not.toHaveBeenCalled();
+    expect(yOf(deriveFromWalletSignatures(signature, signature.slice(), messageParams))).toBe(wallet.Y);
   });
 
   it('refuses bad message parameters before checking the signature', () => {
-    expect(keyCode(() => deriveFromWalletSignature(signature, { ...messageParams, token: wallet.account }))).toBe('TOKEN');
-    expect(keyCode(() => deriveFromWalletSignature(signature, { ...messageParams, account: prf.account }))).toBe('ACCOUNT');
-    expect(keyCode(() => deriveFromWalletSignature(signature, { ...messageParams, domain: 'https://kalypso-payroll.vercel.app' }))).toBe('DOMAIN');
-    expect(keyCode(() => deriveFromWalletSignature(signature, { ...messageParams, network: 'public' as 'testnet' }))).toBe('NETWORK');
+    expect(keyCode(() => derive(signature, { ...messageParams, token: wallet.account }))).toBe('TOKEN');
+    expect(keyCode(() => derive(signature, { ...messageParams, account: prf.account }))).toBe('ACCOUNT');
+    expect(keyCode(() => derive(signature, { ...messageParams, domain: 'https://kalypso-payroll.vercel.app' }))).toBe('DOMAIN');
+    expect(keyCode(() => derive(signature, { ...messageParams, network: 'public' as 'testnet' }))).toBe('NETWORK');
   });
 
   it('never puts key material in an error', () => {
@@ -238,7 +252,7 @@ describe('deriveFromWalletSignature', () => {
     flipped[0] = (flipped[0] ?? 0) ^ 0x01;
     for (const bad of [signature.slice(0, 63), flipped]) {
       try {
-        deriveFromWalletSignature(bad, messageParams);
+        derive(bad, messageParams);
         expect.unreachable();
       } catch (err) {
         expect(err).toBeInstanceOf(KeyError);
@@ -247,6 +261,43 @@ describe('deriveFromWalletSignature', () => {
         expect(text).not.toContain(wallet.signatureHex.slice(2, 18));
         expect(text).not.toContain(Buffer.from(bad.slice(0, 12)).toString('base64'));
       }
+    }
+  });
+});
+
+describe('requireReproducible (C15)', () => {
+  it('accepts the same 64 bytes twice, as a deterministic wallet signs, from any byte view', () => {
+    const again = signWith(testWallet, wallet.message);
+    expect(toHex(again)).toBe(wallet.signatureHex);
+    expect(keyCode(() => requireReproducible(signature, again))).toBeUndefined();
+    expect(keyCode(() => requireReproducible(Buffer.from(signature), signature.slice()))).toBeUndefined();
+  });
+
+  it.each<[string, () => [unknown, unknown]]>([
+    ['two signatures one bit apart', () => { const s = signature.slice(); s[63] = (s[63] ?? 0) ^ 0x01; return [signature, s]; }],
+    ['a signature by another wallet', () => [signature, signWith(seededWallet('another wallet'), wallet.message)]],
+    ['the same 63 bytes twice', () => [signature.slice(0, 63), signature.slice(0, 63)]],
+    ['the same 65 bytes twice', () => [new Uint8Array(65).fill(7), new Uint8Array(65).fill(7)]],
+    ['a 64-byte signature and a longer one that starts with it', () => [signature, new Uint8Array([...signature, 0])]],
+    ['plain arrays', () => [[...signature], [...signature]]],
+    ['hex strings', () => [wallet.signatureHex, wallet.signatureHex]],
+    ['nothing', () => [undefined, undefined]],
+  ])('refuses %s with NOT_REPRODUCIBLE', (_label, make) => {
+    const [first, second] = make();
+    expect(keyCode(() => requireReproducible(first as Uint8Array, second as Uint8Array))).toBe('NOT_REPRODUCIBLE');
+  });
+
+  it('tells the user to use a deterministic wallet, without any signature bytes in the message', () => {
+    const flipped = signature.slice();
+    flipped[0] = (flipped[0] ?? 0) ^ 0x01;
+    try {
+      requireReproducible(signature, flipped);
+      expect.unreachable();
+    } catch (err) {
+      expect((err as Error).message).toBe(
+        'This wallet gave two different signatures for the same message, so it cannot rebuild your key next time. Use a wallet that signs deterministically, such as Freighter.',
+      );
+      expect(`${String(err)} ${JSON.stringify(err)}`).not.toContain(wallet.signatureHex.slice(2, 18));
     }
   });
 });
@@ -334,14 +385,14 @@ describe('no output channels', () => {
       vi.spyOn(console, name).mockImplementation(() => undefined),
     );
     walletKeyMessage(messageParams);
-    deriveFromWalletSignature(signature, messageParams);
+    derive(signature, messageParams);
     deriveFromPrf(requirePrfOutput({ prf: { results: { first: prfOutput.slice().buffer } } }), prf.token, prf.account);
     const flipped = signature.slice();
     flipped[5] = (flipped[5] ?? 0) ^ 0x02;
     for (const fn of [
       () => requirePrfOutput({}),
-      () => deriveFromWalletSignature(new Uint8Array(3), messageParams),
-      () => deriveFromWalletSignature(flipped, messageParams),
+      () => derive(new Uint8Array(3), messageParams),
+      () => derive(flipped, messageParams),
     ]) {
       expect(fn).toThrow();
     }

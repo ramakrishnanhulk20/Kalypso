@@ -138,15 +138,17 @@ Payroll contract (`packages/contracts/payroll/src/contract.rs` holds the exact s
 
 | Call | Who signs | What it does |
 |---|---|---|
-| `create_company(admin, auditor_id, label)` | admin | New company; admin must already be registered with the token under `auditor_id` |
-| `propose_admin` / `cancel_admin_proposal` / `accept_admin` | current admin, then the incoming admin | Two-step handover; the incoming admin must be registered under the company's auditor id |
+| `create_company(admin, accountant, auditor_id, label)` | admin (the accountant does not sign) | New company; admin must already be registered with the token under `auditor_id`, and the auditor registry must say `accountant` owns `auditor_id`, else error 23 `AuditorNotOwnedByAccountant`. Error 24 `TokenUnavailable` when the token cannot be read for any reason other than an unregistered admin |
+| `propose_admin` / `cancel_admin_proposal` / `accept_admin` | current admin, then the incoming admin | Two-step handover; the offer must expire by the network's furthest storage ledger (`max_live_until_ledger`); the incoming admin must be registered under the company's auditor id |
 | `invite_worker(company_id, worker)` / `revoke_invite` | admin | Invite, or withdraw an unaccepted invite |
 | `accept_invite(company_id, worker)` | worker | Joins the roster; the worker must already be registered with the token |
 | `remove_worker(company_id, worker)` | admin | Leaves pay history in place |
 | `open_run(company_id, run_id, period_label, expected_count)` | admin | A run id opens once per company, ever |
 | `pay(company_id, run_id, items)` | admin | 1 or 2 `(worker, proof data)` items; each worker at most once per run |
 | `close_run(company_id, run_id)` | admin | No more pay in this run |
-| `get_company`, `get_run`, `is_paid`, `worker_status`, `get_roster`, `pending_admin`, `token`, `company_count` | none | Reads |
+| `get_company`, `get_run`, `is_paid`, `worker_status`, `get_roster`, `memberships_of(worker)`, `pending_admin`, `token`, `auditor_registry`, `company_count` | none | Reads |
+
+`get_company` returns `Company { admin, accountant, auditor_id, label, created_ledger, active_workers, roster_len, runs_opened, admin_changes }`. `accountant` is the registry's owner of `auditor_id` when the company was created and is not updated afterwards. `runs_opened` and `admin_changes` count every run opened and every completed handover, and `memberships_of(worker)` counts the companies a worker ever joined, so a history reader can tell when events are missing. The constructor is `__constructor(token, auditor_registry)`: both are fixed for the contract's life.
 
 Events carry no amounts: `CompanyCreated`, `AdminProposed`, `AdminProposalCancelled`, `AdminChanged`, `WorkerInvited`, `InviteRevoked`, `WorkerJoined`, `WorkerRemoved`, `RunOpened`, `PayslipIssued`, `RunClosed`. The first topic after the name is always `company_id`.
 

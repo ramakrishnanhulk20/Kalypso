@@ -47,7 +47,15 @@ export const PayrollErrorCode = {
   LimitInvalid: 20,
   CounterOverflow: 21,
   MissingRecord: 22,
+  AuditorNotOwnedByAccountant: 23,
+  TokenUnavailable: 24,
 } as const;
+
+/** Plain-English text for payroll refusals, keyed by PayrollErrorCode name. A code with no entry has no shared text. */
+export const PAYROLL_ERROR_MESSAGES: Readonly<Partial<Record<keyof typeof PayrollErrorCode, string>>> = {
+  AuditorNotOwnedByAccountant: 'The accountant named does not own this auditor id on chain, so the company was not created.',
+  TokenUnavailable: 'The confidential token did not answer, so nothing was changed. Try again shortly.',
+};
 
 /** The contract's RunStatus, in u32 order (Open = 0, Closed = 1). */
 export type RunStatus = 'Open' | 'Closed';
@@ -60,11 +68,15 @@ const WORKER_STATUSES = ['Invited', 'Active', 'Removed'] as const;
 /** The contract's Company. u32 fields are numbers, addresses are G or C strings. */
 export interface Company {
   admin: string;
+  /** Who the registry named as the owner of auditorId at creation. Not updated if the id changes hands later. */
+  accountant: string;
   auditorId: number;
   label: string;
   createdLedger: number;
   activeWorkers: number;
   rosterLen: number;
+  runsOpened: number;
+  adminChanges: number;
 }
 
 /** The contract's Run. */
@@ -93,10 +105,17 @@ const company = (id: bigint) => toScVal.u64(requireU64(id, 'companyId'));
 const run = (id: bigint) => toScVal.u64(requireU64(id, 'runId'));
 const account = (address: string) => toScVal.address(requireAccount(address, ['G', 'C']));
 
-/** create_company(admin, auditor_id, label). The admin signs and becomes the treasury. */
-export function buildCreateCompany(base: InvocationBase, p: { admin: string; auditorId: number; label: string }): string {
+/**
+ * create_company(admin, accountant, auditor_id, label). The admin signs and becomes the treasury.
+ * The accountant does not sign; the contract refuses unless the registry says it owns auditorId.
+ */
+export function buildCreateCompany(
+  base: InvocationBase,
+  p: { admin: string; accountant: string; auditorId: number; label: string },
+): string {
   return buildInvocation(base, 'create_company', [
     account(p.admin),
+    account(p.accountant),
     toScVal.u32(requireU32(p.auditorId, 'auditorId')),
     toScVal.string(requireLabel(p.label, MAX_COMPANY_LABEL_BYTES, 'label')),
   ]);
@@ -182,17 +201,30 @@ export function buildAcceptAdmin(base: InvocationBase, p: { companyId: bigint })
   return buildInvocation(base, 'accept_admin', [company(p.companyId)]);
 }
 
-const COMPANY_FIELDS = ['active_workers', 'admin', 'auditor_id', 'created_ledger', 'label', 'roster_len'] as const;
+const COMPANY_FIELDS = [
+  'accountant',
+  'active_workers',
+  'admin',
+  'admin_changes',
+  'auditor_id',
+  'created_ledger',
+  'label',
+  'roster_len',
+  'runs_opened',
+] as const;
 
 export function decodeCompany(value: xdr.ScVal): Company {
   const f = fromStruct(value, COMPANY_FIELDS, 'Company');
   return {
     admin: fromAddress(f.admin, 'Company.admin'),
+    accountant: fromAddress(f.accountant, 'Company.accountant'),
     auditorId: fromU32(f.auditor_id, 'Company.auditor_id'),
     label: fromString(f.label, 'Company.label'),
     createdLedger: fromU32(f.created_ledger, 'Company.created_ledger'),
     activeWorkers: fromU32(f.active_workers, 'Company.active_workers'),
     rosterLen: fromU32(f.roster_len, 'Company.roster_len'),
+    runsOpened: fromU32(f.runs_opened, 'Company.runs_opened'),
+    adminChanges: fromU32(f.admin_changes, 'Company.admin_changes'),
   };
 }
 
@@ -267,6 +299,16 @@ export async function getRoster(
       toScVal.u32(limit),
     ]),
   );
+}
+
+/**
+ * memberships_of: how many companies the worker has ever joined, counted once per company at
+ * the first accepted invite and never lowered. 0 for a worker who never joined one.
+ *
+ * @throws DecodeError when the answer is anything but a u32.
+ */
+export async function getMembershipsOf(port: ChainPort, payroll: string, worker: string): Promise<number> {
+  return fromU32(await port.read(requireAccount(payroll, ['C']), 'memberships_of', [account(worker)]), 'memberships_of');
 }
 
 /** True when err is the payroll contract refusing with this code. */

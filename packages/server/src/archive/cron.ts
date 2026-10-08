@@ -15,7 +15,7 @@ export interface IngestCronContext {
   db: Db;
   rpc: RpcClient;
   log: Logger;
-  /** Start ledger for the first ingest of an empty archive (see IngestOptions.startLedger). */
+  /** Overrides ARCHIVE_START_LEDGER for the first ingest of an empty archive (see IngestOptions.startLedger). */
   archiveStartLedger?: number;
   now?: () => Date;
   /** Tests shorten the deadline; production keeps INGEST_CRON_DEADLINE_MS. */
@@ -45,6 +45,7 @@ export async function ingestCronHandler(req: Request, ctx: IngestCronContext): P
   try {
     const result = await ingestOnce(ctx.db, ctx.rpc, ctx.cfg, {
       deadlineMs: ctx.deadlineMs ?? INGEST_CRON_DEADLINE_MS,
+      log: ctx.log,
       ...(ctx.archiveStartLedger === undefined ? {} : { startLedger: ctx.archiveStartLedger }),
       ...(ctx.now ? { now: ctx.now } : {}),
     });

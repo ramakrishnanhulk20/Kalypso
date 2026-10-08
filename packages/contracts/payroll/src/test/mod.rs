@@ -1,7 +1,8 @@
 //! Shared setup for the payroll unit tests: a fresh test ledger with
-//! testnet's storage lifetimes, the mock token, and helpers that sign each
-//! call as exactly one address through `mock_auths`. No unit test uses
-//! `mock_all_auths`, so a missing or wrong signature always fails.
+//! testnet's storage lifetimes, the mock token, the real auditor registry,
+//! and helpers that sign each call as exactly one address through
+//! `mock_auths`. No unit test uses `mock_all_auths`, so a missing or wrong
+//! signature always fails.
 //!
 //! Not covered by the unit tests: real proofs, the real token's balance and
 //! proof checks, transaction size and CPU limits, and rent costs. M2c
@@ -14,6 +15,7 @@ mod company;
 mod events;
 mod mock_token;
 mod pay;
+mod registry;
 mod runs;
 mod workers;
 
@@ -30,6 +32,7 @@ use soroban_sdk::{
 use crate::storage::WorkerRecord;
 use crate::{Company, Payroll, PayrollClient, PayrollError, Run, WorkerStatus};
 use mock_token::{register_account, MockToken, MockTokenClient, RecordedTransfer};
+use registry::{deploy_registry, owner_of, register_auditors_through};
 
 /// Testnet's minimum entry lifetimes on 7 Oct 2026 (reference/stellar/now.md):
 /// about 1 hour for temporary entries and about 7 days for persistent ones.
@@ -44,6 +47,7 @@ pub struct Setup {
     pub e: Env,
     pub payroll: Address,
     pub token: Address,
+    pub registry: Address,
 }
 
 /// A company with an admin registered under `COMPANY_AUDITOR` and active
@@ -65,8 +69,32 @@ impl Setup {
         e.ledger()
             .set_min_persistent_entry_ttl(TESTNET_MIN_PERSISTENT_TTL);
         let token = e.register(MockToken, ());
-        let payroll = e.register(Payroll, (&token,));
-        Setup { e, payroll, token }
+        let registry = deploy_registry(&e);
+        register_auditors_through(&e, &registry, OTHER_AUDITOR);
+        let payroll = e.register(Payroll, (&token, &registry));
+        Setup {
+            e,
+            payroll,
+            token,
+            registry,
+        }
+    }
+
+    /// A second payroll on the same ledger, wired to `token` and `registry`
+    /// instead, for the cases where one of them does not answer as expected.
+    pub fn rewired(&self, token: &Address, registry: &Address) -> Setup {
+        Setup {
+            e: self.e.clone(),
+            payroll: self.e.register(Payroll, (token, registry)),
+            token: token.clone(),
+            registry: registry.clone(),
+        }
+    }
+
+    /// The owner of `auditor_id` in the registry: the accountant a company
+    /// under that id must name.
+    pub fn accountant(&self, auditor_id: u32) -> Address {
+        owner_of(&self.e, &self.registry, auditor_id)
     }
 
     pub fn client(&self) -> PayrollClient<'_> {
@@ -143,14 +171,34 @@ impl Setup {
         }]);
     }
 
+    /// Names the registry's owner of `auditor_id` as the accountant.
     pub fn create_company(&self, admin: &Address, auditor_id: u32, label: &str) -> u64 {
         let label = self.text(label);
+        let accountant = self.accountant(auditor_id);
         self.sign(
             admin,
             "create_company",
-            (admin, auditor_id, &label).into_val(&self.e),
+            (admin, &accountant, auditor_id, &label).into_val(&self.e),
         );
-        self.client().create_company(admin, &auditor_id, &label)
+        self.client()
+            .create_company(admin, &accountant, &auditor_id, &label)
+    }
+
+    /// Signs and tries `create_company` exactly as given, for refusals.
+    pub fn try_create_company(
+        &self,
+        admin: &Address,
+        accountant: &Address,
+        auditor_id: u32,
+        label: &String,
+    ) -> Result<Result<u64, Error>, Result<Error, InvokeError>> {
+        self.sign(
+            admin,
+            "create_company",
+            (admin, accountant, auditor_id, label).into_val(&self.e),
+        );
+        self.client()
+            .try_create_company(admin, accountant, &auditor_id, label)
     }
 
     pub fn invite(&self, company_id: u64, admin: &Address, worker: &Address) {

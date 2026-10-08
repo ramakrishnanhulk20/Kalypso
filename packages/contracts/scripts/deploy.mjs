@@ -4,7 +4,13 @@
 // done, so a second run changes nothing and a run that stopped halfway
 // resumes where it stopped.
 //
+// --payroll-only deploys a new payroll release against the token, verifier
+// and registry already recorded, which stay as they are. The payroll it
+// replaces is kept in the record under previous.payroll with its version, and
+// the record names each of our contracts' own release version.
+//
 //   npm run deploy:testnet [-- --wasm-dir <dir>] [--sha256sums <file>] [--fresh]
+//   npm run deploy:testnet -- --payroll-only --release v<x.y.z> --wasm-dir <dir> --sha256sums <file>
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -15,6 +21,7 @@ import {
   NETWORK_NAME,
   NETWORK_PASSPHRASE,
   OUR_PACKAGES,
+  RELEASED_VERSIONS,
   RPC_URL,
   SDK_PACKAGE,
   SDK_VERSION,
@@ -43,6 +50,7 @@ import {
   xlm,
 } from "./lib/chain.mjs";
 import {
+  payrollRegistryKey,
   payrollTokenKey,
   readVerificationKey,
   tokenWiring,
@@ -55,32 +63,47 @@ const short = (h) => `${h.slice(0, 8)}...`;
 const say = (text) => console.log(`  ${text}`);
 
 function parseFlags(argv) {
-  const flags = { wasmDir: null, sha256sums: null, fresh: false };
+  const flags = { wasmDir: null, sha256sums: null, fresh: false, payrollOnly: false, version: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--fresh") flags.fresh = true;
-    else if (a === "--wasm-dir" || a === "--sha256sums") {
+    else if (a === "--payroll-only") flags.payrollOnly = true;
+    else if (a === "--wasm-dir" || a === "--sha256sums" || a === "--release") {
       const v = argv[++i];
       if (!v || v.startsWith("--")) throw new Error(`${a} needs a value`);
-      flags[a === "--wasm-dir" ? "wasmDir" : "sha256sums"] = path.resolve(v);
+      if (a === "--release") {
+        // The wasm carries no version of its own, so the release tag it was downloaded from is the record.
+        const m = /^v?(\d+\.\d+\.\d+)$/.exec(v);
+        if (!m) throw new Error(`--release ${v} is not a release tag like v0.1.1`);
+        flags.version = m[1];
+      } else {
+        flags[a === "--wasm-dir" ? "wasmDir" : "sha256sums"] = path.resolve(v);
+      }
     } else {
-      throw new Error(`unknown argument ${a}. Flags: --wasm-dir <dir>, --sha256sums <file>, --fresh`);
+      throw new Error(`unknown argument ${a}. Flags: --wasm-dir <dir>, --sha256sums <file>, --fresh, --payroll-only, --release <tag>`);
     }
   }
+  if (flags.payrollOnly && flags.fresh) throw new Error("--payroll-only keeps the recorded token, verifier and registry, so it cannot run with --fresh");
+  if (flags.payrollOnly && flags.version === null) throw new Error("--payroll-only needs --release <tag>, the release the payroll wasm comes from");
+  if (!flags.payrollOnly && flags.version !== null) throw new Error("--release is recorded only with --payroll-only");
   return flags;
 }
 
 /** Every file and constant the deploy relies on, checked before any transaction. */
 function loadInputs(flags) {
   const wasmDir = flags.wasmDir ?? defaultWasmDir();
-  const ours = {
-    auditorRegistry: findBuiltWasm(wasmDir, OUR_PACKAGES.auditorRegistry),
-    payroll: findBuiltWasm(wasmDir, OUR_PACKAGES.payroll),
-  };
+  const ours = flags.payrollOnly
+    ? { payroll: findBuiltWasm(wasmDir, OUR_PACKAGES.payroll) }
+    : {
+        auditorRegistry: findBuiltWasm(wasmDir, OUR_PACKAGES.auditorRegistry),
+        payroll: findBuiltWasm(wasmDir, OUR_PACKAGES.payroll),
+      };
   if (flags.sha256sums) {
     const sums = parseSha256Sums(flags.sha256sums);
     for (const w of Object.values(ours)) requireListedInSums(w, sums);
   }
+  // Only the payroll is built or uploaded here; the rest of the stack is read from the chain.
+  if (flags.payrollOnly) return { wasmDir, ours };
 
   const sdkVersion = JSON.parse(readFileSync(path.join(VK_DIR, "..", "..", "package.json"), "utf8")).version;
   if (sdkVersion !== SDK_VERSION) throw new Error(`${SDK_PACKAGE} ${sdkVersion} is installed, expected ${SDK_VERSION}`);
@@ -144,6 +167,18 @@ function requireWasmExecutable(name, instance, expectedHash) {
   }
 }
 
+/** A confirm step: the payroll's instance holds the token and registry its constructor was given. */
+const payrollWiredTo = (tokenId, registryId) => (instance) => {
+  for (const [what, key, want] of [
+    ["token", payrollTokenKey, tokenId],
+    ["auditor registry", payrollRegistryKey, registryId],
+  ]) {
+    const v = instance.storageGet(key);
+    const got = v ? addressOf(v) : null;
+    if (got !== normalizeAddress(want)) throw new Error(`payroll ${what} is ${got}, expected ${want}`);
+  }
+};
+
 async function ensureFunded(publicKey) {
   if (await accountExists(publicKey)) return false;
   await server.fundAddress(publicKey);
@@ -161,7 +196,7 @@ async function main() {
   console.log(`stellar CLI: ${cli.version()}`);
   console.log(`wasm dir: ${inputs.wasmDir}`);
   for (const w of Object.values(inputs.ours)) console.log(`  ${w.label} sha256 ${w.hash}`);
-  if (flags.sha256sums) console.log(`  both match ${flags.sha256sums}`);
+  if (flags.sha256sums) console.log(`  ${flags.payrollOnly ? "it matches" : "both match"} ${flags.sha256sums}`);
 
   const identity = cli.ensureIdentity(identityName);
   const deployer = identity.publicKey;
@@ -169,6 +204,9 @@ async function main() {
   console.log(`deployer: ${identityName} ${deployer}${identity.created ? ", identity created" : ""}${funded ? ", funded by friendbot" : ""}`);
 
   let record = flags.fresh ? null : loadDeployment();
+  if (flags.payrollOnly && !record) {
+    throw new Error(`--payroll-only needs ${path.basename(DEPLOYMENT_FILE)} with the token, verifier and registry already deployed`);
+  }
   if (record && record.deployer?.publicKey !== deployer) {
     throw new Error(
       `${path.basename(DEPLOYMENT_FILE)} was deployed by ${record.deployer?.publicKey}, but DEPLOYER is ${deployer}. ` +
@@ -302,6 +340,114 @@ async function main() {
     say(`${label}: ${txLine(res)}`);
   }
 
+  function writeRecord() {
+    const finalText = saveDeployment(record);
+    if (finalText !== serializeDeployment(loadDeployment())) throw new Error("deployment file did not save");
+    say(finalText === startText ? "already done (unchanged)" : "written");
+  }
+
+  /**
+   * The payroll-only release path. Everything the new payroll is bound to must
+   * already be live and wired as recorded, because its constructor takes the
+   * token and registry for its whole life.
+   */
+  async function replacePayroll() {
+    console.log("[1/3] token, verifier and auditor registry already on chain");
+    const { verifier, auditorRegistry, token } = record.contracts;
+    const kept = [
+      ["verifier", verifier, VERIFIER_WASM.hash],
+      ["auditorRegistry", auditorRegistry, auditorRegistry?.wasmHash],
+      ["token", token, TOKEN_WASM.hash],
+    ];
+    for (const [name, entry, expectedHash] of kept) {
+      if (!entry?.id || !isRecorded(entry.deployTx)) {
+        throw new Error(`${path.basename(DEPLOYMENT_FILE)} has no deployed ${name}. Deploy the whole stack first`);
+      }
+      const instance = await readInstance(entry.id);
+      if (!instance) throw new Error(`${name} ${entry.id} has no instance on chain (testnet reset or archived)`);
+      requireWasmExecutable(name, instance, expectedHash);
+      if (name === "token") {
+        const got = tokenWiring(instance);
+        const want = { underlyingAsset: USDC_SAC, verifier: verifier.id, auditor: auditorRegistry.id };
+        for (const [k, v] of Object.entries(want)) {
+          if (got[k] !== normalizeAddress(v)) throw new Error(`token ${k} is ${got[k]}, expected ${v}`);
+        }
+      }
+      say(`${name}: ${entry.id}, live, wasm ${short(instance.wasmHash)}`);
+    }
+    say("token instance points at this verifier, this registry and the USDC SAC");
+    // Each of our contracts keeps its own release: the registry stays on the one it was deployed
+    // from even when the payroll's release also builds a registry. The token and verifier are
+    // pinned by hash instead.
+    const registryVersion = auditorRegistry.version ?? RELEASED_VERSIONS[auditorRegistry.wasmHash];
+    if (!registryVersion) {
+      throw new Error(`the auditor registry runs wasm ${short(auditorRegistry.wasmHash)}, which is not a known release, so its version cannot be recorded`);
+    }
+    if (auditorRegistry.version !== registryVersion) {
+      auditorRegistry.version = registryVersion;
+      save();
+    }
+    say(`auditorRegistry: release v${registryVersion}, kept`);
+
+    console.log("[2/3] payroll");
+    const wasm = inputs.ours.payroll;
+    const current = record.contracts.payroll;
+    if (current && current.wasmHash !== wasm.hash) {
+      // Only a payroll the chain confirmed is retired. One whose deploy was never
+      // confirmed may still land, so it is finished with its own wasm first.
+      if (!isRecorded(current.deployTx)) {
+        throw new Error(
+          `payroll ${current.id} from ${short(current.wasmHash)} was never confirmed deployed. ` +
+            `Finish it with that wasm before deploying ${wasm.label}`,
+        );
+      }
+      const version = current.version ?? RELEASED_VERSIONS[current.wasmHash];
+      if (!version) {
+        throw new Error(`the deployed payroll ${current.id} runs wasm ${short(current.wasmHash)}, which is not a known release, so its version cannot be kept`);
+      }
+      if (version === flags.version) {
+        throw new Error(`the deployed payroll is already v${version} but runs another wasm than ${wasm.label}. Check --release and --wasm-dir`);
+      }
+      record.previous ??= {};
+      record.previous.payroll ??= [];
+      record.previous.payroll.push({ version, ...current });
+      delete record.contracts.payroll;
+      save();
+      say(`payroll ${current.id} (v${version}) kept under previous.payroll`);
+    } else if (current?.version && current.version !== flags.version) {
+      throw new Error(`payroll ${current.id} from this wasm is recorded as v${current.version}, not v${flags.version}`);
+    }
+
+    const payrollId = await deployContract("payroll", {
+      wasm,
+      ctorArgs: [scv.addr(token.id), scv.addr(auditorRegistry.id)],
+      constructorRecord: { token: token.id, auditorRegistry: auditorRegistry.id },
+      confirm: payrollWiredTo(token.id, auditorRegistry.id),
+    });
+    const deployed = record.contracts.payroll;
+    if (deployed.version !== flags.version) {
+      deployed.version = flags.version;
+      save();
+    }
+    say(`payroll instance holds token ${short(token.id)} and registry ${short(auditorRegistry.id)}`);
+
+    console.log("[3/3] deployments/testnet.json");
+    writeRecord();
+
+    console.log("");
+    console.log(`verifier          ${verifier.id}  kept`);
+    console.log(`auditor registry  ${auditorRegistry.id}  v${auditorRegistry.version}, kept`);
+    console.log(`token             ${token.id}  kept`);
+    console.log(`payroll           ${payrollId}  v${deployed.version}, deployed in ledger ${deployed.deployTx.ledger}`);
+    const retired = record.previous?.payroll?.at(-1);
+    if (retired) console.log(`previous payroll  ${retired.id}  v${retired.version}`);
+  }
+
+  if (flags.payrollOnly) {
+    await replacePayroll();
+    return;
+  }
+
   console.log("[1/5] verifier");
   const verifierId = await deployContract("verifier", {
     wasm: inputs.fixtures.verifier,
@@ -415,21 +561,17 @@ async function main() {
   });
 
   console.log("[4/5] payroll");
+  // The registry here is the one the token was just built with, which the payroll cannot read back
+  // from the token (no getter), so the deploy is what keeps the two the same.
   const payrollId = await deployContract("payroll", {
     wasm: inputs.ours.payroll,
-    ctorArgs: [scv.addr(tokenId)],
-    constructorRecord: { token: tokenId },
-    confirm: (instance) => {
-      const v = instance.storageGet(payrollTokenKey);
-      const got = v ? addressOf(v) : null;
-      if (got !== normalizeAddress(tokenId)) throw new Error(`payroll token is ${got}, expected ${tokenId}`);
-    },
+    ctorArgs: [scv.addr(tokenId), scv.addr(auditorId)],
+    constructorRecord: { token: tokenId, auditorRegistry: auditorId },
+    confirm: payrollWiredTo(tokenId, auditorId),
   });
 
   console.log("[5/5] deployments/testnet.json");
-  const finalText = saveDeployment(record);
-  if (finalText !== serializeDeployment(loadDeployment())) throw new Error("deployment file did not save");
-  say(finalText === startText ? "already done (unchanged)" : "written");
+  writeRecord();
 
   console.log("");
   console.log(`verifier          ${verifierId}`);

@@ -7,9 +7,12 @@
 //! never exceeds expected_count (C8); and that every new transfer came from
 //! that company's admin at that moment and went to a worker active there at
 //! that moment, never to the admin itself (C5). It also checks each call's
-//! exact result, and the whole readable state of both companies, against a
-//! model. One admin candidate per company is also one of the workers, so the
-//! WorkerIsAdmin refusals in invite, accept, pay and handover are exercised.
+//! exact result, and the whole readable state of both companies, including
+//! the runs_opened and admin_changes counters and each worker's membership
+//! count (the number of rosters the worker is on), against a model. One admin
+//! candidate per company is also one of the workers, so the WorkerIsAdmin
+//! refusals in invite, accept, pay and handover are exercised. The auditor
+//! registry is the real kalypso-auditor contract.
 //!
 //! Not covered here: real proofs and the real token, wrong signers other than
 //! another company's admin, storage lifetimes and transaction limits. The unit
@@ -21,6 +24,9 @@
 #[allow(dead_code)]
 #[path = "../src/test/mock_token.rs"]
 mod mock_token;
+#[allow(dead_code)]
+#[path = "../src/test/registry.rs"]
+mod registry;
 
 use kalypso_payroll::{
     Company, PayrollClient, PayrollError, PayslipIssued, PendingAdmin, Run, RunStatus,
@@ -28,6 +34,7 @@ use kalypso_payroll::{
 };
 use mock_token::{register_account, MockToken, MockTokenClient};
 use proptest::prelude::*;
+use registry::{deploy_registry, owner_of, register_auditors_through};
 use soroban_sdk::{
     testutils::{
         Address as _, EnvTestConfig, Events as _, Ledger, MockAuth, MockAuthInvoke,
@@ -165,6 +172,8 @@ struct CompanyModel {
     active: u32,
     runs: [Option<RunModel>; RUNS],
     created_ledger: u32,
+    runs_opened: u32,
+    admin_changes: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -235,6 +244,7 @@ fn predict(company: &mut CompanyModel, op: &Op, seq: u32) -> Result<Vec<usize>, 
             if expected == 0 || expected > company.active {
                 return fail(PayrollError::ExpectedCountInvalid);
             }
+            company.runs_opened += 1;
             company.runs[r] = Some(RunModel {
                 open: true,
                 expected,
@@ -314,6 +324,7 @@ fn predict(company: &mut CompanyModel, op: &Op, seq: u32) -> Result<Vec<usize>, 
                 return fail(PayrollError::AuditorMismatch);
             }
             company.admin = candidate;
+            company.admin_changes += 1;
             company.pending = None;
             Ok(vec![])
         }
@@ -335,6 +346,8 @@ struct World {
     e: Env,
     payroll: Address,
     token: Address,
+    /// The registry's owner of each company's auditor id.
+    accountants: [Address; SLOTS],
     candidates: [[Address; CANDIDATES]; SLOTS],
     workers: [Address; WORKERS],
 }
@@ -347,7 +360,10 @@ impl World {
         e.ledger().set_sequence_number(1_000);
         e.ledger().set_min_persistent_entry_ttl(120_960);
         let token = e.register(MockToken, ());
-        let payroll = e.register(kalypso_payroll::Payroll, (&token,));
+        let registry = deploy_registry(&e);
+        register_auditors_through(&e, &registry, AUDITOR[1]);
+        let accountants = AUDITOR.map(|auditor_id| owner_of(&e, &registry, auditor_id));
+        let payroll = e.register(kalypso_payroll::Payroll, (&token, &registry));
         // Workers 0 and 1 are registered under company 0's and company 1's
         // auditor id, so each can also be handed its company.
         let workers: [Address; WORKERS] = core::array::from_fn(|w| {
@@ -374,6 +390,7 @@ impl World {
             e,
             payroll,
             token,
+            accountants,
             candidates,
             workers,
         }
@@ -479,11 +496,14 @@ impl World {
         Snapshot {
             company: Company {
                 admin: self.candidates[slot][company.admin].clone(),
+                accountant: self.accountants[slot].clone(),
                 auditor_id: AUDITOR[slot],
                 label: self.label(slot),
                 created_ledger: company.created_ledger,
                 active_workers: company.active,
                 roster_len: company.roster.len() as u32,
+                runs_opened: company.runs_opened,
+                admin_changes: company.admin_changes,
             },
             runs: core::array::from_fn(|r| {
                 company.runs[r].as_ref().map(|run| Run {
@@ -547,9 +567,14 @@ fn call(world: &World, model: &Model, op: &Op, step: usize) -> Result<(), Error>
     match *op {
         Op::Create(slot) => {
             let founder = &world.candidates[slot][0];
+            let accountant = &world.accountants[slot];
             let label = world.label(slot);
-            world.sign(founder, "create_company", (founder, AUDITOR[slot], &label).into_val(e));
-            flatten(c.try_create_company(founder, &AUDITOR[slot], &label))
+            world.sign(
+                founder,
+                "create_company",
+                (founder, accountant, AUDITOR[slot], &label).into_val(e),
+            );
+            flatten(c.try_create_company(founder, accountant, &AUDITOR[slot], &label))
         }
         Op::Invite(slot, w) => {
             let id = company(slot).id;
@@ -695,7 +720,10 @@ fn step(world: &World, model: &mut Model, seen: &mut Observed, op: &Op, step_ind
                 active: 0,
                 runs: [None, None],
                 created_ledger: seq,
+                runs_opened: 0,
+                admin_changes: 0,
             });
+
             next.next_id += 1;
             Ok(vec![])
         }
@@ -795,6 +823,20 @@ fn step(world: &World, model: &mut Model, seen: &mut Observed, op: &Op, step_ind
 
     if actual.is_ok() {
         *model = next;
+    }
+
+    for (w, worker) in world.workers.iter().enumerate() {
+        let rosters = model
+            .companies
+            .iter()
+            .flatten()
+            .filter(|company| company.roster.contains(&w))
+            .count() as u32;
+        assert_eq!(
+            world.client().memberships_of(worker),
+            rosters,
+            "memberships of worker {w} after {op:?}"
+        );
     }
 
     for slot in 0..SLOTS {

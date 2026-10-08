@@ -1,4 +1,6 @@
-use soroban_sdk::{contract, contractimpl, panic_with_error, Address, Bytes, Env, String, Vec};
+use soroban_sdk::{
+    contract, contractclient, contractimpl, panic_with_error, Address, Bytes, Env, String, Vec,
+};
 
 use crate::errors::PayrollError;
 use crate::events::{
@@ -21,17 +23,34 @@ pub const MAX_PERIOD_LABEL_BYTES: u32 = 32;
 /// Most roster entries one `get_roster` call returns, which bounds the read.
 pub const MAX_ROSTER_PAGE: u32 = 50;
 
+/// The one kalypso-auditor function the payroll calls, declared by hand so
+/// the payroll's build never imports the registry's wasm. The signature
+/// matches `AuditorRegistry::owner_of` in packages/contracts/auditor. Only
+/// the generated client is used; nothing implements the trait, hence the
+/// dead-code allowance.
+#[allow(dead_code)]
+#[contractclient(name = "AuditorRegistryClient")]
+pub trait AuditorRegistry {
+    fn owner_of(e: Env, auditor_id: u32) -> Address;
+}
+
 #[contract]
 pub struct Payroll;
 
 #[contractimpl]
 impl Payroll {
-    /// Binds the contract to one confidential token for its whole life.
+    /// Binds the contract to one confidential token and one auditor registry
+    /// for its whole life.
+    ///
+    /// `auditor_registry` must be the registry the token reads auditor keys
+    /// from. The token publishes no getter for it, so this cannot be checked
+    /// here; the deploy passes the address the token was built with.
     ///
     /// Runs once, inside the deploy transaction, so nobody can call it later
     /// and no signature is checked. Emits no event.
-    pub fn __constructor(e: Env, token: Address) {
+    pub fn __constructor(e: Env, token: Address, auditor_registry: Address) {
         storage::set_token(&e, &token);
+        storage::set_auditor_registry(&e, &auditor_registry);
         storage::extend_instance(&e);
     }
 
@@ -39,18 +58,31 @@ impl Payroll {
     ///
     /// `admin` must authorize. `admin` becomes the company's treasury, so it
     /// must already be registered with the token, and the auditor id it is
-    /// registered under must equal `auditor_id`.
+    /// registered under must equal `auditor_id`. The auditor registry must
+    /// then say `accountant` owns `auditor_id`, so a treasury bound to an id
+    /// somebody else registered first is refused. `accountant` does not sign
+    /// and is stored in the new `Company.accountant` field.
     ///
     /// Fails with `LabelInvalid` if `label` is empty or longer than 64 bytes,
     /// `NotRegisteredWithToken` if the token has no account for `admin`,
-    /// `AuditorMismatch` if the registered auditor id differs, and
+    /// `TokenUnavailable` if the token cannot be read for any other reason,
+    /// `AuditorMismatch` if the registered auditor id differs,
+    /// `AuditorNotOwnedByAccountant` if the registry names another owner for
+    /// `auditor_id`, does not know the id, or cannot be read, and
     /// `CounterOverflow` if every company id has been used.
     ///
-    /// Emits `CompanyCreated`.
-    pub fn create_company(e: Env, admin: Address, auditor_id: u32, label: String) -> u64 {
+    /// Emits `CompanyCreated`, which carries `accountant`.
+    pub fn create_company(
+        e: Env,
+        admin: Address,
+        accountant: Address,
+        auditor_id: u32,
+        label: String,
+    ) -> u64 {
         admin.require_auth();
         require_label(&e, &label, MAX_COMPANY_LABEL_BYTES);
         require_registered_under(&e, &admin, auditor_id);
+        require_owned_by(&e, auditor_id, &accountant);
 
         let company_id = storage::next_company_id(&e);
         let next_company_id = company_id
@@ -59,11 +91,14 @@ impl Payroll {
         storage::set_next_company_id(&e, next_company_id);
         let company = Company {
             admin: admin.clone(),
+            accountant: accountant.clone(),
             auditor_id,
             label: label.clone(),
             created_ledger: e.ledger().sequence(),
             active_workers: 0,
             roster_len: 0,
+            runs_opened: 0,
+            admin_changes: 0,
         };
         storage::set_company(&e, company_id, &company);
         storage::extend_instance(&e);
@@ -71,6 +106,7 @@ impl Payroll {
         CompanyCreated {
             company_id,
             admin,
+            accountant,
             auditor_id,
             label,
         }
@@ -85,12 +121,18 @@ impl Payroll {
     /// The current admin must authorize.
     ///
     /// Fails with `CompanyNotFound`, or `InvalidLiveUntil` if
-    /// `live_until_ledger` is not after the current ledger.
+    /// `live_until_ledger` is not after the current ledger or is past the
+    /// furthest ledger the network lets a storage entry live to
+    /// (`max_live_until_ledger`).
     ///
     /// Emits `AdminProposed`.
     pub fn propose_admin(e: Env, company_id: u64, new_admin: Address, live_until_ledger: u32) {
         load_company_as_admin(&e, company_id);
-        if live_until_ledger <= e.ledger().sequence() {
+        // The upper bound matches the auditor registry's: an offer can be
+        // stored for its whole window, and none stays acceptable for years.
+        if live_until_ledger <= e.ledger().sequence()
+            || live_until_ledger > e.ledger().max_live_until_ledger()
+        {
             panic_with_error!(&e, PayrollError::InvalidLiveUntil);
         }
 
@@ -137,10 +179,15 @@ impl Payroll {
     /// registered with the token under the company's auditor id, so the
     /// company's accountant keeps reading every payment after the handover.
     ///
+    /// Raises the company's `admin_changes` by one, so a history reader can
+    /// check it holds every `AdminChanged` event.
+    ///
     /// Fails with `CompanyNotFound`, `NoPendingAdmin`, `AdminTransferExpired`
     /// if the current ledger is after `live_until_ledger`, `WorkerIsAdmin` if
     /// the proposed admin is invited or active here, `NotRegisteredWithToken`,
-    /// or `AuditorMismatch`.
+    /// `TokenUnavailable` if the token cannot be read for any other reason,
+    /// `AuditorMismatch`, or `CounterOverflow` if `admin_changes` is already
+    /// at its limit.
     ///
     /// Emits `AdminChanged`.
     pub fn accept_admin(e: Env, company_id: u64) {
@@ -161,6 +208,10 @@ impl Payroll {
 
         let previous_admin = company.admin.clone();
         company.admin = pending.new_admin.clone();
+        company.admin_changes = company
+            .admin_changes
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
         storage::set_company(&e, company_id, &company);
         storage::remove_pending_admin(&e, company_id);
         storage::extend_instance(&e);
@@ -232,7 +283,9 @@ impl Payroll {
     }
 
     /// Accepts an invite. The worker becomes active and is appended to the
-    /// roster the first time they join.
+    /// roster the first time they join. That first join also raises the
+    /// worker's `memberships_of` count by one; rejoining after removal does
+    /// not, because the roster entry already exists.
     ///
     /// `worker` must authorize, must not be the company's current admin, and
     /// must be registered with the token under any auditor id: a worker keeps
@@ -240,8 +293,10 @@ impl Payroll {
     ///
     /// Fails with `CompanyNotFound`, `WorkerIsAdmin` if `worker` is the
     /// admin, `InviteNotFound` if the worker's status is not `Invited`,
-    /// `NotRegisteredWithToken`, or `CounterOverflow` if the roster length or
-    /// the active worker count is already at its limit.
+    /// `NotRegisteredWithToken`, `TokenUnavailable` if the token cannot be
+    /// read for any other reason, or `CounterOverflow` if the roster length,
+    /// the active worker count or the worker's membership count is already
+    /// at its limit.
     ///
     /// Emits `WorkerJoined`.
     pub fn accept_invite(e: Env, company_id: u64, worker: Address) {
@@ -266,6 +321,10 @@ impl Payroll {
                 .roster_len
                 .checked_add(1)
                 .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
+            let memberships = storage::memberships(&e, &worker)
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
+            storage::set_memberships(&e, &worker, memberships);
             record.on_roster = true;
         }
         record.status = WorkerStatus::Active;
@@ -310,14 +369,17 @@ impl Payroll {
     }
 
     /// Opens pay run `run_id` for the company. A run id opens once per
-    /// company, ever: a closed run can never be reopened.
+    /// company, ever: a closed run can never be reopened. Raises the
+    /// company's `runs_opened` by one, so a history reader can check it
+    /// holds every `RunOpened` event even though run ids are not listed.
     ///
     /// The admin must authorize.
     ///
     /// Fails with `CompanyNotFound`, `RunExists` if this company already used
     /// `run_id`, `LabelInvalid` if `period_label` is empty or longer than 32
-    /// bytes, or `ExpectedCountInvalid` unless `expected_count` is between 1
-    /// and the number of active workers.
+    /// bytes, `ExpectedCountInvalid` unless `expected_count` is between 1
+    /// and the number of active workers, or `CounterOverflow` if
+    /// `runs_opened` is already at its limit.
     ///
     /// Emits `RunOpened`.
     pub fn open_run(
@@ -327,7 +389,7 @@ impl Payroll {
         period_label: String,
         expected_count: u32,
     ) {
-        let company = load_company_as_admin(&e, company_id);
+        let mut company = load_company_as_admin(&e, company_id);
         if storage::has_run(&e, company_id, run_id) {
             panic_with_error!(&e, PayrollError::RunExists);
         }
@@ -335,6 +397,10 @@ impl Payroll {
         if expected_count == 0 || expected_count > company.active_workers {
             panic_with_error!(&e, PayrollError::ExpectedCountInvalid);
         }
+        company.runs_opened = company
+            .runs_opened
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, PayrollError::CounterOverflow));
 
         let run = Run {
             status: RunStatus::Open,
@@ -344,6 +410,7 @@ impl Payroll {
             opened_ledger: e.ledger().sequence(),
         };
         storage::set_run(&e, company_id, run_id, &run);
+        storage::set_company(&e, company_id, &company);
         storage::extend_instance(&e);
 
         RunOpened {
@@ -460,7 +527,8 @@ impl Payroll {
         .publish(&e);
     }
 
-    /// Returns the company. Needs no signature.
+    /// Returns the company, including the `accountant` named at creation.
+    /// Needs no signature.
     ///
     /// Fails with `CompanyNotFound`.
     pub fn get_company(e: Env, company_id: u64) -> Company {
@@ -513,6 +581,16 @@ impl Payroll {
         page
     }
 
+    /// Returns how many companies `worker` has ever joined, or 0 for a worker
+    /// who never joined one. Counted once per company, at the first accepted
+    /// invite, and never lowered. A history reader compares it with the
+    /// companies it holds for the worker; with each company's `runs_opened`
+    /// and `is_paid`, every pay the worker received can then be listed from
+    /// the chain alone. Needs no signature.
+    pub fn memberships_of(e: Env, worker: Address) -> u32 {
+        storage::memberships(&e, &worker)
+    }
+
     /// Returns the pending admin handover, or `None`. A proposal past its
     /// `live_until_ledger` is still returned until it is replaced, cancelled
     /// or accepted, and accepting it fails. Needs no signature.
@@ -527,6 +605,15 @@ impl Payroll {
     /// is gone, which no public call can cause.
     pub fn token(e: Env) -> Address {
         storage::token(&e)
+    }
+
+    /// Returns the auditor registry `create_company` asks who owns an
+    /// auditor id. Needs no signature.
+    ///
+    /// Fails with `MissingRecord` only if the address the constructor wrote
+    /// is gone, which no public call can cause.
+    pub fn auditor_registry(e: Env) -> Address {
+        storage::auditor_registry(&e)
     }
 
     /// Returns how many companies exist, which is also the next company id.
@@ -558,14 +645,21 @@ fn require_label(e: &Env, label: &String, max_bytes: u32) {
     }
 }
 
-/// Reads the auditor id `account` is registered under in the token. Any
-/// failure to read the account fails closed as `NotRegisteredWithToken`; for
-/// an unregistered account that failure is the token's error 3501.
+/// Reads the auditor id `account` is registered under in the token. Every
+/// failure refuses the call. Exactly one answer, the token's own
+/// AccountNotRegistered (3501), means the account is not registered; any
+/// other failure is reported as `TokenUnavailable`, so an outage is never
+/// shown to the caller as a missing registration.
 fn registered_auditor_id(e: &Env, account: &Address) -> u32 {
     let token = token::Client::new(e, &storage::token(e));
+    let not_registered: soroban_sdk::Error =
+        token::ConfidentialTokenError::AccountNotRegistered.into();
     match token.try_confidential_balance(account) {
         Ok(Ok(confidential_account)) => confidential_account.auditor_id,
-        _ => panic_with_error!(e, PayrollError::NotRegisteredWithToken),
+        Err(Ok(error)) if error == not_registered => {
+            panic_with_error!(e, PayrollError::NotRegisteredWithToken)
+        }
+        _ => panic_with_error!(e, PayrollError::TokenUnavailable),
     }
 }
 
@@ -574,5 +668,17 @@ fn registered_auditor_id(e: &Env, account: &Address) -> u32 {
 fn require_registered_under(e: &Env, account: &Address, auditor_id: u32) {
     if registered_auditor_id(e, account) != auditor_id {
         panic_with_error!(e, PayrollError::AuditorMismatch);
+    }
+}
+
+/// Fails closed: an unknown id, a registry that traps or is missing, and an
+/// answer that does not decode as an address are all refused, the same as
+/// another owner. Covers who owns the id now; it does not cover a later
+/// handover of the id in the registry, which this contract never sees.
+fn require_owned_by(e: &Env, auditor_id: u32, accountant: &Address) {
+    let registry = AuditorRegistryClient::new(e, &storage::auditor_registry(e));
+    match registry.try_owner_of(&auditor_id) {
+        Ok(Ok(owner)) if owner == *accountant => {}
+        _ => panic_with_error!(e, PayrollError::AuditorNotOwnedByAccountant),
     }
 }

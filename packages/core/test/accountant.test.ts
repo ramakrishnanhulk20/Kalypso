@@ -30,6 +30,7 @@ const shift = (name: string, delta: bigint) => (fields: EventFields) => {
   fields[name] = raw.bytes(be32((((value + delta) % FR_MODULUS) + FR_MODULUS) % FR_MODULUS));
 };
 
+const paidGap = (expected: number, found: number, runId = RUN) => ({ reason: 'paid_count_mismatch', companyId: COMPANY, runId, expected, found });
 const line = (s: Scenario, i: number) => ({ worker: s.workers[i] as string, amount: PAY[i] as bigint, txHash: s.payTx });
 const firstRun = (s: Scenario, indexes = [0, 1]) => ({
   runId: RUN,
@@ -41,7 +42,7 @@ const firstRun = (s: Scenario, indexes = [0, 1]) => ({
 describe('auditCompany: what the company paid', () => {
   it('reads every payroll amount with the company key and adds them up', async () => {
     const s = scenario();
-    expect(await audit(s)).toEqual({ complete: true, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [] });
+    expect(await audit(s)).toEqual({ complete: true, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [], gaps: [] });
   });
 
   it('reads the same from the archive as from the RPC, and says incomplete when the archive does', async () => {
@@ -90,7 +91,17 @@ describe('auditCompany: what the company paid', () => {
   it('leaves out a payslip the chain says was not paid', async () => {
     const s = scenario();
     s.ledger.unpaidOverride.add(`${COMPANY}/${RUN}/${s.workers[1]}`);
-    expect(await audit(s)).toMatchObject({ complete: true, runs: [firstRun(s, [0])], grandTotal: PAY[0] });
+    expect(await audit(s)).toEqual({ complete: true, runs: [firstRun(s, [0])], grandTotal: PAY[0], undecryptable: [], gaps: [] });
+  });
+
+  it('stays complete when the same treasury pays a run of another company', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.createCompany(8n, s.treasury, COMPANY_AUDITOR_ID, 'Twin Co');
+    s.ledger.join(8n, worker);
+    s.ledger.openRun(8n, 5n, 'Twin run', 1);
+    s.ledger.pay(8n, 5n, [{ worker, amount: 4_000_004n }]);
+    expect(await audit(s)).toEqual({ complete: true, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [], gaps: [] });
   });
 
   it('follows the treasury across an admin handover', async () => {
@@ -120,6 +131,7 @@ describe('auditCompany: nothing is counted that does not check out (C19)', () =>
           { txHash: s.payTx, reason: 'amount_out_of_range' },
           { txHash: s.payTx, reason: 'amount_out_of_range' },
         ],
+        gaps: [paidGap(2, 0)],
       });
     }
   });
@@ -131,6 +143,7 @@ describe('auditCompany: nothing is counted that does not check out (C19)', () =>
       runs: [firstRun(s, [1])],
       grandTotal: PAY[1],
       undecryptable: [{ txHash: s.payTx, reason: 'balance_chain_break' }],
+      gaps: [paidGap(2, 1)],
     });
   });
 
@@ -145,6 +158,7 @@ describe('auditCompany: nothing is counted that does not check out (C19)', () =>
         { txHash: s.payTx, reason: 'balance_chain_break' },
         { txHash: s.payTx, reason: 'balance_chain_break' },
       ],
+      gaps: [paidGap(2, 0)],
     });
   });
 
@@ -159,6 +173,7 @@ describe('auditCompany: nothing is counted that does not check out (C19)', () =>
         { txHash: s.payTx, reason: 'transaction_mismatch' },
         { txHash: s.payTx, reason: 'transaction_mismatch' },
       ],
+      gaps: [paidGap(2, 0)],
     });
   });
 
@@ -183,6 +198,7 @@ describe('auditCompany: nothing is counted that does not check out (C19)', () =>
         { txHash: s.payTx, reason: 'transaction_unavailable' },
         { txHash: s.payTx, reason: 'transaction_unavailable' },
       ],
+      gaps: [paidGap(2, 0)],
     });
   });
 
@@ -198,6 +214,7 @@ describe('auditCompany: nothing is counted that does not check out (C19)', () =>
         { txHash: s.payTx, reason: 'undecodable_event' },
         { txHash: s.payTx, reason: 'no_verified_balance_before' },
       ],
+      gaps: [paidGap(2, 0)],
     });
   });
 
@@ -215,7 +232,7 @@ describe('auditCompany: complete only when history accounts for what the chain p
     s.ledger.join(COMPANY, s.outsider);
     const third = s.ledger.pay(COMPANY, RUN, [{ worker: s.outsider, amount: 1_000_001n }]);
     const drop = new Set(s.ledger.events.filter((e) => e.txHash === third).map((e) => `${e.ledger}-${e.txHash}-${e.opIndex}-${e.eventIndex}`));
-    expect(await audit(s, { archive: { drop } })).toEqual({ complete: false, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [] });
+    expect(await audit(s, { archive: { drop } })).toEqual({ complete: false, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [], gaps: [paidGap(3, 2)] });
     expect((await audit(s)).complete).toBe(true);
   });
 
@@ -230,7 +247,19 @@ describe('auditCompany: complete only when history accounts for what the chain p
         { txHash: s.payTx, reason: 'run_count_mismatch' },
         { txHash: s.payTx, reason: 'run_count_mismatch' },
       ],
+      gaps: [paidGap(1, 2)],
     });
+  });
+
+  it('says incomplete when a treasury history holds an event it cannot read, even one no spend depends on', async () => {
+    const s = scenario();
+    s.ledger.deposit(s.outsider, s.outsider, 40_000_000n);
+    s.ledger.merge(s.outsider);
+    const incoming = s.ledger.transfer(s.outsider, s.treasury, 3_333_333n);
+    const event = s.ledger.events.find((e) => e.txHash === incoming) as { ledger: number; opIndex: number; eventIndex: number };
+    const replace = new Map([[`${event.ledger}-${incoming}-${event.opIndex}-${event.eventIndex}`, raw.u32(1).toXDR('base64')]]);
+    expect(await audit(s, { archive: {} })).toMatchObject({ complete: true });
+    expect(await audit(s, { archive: { replace } })).toEqual({ complete: false, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [], gaps: [] });
   });
 
   it('says incomplete for a run the history shows but the chain never opened', async () => {
@@ -243,7 +272,7 @@ describe('auditCompany: complete only when history accounts for what the chain p
     const s = scenario();
     s.ledger.ledger += 20;
     expect((await audit(s, { archive: { lag: 12 } })).complete).toBe(true);
-    expect(await audit(s, { archive: { lag: 13 } })).toEqual({ complete: false, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [] });
+    expect(await audit(s, { archive: { lag: 13 } })).toEqual({ complete: false, runs: [firstRun(s)], grandTotal: firstRun(s).total, undecryptable: [], gaps: [] });
   });
 });
 
@@ -291,5 +320,37 @@ describe('auditCompany refusals', () => {
     await expect(auditCompany({ port: s.ledger, history: { rpc: s.ledger.rpc(), fromLedger: 1 }, contracts: CONTRACTS, companyId: COMPANY, auditorSecret: 1n, txSource: {} as TxSourcePort })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(auditCompany({ port: s.ledger, history: { rpc: s.ledger.rpc(), fromLedger: 1 }, contracts: CONTRACTS, companyId: 99n, auditorSecret: 1n, txSource })).rejects.toMatchObject({ code: 'COMPANY_NOT_FOUND' });
     expect(txSource.calls).toEqual([]);
+  });
+});
+
+describe('auditCompany reads in parallel without reading more', () => {
+  it('keeps at most eight reads in flight and makes the same reads it made one at a time', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    for (let r = 1; r < 4; r++) {
+      s.ledger.openRun(COMPANY, 500n + BigInt(r), `Run ${r}`, 1);
+      s.ledger.pay(COMPANY, 500n + BigInt(r), [{ worker, amount: 1_000n + BigInt(r) }]);
+    }
+    const reads = new Map<string, number>();
+    let inFlight = 0;
+    let most = 0;
+    const read = s.ledger.read.bind(s.ledger);
+    s.ledger.read = async (contractId, method, args) => {
+      reads.set(method, (reads.get(method) ?? 0) + 1);
+      most = Math.max(most, ++inFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return await read(contractId, method, args);
+      } finally {
+        inFlight--;
+      }
+    };
+    const txSource = s.ledger.txSource();
+    const result = await audit(s, { txSource });
+    // The counts scratchpad/wo-b/reads-p2.txt measured for company 7 with 4 runs, read one at a time.
+    expect(Object.fromEntries(reads)).toEqual({ get_company: 1, get_run: 4, is_paid: 5 });
+    expect([result.complete, result.runs.map((run) => run.runId), txSource.calls.length]).toEqual([true, [RUN, 501n, 502n, 503n], 4]);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(8);
   });
 });

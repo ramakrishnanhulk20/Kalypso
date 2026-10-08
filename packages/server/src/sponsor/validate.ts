@@ -33,7 +33,12 @@ import { canonicalContractId, contractIdOfScAddress, decodeCanonicalBase64 } fro
  *   simulated footprint and in an envelope's declared one, belongs to
  *   payroll, token, auditor, USDC, the verifier or one of those signing
  *   wallets and the pinned wallet code;
- * - signatures we can check offline verify for the testnet network id;
+ * - an envelope declares every key the simulated call reads, and declares
+ *   read-write every key it writes, compared as XDR bytes, and declares at
+ *   least the simulated instructions, disk read bytes, write bytes and
+ *   minimum resource fee;
+ * - signatures we can check offline verify for the testnet network id, and
+ *   each classic-account signature is made by that account's own key;
  * - the declared and simulated fees stay under FEE_CAP_STROOPS;
  * - auth entries expire within 1,000 ledgers;
  * - simulation in enforce mode succeeds;
@@ -83,6 +88,7 @@ export type SponsorRefusalCode =
   | "too_many_auth_entries"
   | "auth_tree_too_large"
   | "unsigned_auth"
+  | "signer_key_mismatch"
   | "not_signed_for_testnet"
   | "fee_over_cap"
   | "auth_expired"
@@ -93,6 +99,8 @@ export type SponsorRefusalCode =
   | "unused_auth"
   | "unknown_wallet_code"
   | "foreign_contract_in_footprint"
+  | "footprint_not_declared"
+  | "resources_not_declared"
   | "rpc_unavailable";
 
 export interface Refusal {
@@ -104,6 +112,11 @@ interface Validated {
   ok: true;
   authEntries: xdr.SorobanAuthorizationEntry[];
   rootContract: string;
+  /**
+   * Every address that authorises the request, once each, in the server's
+   * one address spelling: each entry's address, and an envelope's source.
+   */
+  authorisers: string[];
 }
 
 /** A passkey worker's call: Channels becomes the source and pays. */
@@ -184,7 +197,8 @@ function validateFuncAuth(func: string, auth: string[], cfg: Config): FuncSponso
   // source-account credential would ask the relayer to authorise the call.
   const tree = checkAuthEntries(authEntries, cfg, false);
   if (tree !== null) return tree;
-  return { ok: true, kind: "func", func, auth: [...auth], hostFunction, authEntries, rootContract: root.contract };
+  const authorisers = authorisersOf(authEntries, null);
+  return { ok: true, kind: "func", func, auth: [...auth], hostFunction, authEntries, rootContract: root.contract, authorisers };
 }
 
 function validateEnvelope(base64: string, cfg: Config): XdrSponsorRequest | Refusal {
@@ -210,7 +224,25 @@ function validateEnvelope(base64: string, cfg: Config): XdrSponsorRequest | Refu
   const declaredFee = BigInt(tx.fee());
   const declaredResourceFee = ext.sorobanData().resourceFee().toBigInt();
   if (declaredFee > cfg.FEE_CAP_STROOPS || declaredResourceFee > cfg.FEE_CAP_STROOPS) return refuse("fee_over_cap");
-  return { ok: true, kind: "xdr", xdr: base64, source, declaredFee, declaredResourceFee, authEntries, rootContract: root.contract };
+  const authorisers = authorisersOf(authEntries, source);
+  return { ok: true, kind: "xdr", xdr: base64, source, declaredFee, declaredResourceFee, authEntries, rootContract: root.contract, authorisers };
+}
+
+/**
+ * Who authorises the request, each once. A source-account entry stands for
+ * `source`, which an envelope always has. Every address here comes out of
+ * the SDK's one strkey encoder (inspectAuthEntry and sourceOf), the same
+ * spelling the server's address parser accepts, so one account always counts
+ * under one key. checkEntrySignatures has already admitted only G and C
+ * addresses.
+ */
+function authorisersOf(entries: readonly xdr.SorobanAuthorizationEntry[], source: string | null): string[] {
+  const out = new Set<string>(source === null ? [] : [source]);
+  for (const entry of entries) {
+    const address = inspectAuthEntry(entry).address;
+    if (address !== null) out.add(address);
+  }
+  return [...out];
 }
 
 /** The ed25519 account behind the transaction source, muxed or not. */
@@ -292,11 +324,18 @@ function checkAuthEntries(entries: xdr.SorobanAuthorizationEntry[], cfg: Config,
 
 /**
  * Every classic-account (G) signer node must carry ed25519 signatures that
- * verify over this entry's payload for the given network. That is what ties
- * the entry to testnet: a payload signed for another network hashes a
- * different network id. Contract-account (C) nodes use wallet-defined
- * signatures, so their network binding is checked by __check_auth during the
- * enforce-mode simulation, not here.
+ * are made by that account's own key and verify over this entry's payload
+ * for the given network. A payload signed for another network hashes a
+ * different network id, and the payload does not name the address, so
+ * without the key check any key could sign for any account.
+ *
+ * Covers: the entry was signed for testnet by the key whose public half is
+ * the account id. Does not cover whether that key still has weight on the
+ * account (it may be removed or outweighed by other signers); only the
+ * enforce-mode simulation proves that. Accounts that sign with other keys
+ * than their own are refused here. Contract-account (C) nodes use
+ * wallet-defined signatures, so their network binding is checked by
+ * __check_auth during the enforce-mode simulation, not here.
  */
 function checkEntrySignatures(entry: xdr.SorobanAuthorizationEntry, passphrase: string): Refusal | null {
   const info = inspectAuthEntry(entry);
@@ -309,6 +348,8 @@ function checkEntrySignatures(entry: xdr.SorobanAuthorizationEntry, passphrase: 
     if (!signer.signed) return refuse("unsigned_auth");
     if (signer.signatures === null || signer.signatures.length === 0) return refuse("not_signed_for_testnet");
     for (const { publicKey, signature } of signer.signatures) {
+      // Both strings come out of the SDK's one ed25519 strkey encoder.
+      if (publicKey !== signer.address) return refuse("signer_key_mismatch");
       if (!Keypair.fromPublicKey(publicKey).verify(payload, signature)) return refuse("not_signed_for_testnet");
     }
   }
@@ -349,6 +390,51 @@ export function requestDigest(request: SponsorRequest): string {
   return digest.digest("hex");
 }
 
+/**
+ * The last ledger in which every auth entry of the request can still be
+ * used: the earliest signature expiration among them, because one expired
+ * entry fails the whole call. Null when no entry carries one, which happens
+ * only for an envelope authorised by its source account alone. That
+ * envelope is bound to its sequence number instead, so only one copy of it
+ * can ever enter a ledger.
+ */
+export function authExpiryLedger(request: SponsorRequest): number | null {
+  let earliest: number | null = null;
+  for (const entry of request.authEntries) {
+    const ledger = inspectAuthEntry(entry).signatureExpirationLedger;
+    if (ledger !== null && (earliest === null || ledger < earliest)) earliest = ledger;
+  }
+  return earliest;
+}
+
+/** A signed auth entry as the network uses it up: once per (address, nonce). */
+export interface SignedEntryKey {
+  address: string;
+  /** The int64 nonce in decimal. */
+  nonce: string;
+  /** This entry's own signature expiration ledger. */
+  expiryLedger: number;
+}
+
+/**
+ * The key of every address-credential entry in the request, each once.
+ * Body bytes do not identify an entry: the same signed entry can be wrapped
+ * in a func body or in envelopes from any source, so the sponsor dedupes on
+ * this key as well. Source-account entries carry no nonce; the envelope's
+ * sequence number stands in for one.
+ */
+export function signedEntryKeys(request: SponsorRequest): SignedEntryKey[] {
+  const keys = new Map<string, SignedEntryKey>();
+  for (const entry of request.authEntries) {
+    const info = inspectAuthEntry(entry);
+    if (info.address === null || info.nonce === null || info.signatureExpirationLedger === null) continue;
+    const nonce = info.nonce.toString();
+    const id = info.address + " " + nonce;
+    if (!keys.has(id)) keys.set(id, { address: info.address, nonce, expiryLedger: info.signatureExpirationLedger });
+  }
+  return [...keys.values()];
+}
+
 export type SimulationVerdict =
   | { ok: true; chargeStroops: bigint; minResourceFee: bigint; latestLedger: number }
   | Refusal;
@@ -370,6 +456,8 @@ export type SimulateFn = (
  * Enforce mode, with the supplied auth entries: must succeed with no restore
  * needed, its footprint must hold at least one read-write entry, and that
  * footprint (and an envelope's declared one) must pass the footprint rule.
+ * An envelope must also declare every key that footprint holds, and at
+ * least the simulated limits and minimum resource fee.
  * Record mode, with the auth entries removed: the entries it reports the call
  * needs must be exactly the supplied ones, matched on who authorises and on
  * the exact invocation tree.
@@ -401,13 +489,21 @@ export const simulate: SimulateFn = async (cfg, request, rpc) => {
     return refuse("simulation_failed");
   }
   if (enforced.restorePreamble !== undefined && enforced.restorePreamble !== null) return refuse("simulation_needs_restore");
-  const footprint = footprintOf(enforced.transactionData);
-  if (footprint === null) return refuse("simulation_failed");
+  const resources = resourcesOf(enforced.transactionData);
+  if (resources === null) return refuse("simulation_failed");
+  const footprint = resources.footprint();
   if (footprint.readWrite().length === 0) return refuse("read_only_call");
   if (!inScope(footprint, scope)) return refuse("foreign_contract_in_footprint");
-  // The network holds an envelope to the footprint it declares, so that is
-  // the bound on what it can touch if the chain changes after our simulation.
-  if (request.kind === "xdr" && !inScope(declaredFootprintOf(request), scope)) return refuse("foreign_contract_in_footprint");
+  if (request.kind === "xdr") {
+    // The network holds an envelope to the footprint it declares, so that is
+    // the bound on what it can touch if the chain changes after our simulation.
+    const declared = declaredResourcesOf(request);
+    if (!inScope(declared.footprint(), scope)) return refuse("foreign_contract_in_footprint");
+    if (!declaresAll(declared.footprint(), footprint)) return refuse("footprint_not_declared");
+    if (!declaresLimits(declared, resources) || request.declaredResourceFee < BigInt(enforced.minResourceFee)) {
+      return refuse("resources_not_declared");
+    }
+  }
 
   let recorded;
   try {
@@ -435,18 +531,51 @@ export const simulate: SimulateFn = async (cfg, request, rpc) => {
   return { ok: true, chargeStroops: charge, minResourceFee, latestLedger: enforced.latestLedger };
 };
 
-function footprintOf(transactionData: string | undefined): xdr.LedgerFootprint | null {
+function resourcesOf(transactionData: string | undefined): xdr.SorobanResources | null {
   if (transactionData === undefined) return null;
   try {
-    return xdr.SorobanTransactionData.fromXDR(transactionData, "base64").resources().footprint();
+    return xdr.SorobanTransactionData.fromXDR(transactionData, "base64").resources();
   } catch {
     return null;
   }
 }
 
 /** Validation already required the envelope to carry Soroban data, so this cannot miss. */
-function declaredFootprintOf(request: XdrSponsorRequest): xdr.LedgerFootprint {
-  return xdr.TransactionEnvelope.fromXDR(request.xdr, "base64").v1().tx().ext().sorobanData().resources().footprint();
+function declaredResourcesOf(request: XdrSponsorRequest): xdr.SorobanResources {
+  return xdr.TransactionEnvelope.fromXDR(request.xdr, "base64").v1().tx().ext().sorobanData().resources();
+}
+
+/**
+ * True when the declared limits are at least what the simulated call used:
+ * instructions, bytes read from disk and bytes written. The network stops a
+ * call at its declared limits and still charges the fee, so a lower limit
+ * pays for a certain failure. The caller checks the declared resource fee
+ * against the simulated minimum for the same reason. Does not cover the
+ * chain changing after our simulation in a way that raises what the call
+ * needs.
+ */
+function declaresLimits(declared: xdr.SorobanResources, needed: xdr.SorobanResources): boolean {
+  return (
+    declared.instructions() >= needed.instructions() &&
+    declared.diskReadBytes() >= needed.diskReadBytes() &&
+    declared.writeBytes() >= needed.writeBytes()
+  );
+}
+
+/**
+ * True when the declared footprint covers everything the simulated call
+ * touches: every key it reads is declared (read-only or read-write) and
+ * every key it writes is declared read-write. An envelope that leaves a key
+ * out still gets into a ledger and fails there, with our fee charged.
+ * Keys are compared as XDR bytes, one encoder on both sides, so no two
+ * spellings of one key can be judged differently. The declared limits are
+ * checked by declaresLimits.
+ */
+function declaresAll(declared: xdr.LedgerFootprint, needed: xdr.LedgerFootprint): boolean {
+  const bytesOf = (key: xdr.LedgerKey) => key.toXDR("base64");
+  const writable = new Set(declared.readWrite().map(bytesOf));
+  const readable = new Set([...declared.readOnly().map(bytesOf), ...writable]);
+  return needed.readWrite().every((key) => writable.has(bytesOf(key))) && needed.readOnly().every((key) => readable.has(bytesOf(key)));
 }
 
 interface Signers {

@@ -20,6 +20,8 @@ export const DEPLOYMENT_FILE = path.join(CONTRACTS_DIR, "deployments", "testnet.
 export const NETWORK_NAME = "testnet";
 export const NETWORK_PASSPHRASE = Networks.TESTNET;
 export const RPC_URL = "https://soroban-testnet.stellar.org";
+// Keeps transaction envelopes and results past RPC's 7-day window.
+export const HORIZON_URL = "https://horizon-testnet.stellar.org/";
 
 export const USDC_SAC = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
 // Circle's testnet USDC issuer. The SAC id above must derive from it, so a
@@ -56,6 +58,21 @@ export const OUR_PACKAGES = {
   auditorRegistry: "kalypso-auditor",
   payroll: "kalypso-payroll",
 };
+
+// Versions of our attested GitHub releases already deployed, by wasm sha256, for
+// deployment records written before each entry carried its own version: payroll
+// 6f815c99 and auditor 90127a7d, from the v0.1.0 release's SHA256SUMS
+// (DECISIONS 2026-10-08).
+export const RELEASED_VERSIONS = {
+  "6f815c99d9ad5a05727d70e5973de94f624f3f4a532a6ec75503bf96933784b6": "0.1.0",
+  "90127a7d9dc6957a2bb2191f275346816850700bcd43c7a1af7d7cdd9107e55f": "0.1.0",
+};
+
+// About 5 seconds a ledger, the same day the contracts use for their own TTLs.
+export const LEDGERS_PER_DAY = 17_280;
+// The check fails below this, leaving two weeks to run npm run keepalive:testnet
+// before an idle contract or its code archives.
+export const KEEPALIVE_MIN_DAYS = 14;
 
 export const MANAGER_ROLE = "manager";
 // AccessControlError::Unauthorized in OpenZeppelin's access package.

@@ -76,11 +76,20 @@ export function openingStore(secrets) {
 /** Every amount the secrets file holds, as bigints, for the public-file guard. */
 export function privateAmountsOf(secrets) {
   if (!secrets?.amounts) return [];
-  const { runs = {}, deposits = {}, planted = {} } = secrets.amounts;
+  const { runs = {}, deposits = {}, planted = {}, earlier = [] } = secrets.amounts;
   const values = [
     ...Object.values(runs).flatMap((byWorker) => Object.values(byWorker)),
     ...Object.values(deposits),
     ...Object.values(planted),
+    ...earlier.flatMap((e) => Object.values(e.runs).flatMap((byWorker) => Object.values(byWorker))),
   ];
   return values.map((v) => BigInt(v));
+}
+
+/** What earlier payroll contracts paid `worker` in the showcase, in stroops, from the secrets file. */
+export function earlierPayOf(secrets, worker) {
+  return (secrets?.amounts?.earlier ?? []).reduce(
+    (sum, e) => sum + Object.values(e.runs).reduce((s, byWorker) => s + BigInt(byWorker[worker] ?? 0), 0n),
+    0n,
+  );
 }

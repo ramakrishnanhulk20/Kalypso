@@ -10,13 +10,15 @@ import {
   INCLUSION_FEE_ALLOWANCE_STROOPS,
   MAX_AUTH_ENTRIES,
   MAX_AUTH_NODES,
+  authExpiryLedger,
   requestDigest,
   simulate,
   validateSponsorRequest,
   type SponsorRequest,
 } from "../../src/sponsor/validate.ts";
 import { createRpcClient } from "../../src/rpc.ts";
-import { contractOfKey, fakeSimulation, instanceEntries, recordedAuthOf, transactionData } from "./fake-rpc.ts";
+import { canonicalAccountId } from "../../src/stellar.ts";
+import { contractOfKey, defaultFootprint, fakeSimulation, instanceEntries, recordedAuthOf, transactionData } from "./fake-rpc.ts";
 import { AUDITOR, PAYROLL, STRANGER, TOKEN, USDC, VERIFIER, contractFor, testConfig } from "../helpers.ts";
 import {
   LATEST_LEDGER,
@@ -48,6 +50,8 @@ import {
   uploadOperation,
   worker,
   type Call,
+  type Footprint,
+  type Limits,
 } from "./fixtures.ts";
 
 const cfg = testConfig();
@@ -123,6 +127,24 @@ describe("validateSponsorRequest: func + auth (passkey workers)", () => {
   it("refuses an entry signed for mainnet", async () => {
     const mainnet = await signedEntry(merge, worker, { network: Networks.PUBLIC });
     expect(codeOf({ func: mergeFunc(), auth: [b64(mainnet)] })).toBe("not_signed_for_testnet");
+  });
+
+  it("refuses a classic entry signed by a key that is not the account's own, which the signed payload alone cannot tell apart", async () => {
+    for (const v2 of [false, true]) {
+      const borrowed = await signedEntry(merge, employer, { v2 });
+      expect(codeOf({ func: mergeFunc(), auth: [b64(borrowed)] })).toBe("ok");
+      const credentials = v2 ? borrowed.credentials().addressV2() : borrowed.credentials().address();
+      credentials.address(new Address(worker.publicKey()).toScAddress());
+      expect(codeOf({ func: mergeFunc(), auth: [b64(borrowed)] }), v2 ? "v2" : "v1").toBe("signer_key_mismatch");
+    }
+  });
+
+  it("names every authorising address once, in the one address spelling", async () => {
+    const auth = [b64(await signedEntry(merge)), b64(contractAccountEntry(merge)), b64(await signedEntry(merge))];
+    const v = validateSponsorRequest({ func: mergeFunc(), auth }, cfg);
+    expect(v).toMatchObject({ ok: true, authorisers: [worker.publicKey(), passkeyWallet] });
+    if (!v.ok) throw new Error(v.code);
+    for (const address of v.authorisers) expect(canonicalAccountId(address)).toBe(address);
   });
 
   it("refuses unsigned classic entries, source-account entries and empty auth", () => {
@@ -216,6 +238,15 @@ describe("validateSponsorRequest: signed transaction envelope", () => {
     });
     expect(codeOf({ xdr: envelope({ operations: op([nested]) }) })).toBe("nested_contract_not_allowed");
     expect(codeOf({ xdr: envelope({ operations: op([sourceAccountEntry(merge)]) }) })).toBe("ok");
+  });
+
+  it("names the source and every entry's address as authorisers, each once", async () => {
+    const op = xdr.Operation.fromXDR(mergeOperation().toXDR());
+    op.body().invokeHostFunctionOp().auth([sourceAccountEntry(merge), await signedEntry(merge, employer), await signedEntry(merge, worker)]);
+    expect(validateSponsorRequest({ xdr: envelope({ operations: [op] }) }, cfg)).toMatchObject({
+      ok: true,
+      authorisers: [worker.publicKey(), employer.publicKey()],
+    });
   });
 });
 
@@ -325,18 +356,19 @@ describe("simulate", () => {
   });
 
   it("matches an envelope's source-account entry, or an address entry for the source, to what record mode needs", async () => {
-    const withSource = validateSponsorRequest({ xdr: envelope() }, cfg);
+    const footprint = defaultFootprint();
+    const withSource = validateSponsorRequest({ xdr: envelope({ footprint }) }, cfg);
     if (!withSource.ok) throw new Error(withSource.code);
     expect(await simulate(cfg, withSource, fakeSimulation())).toMatchObject({ ok: true });
     const signed = await signedEntry(merge, worker);
     const op = xdr.Operation.fromXDR(mergeOperation().toXDR());
     op.body().invokeHostFunctionOp().auth([signed]);
-    const withAddress = validateSponsorRequest({ xdr: envelope({ operations: [op] }) }, cfg);
+    const withAddress = validateSponsorRequest({ xdr: envelope({ operations: [op], footprint }) }, cfg);
     if (!withAddress.ok) throw new Error(withAddress.code);
     expect(await simulate(cfg, withAddress, fakeSimulation())).toMatchObject({ ok: true });
     const bare = xdr.Operation.fromXDR(mergeOperation().toXDR());
     bare.body().invokeHostFunctionOp().auth([]);
-    const missing = validateSponsorRequest({ xdr: envelope({ operations: [bare] }) }, cfg);
+    const missing = validateSponsorRequest({ xdr: envelope({ operations: [bare], footprint }) }, cfg);
     if (!missing.ok) throw new Error(missing.code);
     expect(await simulate(cfg, missing, fakeSimulation())).toMatchObject({ code: "unused_auth" });
   });
@@ -355,8 +387,45 @@ describe("simulate", () => {
     expect(await simulate(cfg, await funcRequest(LATEST_LEDGER + 1_000), fakeSimulation())).toMatchObject({ ok: true });
   });
 
+  it("refuses an envelope whose declared footprint leaves out a key the call reads or writes, or declares a written key read-only", async () => {
+    const sim = defaultFootprint();
+    const check = async (declared: Footprint) => {
+      const v = validateSponsorRequest({ xdr: envelope({ footprint: declared }) }, cfg);
+      if (!v.ok) throw new Error(v.code);
+      return simulate(cfg, v, fakeSimulation());
+    };
+    const temporaryTwin = xdr.LedgerKey.contractData(
+      new xdr.LedgerKeyContractData({ contract: new Address(TOKEN).toScAddress(), key: xdr.ScVal.scvU32(100), durability: xdr.ContractDataDurability.temporary() }),
+    );
+    expect(await check({ readOnly: [], readWrite: sim.readWrite })).toEqual({ ok: false, code: "footprint_not_declared" });
+    expect(await check({ readOnly: [temporaryTwin], readWrite: sim.readWrite })).toEqual({ ok: false, code: "footprint_not_declared" });
+    expect(await check({ readOnly: sim.readOnly, readWrite: [] })).toEqual({ ok: false, code: "footprint_not_declared" });
+    expect(await check({ readOnly: [...sim.readOnly, ...sim.readWrite], readWrite: [] })).toEqual({ ok: false, code: "footprint_not_declared" });
+    expect(await check({ readOnly: [], readWrite: [...sim.readOnly, ...sim.readWrite] })).toMatchObject({ ok: true });
+    expect(await check({ readOnly: [...sim.readOnly, storageKey(TOKEN, 7)], readWrite: sim.readWrite })).toMatchObject({ ok: true });
+  });
+
+  it("refuses an envelope that declares fewer instructions, disk read bytes or write bytes than the simulation used, or less than its minimum resource fee", async () => {
+    const used: Limits = { instructions: 1_000_000, diskReadBytes: 5_000, writeBytes: 1_000 };
+    const check = async (limits: Limits, resourceFee = 500_000) => {
+      const v = validateSponsorRequest({ xdr: envelope({ footprint: defaultFootprint(), limits, resourceFee }) }, cfg);
+      if (!v.ok) throw new Error(v.code);
+      return simulate(cfg, v, fakeSimulation({ limits: used }));
+    };
+    for (const short of [
+      { ...used, instructions: used.instructions - 1 },
+      { ...used, diskReadBytes: used.diskReadBytes - 1 },
+      { ...used, writeBytes: used.writeBytes - 1 },
+    ]) {
+      expect(await check(short), JSON.stringify(short)).toEqual({ ok: false, code: "resources_not_declared" });
+    }
+    expect(await check(used, 489_999)).toEqual({ ok: false, code: "resources_not_declared" });
+    expect(await check(used, 490_000)).toMatchObject({ ok: true });
+    expect(await check({ instructions: 2_000_000, diskReadBytes: 6_000, writeBytes: 2_000 })).toMatchObject({ ok: true });
+  });
+
   it("reserves the declared fee of an envelope when it is above the simulated estimate", async () => {
-    const v = validateSponsorRequest({ xdr: envelope({ fee: "800000" }) }, cfg);
+    const v = validateSponsorRequest({ xdr: envelope({ fee: "800000", footprint: defaultFootprint() }) }, cfg);
     if (!v.ok) throw new Error(v.code);
     const rpc = fakeSimulation({ enforce: { minResourceFee: "100000" } });
     expect(await simulate(cfg, v, rpc)).toMatchObject({ ok: true, chargeStroops: 1_300_000n });
@@ -483,6 +552,20 @@ describe("simulate: the sponsor pays only for our code, USDC's, or a pinned pass
       expect(await simulate(cfg, walletMerge(), rpc)).toEqual({ ok: false, code: "rpc_unavailable" });
       expect(rpc.simulateTransaction).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("authExpiryLedger", () => {
+  it("is the earliest expiry among the entries, and null when only the source authorises", async () => {
+    const at = (a: number, b: number) =>
+      validateSponsorRequest({ func: mergeFunc(), auth: [b64(contractAccountEntry(merge, a)), b64(contractAccountEntry(merge, b))] }, cfg);
+    for (const v of [at(LATEST_LEDGER + 300, LATEST_LEDGER + 200), at(LATEST_LEDGER + 200, LATEST_LEDGER + 300)]) {
+      if (!v.ok) throw new Error(v.code);
+      expect(authExpiryLedger(v)).toBe(LATEST_LEDGER + 200);
+    }
+    const source = validateSponsorRequest({ xdr: envelope() }, cfg);
+    if (!source.ok) throw new Error(source.code);
+    expect(authExpiryLedger(source)).toBeNull();
   });
 });
 

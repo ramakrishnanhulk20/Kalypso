@@ -2,8 +2,17 @@
 // or fee bump envelopes, which Kalypso never builds.
 import { Account, Address, Asset, Operation, SorobanDataBuilder, TransactionBuilder, xdr } from '@stellar/stellar-sdk/base';
 import { describe, expect, it } from 'vitest';
+import { buildOpenRun, buildPay } from '../src/chain/payroll.js';
 import { DecodeError } from '../src/chain/scval.js';
-import { assembleFromSimulation, buildInvocation, decodeInvocation, transactionHash } from '../src/chain/tx.js';
+import {
+  FeeCapError,
+  MAX_PAY_FEE_STROOPS,
+  MAX_SETUP_FEE_STROOPS,
+  assembleFromSimulation,
+  buildInvocation,
+  decodeInvocation,
+  transactionHash,
+} from '../src/chain/tx.js';
 import { PASSPHRASE, b64, raw, testAccount, testContract } from './independent-xdr.js';
 
 const signer = testAccount('tx signer');
@@ -58,13 +67,68 @@ describe('envelope helpers', () => {
       unsigned(),
       { ok: true, minResourceFee: '55555', transactionDataXdr: data.toXDR('base64'), authXdr: [sourceAuthEntry().toXDR('base64')], latestLedger: 9 },
       PASSPHRASE,
+      MAX_SETUP_FEE_STROOPS,
     );
     const tx = xdr.TransactionEnvelope.fromXDR(assembled, 'base64').v1().tx();
     expect(tx.fee()).toBe(100 + 55_555);
     expect(tx.ext().sorobanData().resourceFee().toString()).toBe('55555');
     const op = (tx.operations()[0] as xdr.Operation).body().invokeHostFunctionOp();
     expect(op.auth().map((a) => a.toXDR('base64'))).toEqual([sourceAuthEntry().toXDR('base64')]);
-    expect(() => assembleFromSimulation(unsigned(), { ok: false, error: 'boom', latestLedger: 9 }, PASSPHRASE)).toThrow(/successful simulation/);
+    expect(() => assembleFromSimulation(unsigned(), { ok: false, error: 'boom', latestLedger: 9 }, PASSPHRASE, MAX_SETUP_FEE_STROOPS)).toThrow(/successful simulation/);
+  });
+
+  it("refuses a simulated fee above the caller's cap before anything can be signed (C20, C39)", () => {
+    const simulated = (minResourceFee: string) => ({
+      ok: true,
+      minResourceFee,
+      transactionDataXdr: new SorobanDataBuilder().setResources(1_000_000, 2_000, 3_000).setResourceFee(BigInt(minResourceFee)).build().toXDR('base64'),
+      authXdr: [],
+      latestLedger: 9,
+    });
+    // The reviewer's repro: a lying RPC names the largest resource fee the XDR can carry.
+    const openRun = buildOpenRun(
+      { source: { address: signer.publicKey(), sequence: '7' }, networkPassphrase: PASSPHRASE, contractId: CONTRACT },
+      { companyId: 1n, runId: 2n, periodLabel: 'October 2026', expectedCount: 2 },
+    );
+    const refused = (() => {
+      try {
+        assembleFromSimulation(openRun, simulated('4294967195'), PASSPHRASE, MAX_SETUP_FEE_STROOPS);
+      } catch (err) {
+        return err;
+      }
+      return undefined;
+    })();
+    expect(refused).toBeInstanceOf(FeeCapError);
+    expect([(refused as FeeCapError).fee, (refused as FeeCapError).cap]).toEqual([4_294_967_295n, MAX_SETUP_FEE_STROOPS]);
+    expect((refused as Error).message).toContain('429.4967295 XLM');
+
+    // register_key on a fresh registry, as measured: a setup call may cost it, a pay may not.
+    const freshRegistry = simulated(String(130_630_000n - 100n));
+    expect(() => assembleFromSimulation(unsigned(), freshRegistry, PASSPHRASE, MAX_SETUP_FEE_STROOPS)).not.toThrow();
+    expect(() => assembleFromSimulation(unsigned(), freshRegistry, PASSPHRASE, MAX_PAY_FEE_STROOPS)).toThrow(FeeCapError);
+    const atCap = simulated(String(MAX_SETUP_FEE_STROOPS - 100n));
+    expect(() => assembleFromSimulation(unsigned(), atCap, PASSPHRASE, MAX_SETUP_FEE_STROOPS)).not.toThrow();
+    expect(() => assembleFromSimulation(unsigned(), simulated(String(MAX_SETUP_FEE_STROOPS - 99n)), PASSPHRASE, MAX_SETUP_FEE_STROOPS)).toThrow(FeeCapError);
+    for (const cap of [0n, -1n, 20_000_000 as unknown as bigint, undefined as unknown as bigint]) {
+      expect(() => assembleFromSimulation(unsigned(), atCap, PASSPHRASE, cap)).toThrow(RangeError);
+    }
+
+    // A pay is held to the pay cap even when a screen passes the setup cap.
+    const pay = buildPay(
+      { source: { address: signer.publicKey(), sequence: '7' }, networkPassphrase: PASSPHRASE, contractId: CONTRACT },
+      { companyId: 1n, runId: 2n, items: [{ worker: testAccount('tx worker').publicKey(), data: new Uint8Array([4, 2]) }] },
+    );
+    let underSetupCap: unknown;
+    try {
+      assembleFromSimulation(pay, simulated(String(30_000_000n - 100n)), PASSPHRASE, MAX_SETUP_FEE_STROOPS);
+    } catch (err) {
+      underSetupCap = err;
+    }
+    expect(underSetupCap).toBeInstanceOf(FeeCapError);
+    expect([(underSetupCap as FeeCapError).fee, (underSetupCap as FeeCapError).cap]).toEqual([30_000_000n, MAX_PAY_FEE_STROOPS]);
+    expect(() => assembleFromSimulation(pay, simulated(String(MAX_PAY_FEE_STROOPS - 100n)), PASSPHRASE, MAX_SETUP_FEE_STROOPS)).not.toThrow();
+    // A caller cap below the pay cap still applies to a pay.
+    expect(() => assembleFromSimulation(pay, simulated('900'), PASSPHRASE, 999n)).toThrow(FeeCapError);
   });
 
   it('hashes the transaction body, so signing does not change the hash', () => {

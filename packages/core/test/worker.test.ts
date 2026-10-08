@@ -43,7 +43,7 @@ describe('loadWorkerView: payslips (C18)', () => {
   it('shows each worker exactly their own payslip and a verified balance', async () => {
     const s = scenario();
     for (const [i, worker] of s.workers.entries()) {
-      expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[i], payslips: [payslipOf(s, i)] });
+      expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[i], payslips: [payslipOf(s, i)], gaps: [] });
     }
     s.ledger.merge(s.workers[0] as string);
     expect(await view(s, s.workers[0] as string)).toMatchObject({ complete: true, spendable: PAY[0], receiving: 0n });
@@ -65,7 +65,7 @@ describe('loadWorkerView: payslips (C18)', () => {
   it('drops a payslip the chain says was not paid', async () => {
     const s = scenario();
     s.ledger.unpaidOverride.add(`${COMPANY}/${RUN}/${s.workers[0]}`);
-    expect(await view(s, s.workers[0] as string)).toMatchObject({ complete: true, payslips: [] });
+    expect(await view(s, s.workers[0] as string)).toMatchObject({ complete: true, payslips: [], gaps: [] });
   });
 
   it('ignores a payslip event from any contract but ours, even with a treasury transfer and a paid flag', async () => {
@@ -98,7 +98,7 @@ describe('loadWorkerView: payslips (C18)', () => {
     expect(result.complete).toBe(false);
   });
 
-  it('ignores a company the worker never joined, even one that paid them', async () => {
+  it('ignores a company the worker never joined, even one that paid them, and a company that does not exist', async () => {
     const s = scenario();
     const worker = s.workers[0] as string;
     s.ledger.deposit(s.outsider, s.outsider, 50_000_000n);
@@ -106,9 +106,32 @@ describe('loadWorkerView: payslips (C18)', () => {
     s.ledger.createCompany(8n, s.outsider, 13, 'Stranger Co');
     s.ledger.openRun(8n, RUN, 'Stranger run', 1);
     s.ledger.pay(8n, RUN, [{ worker, amount: 7_000_007n }]);
-    const result = await view(s, worker, { companyIds: [COMPANY, 8n, 8n] });
+    const result = await view(s, worker, { companyIds: [COMPANY, 8n, 8n, 99n] });
     expect(result.payslips).toEqual([payslipOf(s, 0)]);
-    expect(result.complete).toBe(true);
+    expect(result).toMatchObject({ complete: true, gaps: [] });
+  });
+
+  it('counts a company as joined only from its roster, so an invite from a stranger cannot stand in for a hidden company (C48)', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.createCompany(9n, s.outsider, 13, 'Inviting Co');
+    s.ledger.members.set(`9/${worker}`, 'Invited');
+    s.ledger.createCompany(10n, s.outsider, 13, 'Revoked Co');
+    s.ledger.members.set(`10/${worker}`, 'Removed');
+    expect(await view(s, worker, { companyIds: [COMPANY, 9n, 10n] })).toMatchObject({ complete: true, payslips: [payslipOf(s, 0)], gaps: [] });
+
+    // The worker also joined company 8, which the list leaves out; a pending invite must not make up the count.
+    s.ledger.createCompany(8n, s.outsider, 13, 'Joined Co');
+    s.ledger.join(8n, worker);
+    expect(await view(s, worker, { companyIds: [COMPANY, 9n] })).toMatchObject({ complete: false, gaps: [{ reason: 'company_count_mismatch', expected: 2, found: 1 }] });
+  });
+
+  it('finds the worker on a roster longer than one page', async () => {
+    const s = scenario();
+    const worker = s.workers[1] as string;
+    const roster = s.ledger.companies.get(COMPANY)?.roster as string[];
+    roster.unshift(...Array.from({ length: 120 }, (_, i) => testAccount(`roster filler ${i}`).publicKey()));
+    expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[1], payslips: [payslipOf(s, 1)], gaps: [] });
   });
 
   it('attributes each payslip to the treasury of its time across an admin handover', async () => {
@@ -145,7 +168,7 @@ describe('loadWorkerView: payslips (C18)', () => {
     const forged = s.ledger.pay(COMPANY, 2n, [{ worker, amount: 6_000_006n, tamper: (f) => void (f.v_tilde = raw.bytes(new Uint8Array(32).fill(0x0f))) }]);
     const result = await view(s, worker);
     expect(result.payslips.some((p) => p.txHash === forged)).toBe(false);
-    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
+    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: 2n }] });
   });
 });
 
@@ -232,7 +255,7 @@ describe('loadWorkerView: balances only when history is complete and opens the c
   it('gives no balance when the archive says its history is incomplete', async () => {
     const s = scenario();
     const result = await view(s, s.workers[0] as string, { archive: { gap: [s.fromLedger, s.fromLedger] } });
-    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
+    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
     expect('spendable' in result || 'receiving' in result).toBe(false);
   });
 
@@ -246,7 +269,7 @@ describe('loadWorkerView: balances only when history is complete and opens the c
     const balance = await loadWorkerBalance({ port: s.ledger, history: { archive, rpc: s.ledger.rpc(), fromLedger: s.fromLedger }, contracts: CONTRACTS, worker, keys: keysFor(worker) });
     expect(balance.history).toMatchObject({ source: 'archive', complete: true });
     expect([balance.complete, balance.spendable, balance.receiving]).toEqual([false, undefined, undefined]);
-    expect(await view(s, worker, { archive: { drop } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
+    expect(await view(s, worker, { archive: { drop } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
   });
 
   it('gives no balance, and says incomplete, when the archive ends more than 12 ledgers behind the chain', async () => {
@@ -254,13 +277,13 @@ describe('loadWorkerView: balances only when history is complete and opens the c
     const worker = s.workers[0] as string;
     s.ledger.ledger += 20;
     expect(await view(s, worker, { archive: { lag: 12 } })).toMatchObject({ complete: true, spendable: 0n, receiving: PAY[0] });
-    expect(await view(s, worker, { archive: { lag: 13 } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
+    expect(await view(s, worker, { archive: { lag: 13 } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
   });
 
   it('gives no balance when the RPC window starts after the worker registered', async () => {
     const s = scenario();
     s.ledger.oldestLedger = s.fromLedger + 3;
-    expect(await view(s, s.workers[0] as string)).toEqual({ complete: false, payslips: [payslipOf(s, 0)] });
+    expect(await view(s, s.workers[0] as string)).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
   });
 });
 
@@ -299,5 +322,50 @@ describe('loadWorkerView refusals', () => {
     for (const amount of [...PAY, PAY.reduce((a, b) => a + b, 0n)]) {
       for (const text of [amount.toString(), formatUsdc(amount), amount.toString(16)]) expect(haystack).not.toContain(text);
     }
+  });
+});
+
+describe('loadWorkerView reads in parallel without reading more', () => {
+  it('keeps at most eight reads in flight and makes the same reads it made one at a time', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    const ids = [COMPANY];
+    for (let c = 1; c < 3; c++) {
+      const admin = testAccount(`parallel admin ${c}`).publicKey();
+      s.ledger.register(admin, keysFor(admin), 13);
+      s.ledger.deposit(admin, admin, 900_000_000n);
+      s.ledger.merge(admin);
+      s.ledger.createCompany(100n + BigInt(c), admin, 13, `Parallel ${c}`);
+      s.ledger.join(100n + BigInt(c), worker);
+      ids.push(100n + BigInt(c));
+    }
+    for (const id of ids) {
+      for (let r = id === COMPANY ? 1 : 0; r < 4; r++) {
+        s.ledger.openRun(id, 500n + BigInt(r), `Run ${r}`, 1);
+        s.ledger.pay(id, 500n + BigInt(r), [{ worker, amount: 1_000n + BigInt(r) }]);
+      }
+    }
+    const reads = new Map<string, number>();
+    let inFlight = 0;
+    let most = 0;
+    const read = s.ledger.read.bind(s.ledger);
+    s.ledger.read = async (contractId, method, args) => {
+      reads.set(method, (reads.get(method) ?? 0) + 1);
+      most = Math.max(most, ++inFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return await read(contractId, method, args);
+      } finally {
+        inFlight--;
+      }
+    };
+    const txSource = s.ledger.txSource();
+    const result = await view(s, worker, { companyIds: ids, txSource });
+    // The counts scratchpad/wo-b/reads-p2.txt measured for 3 companies of 4 paid runs, read one at a time.
+    expect(Object.fromEntries(reads)).toEqual({ confidential_balance: 1, memberships_of: 1, get_company: 3, get_roster: 3, get_run: 12, is_paid: 12 });
+    expect([result.complete, result.gaps, result.payslips.length, txSource.calls.length]).toEqual([true, [], 12, 12]);
+    expect(result.payslips.map((p) => p.ledger)).toEqual(result.payslips.map((p) => p.ledger).sort((a, b) => a - b));
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(8);
   });
 });

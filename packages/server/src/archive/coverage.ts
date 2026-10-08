@@ -13,7 +13,11 @@ export interface Coverage {
   ranges: Array<readonly [number, number]>;
   gaps: GapRecord[];
   startLedger: number | null;
-  /** The archive began at or before both contracts existed, so nothing earlier can exist. */
+  /**
+   * The archive proved it began before our token existed: the first token
+   * event it read came from the token's deploy transaction, in the start
+   * ledger. Never set on assumption.
+   */
   coversFromGenesis: boolean;
   latestLedger: number;
   lastIngestAt: Date | null;
@@ -46,7 +50,12 @@ export function ingestedThrough(c: Coverage): number {
   return c.ranges.length === 0 ? 0 : c.ranges[c.ranges.length - 1]![1];
 }
 
-/** The lowest ledger the archive can vouch for; 0 when nothing has been read. */
+/**
+ * The lowest ledger the archive can vouch for; 0 when nothing has been read.
+ * It is 1 only after the start check passed. Otherwise it is the first
+ * ledger actually read, so health tells a reader where the archive's word
+ * begins.
+ */
 export function ingestedFrom(c: Coverage): number {
   if (c.ranges.length === 0) return 0;
   return c.coversFromGenesis ? 1 : c.ranges[0]![0];
@@ -55,7 +64,7 @@ export function ingestedFrom(c: Coverage): number {
 /**
  * True only when every ledger in [from, to] was read in full and no recorded
  * gap touches the range. Ledgers before the archive's start count as read
- * only when the archive was started at or before the contracts' deployment.
+ * only when the start check proved the token did not exist before it.
  */
 export function isComplete(c: Coverage, from: number, to: number): boolean {
   if (from < 1 || to < from) return false;

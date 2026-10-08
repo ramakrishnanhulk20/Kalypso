@@ -12,7 +12,9 @@
     "deploy:testnet": "node deploy.mjs",
     "check:testnet": "node check.mjs",
     "seed:testnet": "node seed.mjs",
-    "prove:testnet": "node prove.mjs"
+    "prove:testnet": "node prove.mjs",
+    "keepalive:testnet": "node keepalive.mjs",
+    "test": "node --test lib/*.test.mjs"
   },
   "dependencies": {
     "@kalypso/core": "file:../../core",

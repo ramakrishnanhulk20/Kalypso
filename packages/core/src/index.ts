@@ -18,9 +18,10 @@ export {
   KeyError,
   PrfUnavailableError,
   deriveFromPrf,
-  deriveFromWalletSignature,
+  deriveFromWalletSignatures,
   prfEvalSalt,
   requirePrfOutput,
+  requireReproducible,
   walletKeyMessage,
 } from './keys.js';
 export type { KeyErrorCode, KalypsoKeys, PrfUnavailableReason } from './keys.js';
@@ -34,6 +35,9 @@ export { DecodeError } from './chain/scval.js';
 
 export {
   DEFAULT_TX_TIMEOUT_SECONDS,
+  FeeCapError,
+  MAX_PAY_FEE_STROOPS,
+  MAX_SETUP_FEE_STROOPS,
   assembleFromSimulation,
   buildInvocation,
   decodeInvocation,
@@ -46,6 +50,7 @@ export {
   MAX_COMPANY_LABEL_BYTES,
   MAX_PERIOD_LABEL_BYTES,
   MAX_ROSTER_PAGE,
+  PAYROLL_ERROR_MESSAGES,
   PayrollErrorCode,
   buildAcceptAdmin,
   buildAcceptInvite,
@@ -64,6 +69,7 @@ export {
   decodeRun,
   decodeWorkerStatus,
   getCompany,
+  getMembershipsOf,
   getRoster,
   getRun,
   isPaid,
@@ -75,6 +81,7 @@ export type { Company, PayItem, Run, RunStatus, WorkerStatus } from './chain/pay
 export {
   AuditorErrorCode,
   TokenErrorCode,
+  buildCheckedRegister,
   buildConfidentialTransfer,
   buildDeposit,
   buildMerge,
@@ -88,15 +95,32 @@ export {
 } from './chain/token.js';
 export type { ConfidentialAccountView, RegisterProof, TransferProof, WithdrawProof } from './chain/token.js';
 
+export {
+  AuditorBindingError,
+  buildAcceptOwner,
+  buildCancelOwnerProposal,
+  buildProposeOwner,
+  buildRegisterKey,
+  buildRotateKey,
+  getKeyCount,
+  getOwnerOf,
+  readRegisteredAuditorId,
+  requireAuditorBinding,
+} from './chain/auditor.js';
+export type { AuditorBindingErrorCode } from './chain/auditor.js';
+
 export { planRun } from './run/plan.js';
 
 export {
   HistoryIncompleteError,
+  attemptsKey,
   batchOpeningKey,
   inFlightKey,
   loadTreasuryOpening,
+  readAttempts,
   readInFlight,
   readSavedOpening,
+  saveAttempts,
   toSavedOpening,
   treasuryOpeningKey,
 } from './run/treasury.js';
@@ -104,11 +128,15 @@ export type { HistoryIncompleteReason, Opening } from './run/treasury.js';
 
 export {
   AmountMismatchError,
+  PUBLISHED_DEMO_AUDITOR_IDS,
+  PaidElsewhereError,
   PaymentInFlightError,
   PreflightError,
   SignedTransactionMismatchError,
+  clearInFlight,
   executeRun,
 } from './run/engine.js';
+export { rebuildTreasuryOpening } from './run/rebuild.js';
 export type { PreflightErrorCode, RowFailureReason, RowStatus, RunInput, RunReport } from './run/engine.js';
 
 export { createCircuitProver } from './prover/browser.js';
@@ -124,9 +152,10 @@ export type { ArchiveConfig, HistoryResult, HistorySource } from './history/even
 export { TX_SOURCE_TIMEOUT_MS, bindTransferToTransaction, createTxSourcePort } from './history/tx-binding.js';
 export type { BindingFailure, BoundCall, BoundTransferPayload, TransferBinding, TxRecord, TxSourcePort } from './history/tx-binding.js';
 
-export { MAX_WORKER_COMPANIES, WorkerViewError, loadWorkerBalance, loadWorkerView } from './payslips/worker.js';
+export { MAX_WORKER_COMPANIES, WorkerViewError, loadAccountBalance, loadWorkerBalance, loadWorkerView } from './payslips/worker.js';
 export type { Payslip, WorkerBalance, WorkerView, WorkerViewErrorCode } from './payslips/worker.js';
 export { AuditError, auditCompany, exportAuditCsv } from './payslips/accountant.js';
 export type { AuditErrorCode, AuditLine, AuditResult, AuditRun, UndecryptableReason } from './payslips/accountant.js';
+export type { HistoryGap } from './payslips/company.js';
 export { WorkerActionError, buildWorkerMerge, buildWorkerWithdraw } from './payslips/worker-actions.js';
 export type { WorkerActionErrorCode } from './payslips/worker-actions.js';

@@ -14,6 +14,8 @@ export interface TxRecord {
   envelopeXdr: string;
   /** True only when the network applied the transaction and it succeeded. */
   successful: boolean;
+  /** The ledger the network applied the transaction in. */
+  ledger: number;
 }
 
 /**
@@ -59,7 +61,8 @@ export type BindingFailure =
   /** At least one of the event's fields differs from the payload the transaction carried. */
   | 'payload_mismatch';
 
-export type TransferBinding = { ok: true; call: BoundCall; payload: BoundTransferPayload } | { ok: false; reason: BindingFailure };
+/** On success, ledger is the transaction source's, so a payslip's date never rests on an event source's word. */
+export type TransferBinding = { ok: true; call: BoundCall; payload: BoundTransferPayload; ledger: number } | { ok: false; reason: BindingFailure };
 
 export type TransferEventFields = Extract<TokenEvent, { type: 'transfer' }>;
 
@@ -69,6 +72,7 @@ const NETWORK_PASSPHRASE = Networks.TESTNET;
 // The network caps a transaction at 132,096 bytes, 176,128 base64 characters; a fee bump adds a few hundred.
 const MAX_ENVELOPE_CHARS = 180_000;
 const MAX_HORIZON_REPLY_CHARS = 4_000_000;
+const MAX_LEDGER = 0xffff_ffff;
 const TX_HASH = /^[0-9a-f]{64}$/;
 const PAYLOAD_FIELDS = [
   'b_tilde',
@@ -182,7 +186,9 @@ function sameFields(event: TransferEventFields, payload: BoundTransferPayload): 
  * have succeeded, decodes its one call (our payroll's pay or our token's confidential_transfer,
  * by contract id), finds the one transfer for the event's recipient (and, for a direct transfer,
  * its sender), decodes that TransferPayload, and requires r_e_point, v_tilde, sigma, b_tilde,
- * v_tilde_aud_r, r_tilde_aud_r, v_tilde_aud_s and b_tilde_aud_s to equal the event's.
+ * v_tilde_aud_r, r_tilde_aud_r, v_tilde_aud_s and b_tilde_aud_s to equal the event's. On
+ * success it returns the ledger the transaction source recorded, which a caller shows in place of
+ * the event's own.
  *
  * Covers: a re-encrypted or edited event, an event pointed at another transaction, a failed
  * transaction, a call to any other contract. Does not cover: whether the proof was valid (the
@@ -211,7 +217,15 @@ export async function bindTransferToTransaction(input: {
   } catch {
     return { ok: false, reason: 'transaction_unavailable' };
   }
-  if (record === null || typeof record !== 'object' || typeof record.envelopeXdr !== 'string' || typeof record.successful !== 'boolean') {
+  if (
+    record === null ||
+    typeof record !== 'object' ||
+    typeof record.envelopeXdr !== 'string' ||
+    typeof record.successful !== 'boolean' ||
+    !Number.isInteger(record.ledger) ||
+    record.ledger < 1 ||
+    record.ledger > MAX_LEDGER
+  ) {
     return { ok: false, reason: 'transaction_unavailable' };
   }
   if (record.envelopeXdr.length > MAX_ENVELOPE_CHARS) return { ok: false, reason: 'envelope_unreadable' };
@@ -228,7 +242,7 @@ export async function bindTransferToTransaction(input: {
     if (typeof found === 'string') return { ok: false, reason: found };
     const payload = decodeTransferData(found.data);
     if (!sameFields(event, payload)) return { ok: false, reason: 'payload_mismatch' };
-    return { ok: true, call: found.call, payload };
+    return { ok: true, call: found.call, payload, ledger: record.ledger };
   } catch {
     return { ok: false, reason: 'envelope_unreadable' };
   }
@@ -291,10 +305,10 @@ export function createTxSourcePort(config: { rpcUrl: string; horizonUrl: string 
     // The raw call, so the result meta is never parsed: only the envelope is needed.
     const found = await withTimeout('getTransaction', server._getTransaction(txHash));
     if (found.status === 'NOT_FOUND') return null;
-    if ((found.status !== 'SUCCESS' && found.status !== 'FAILED') || typeof found.envelopeXdr !== 'string') {
-      throw new TxSourceReplyError('the RPC answer has no envelope');
+    if ((found.status !== 'SUCCESS' && found.status !== 'FAILED') || typeof found.envelopeXdr !== 'string' || typeof found.ledger !== 'number') {
+      throw new TxSourceReplyError('the RPC answer has no envelope or ledger');
     }
-    return { envelopeXdr: found.envelopeXdr, successful: found.status === 'SUCCESS' };
+    return { envelopeXdr: found.envelopeXdr, successful: found.status === 'SUCCESS', ledger: found.ledger };
   }
 
   async function fromHorizon(txHash: string): Promise<TxRecord | null> {
@@ -308,9 +322,11 @@ export function createTxSourcePort(config: { rpcUrl: string; horizonUrl: string 
     const text = await response.text();
     if (text.length > MAX_HORIZON_REPLY_CHARS) throw new TxSourceReplyError('the Horizon reply is too large');
     const body = JSON.parse(text) as unknown;
-    const { envelope_xdr: envelopeXdr, successful } = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-    if (typeof envelopeXdr !== 'string' || typeof successful !== 'boolean') throw new TxSourceReplyError('the Horizon reply has no envelope');
-    return { envelopeXdr, successful };
+    const { envelope_xdr: envelopeXdr, successful, ledger } = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+    if (typeof envelopeXdr !== 'string' || typeof successful !== 'boolean' || typeof ledger !== 'number') {
+      throw new TxSourceReplyError('the Horizon reply has no envelope or ledger');
+    }
+    return { envelopeXdr, successful, ledger };
   }
 
   return {

@@ -18,18 +18,21 @@ fn create_company_needs_the_named_admin_signature() {
     let s = Setup::new();
     let admin = s.account(COMPANY_AUDITOR);
     let stranger = s.account(COMPANY_AUDITOR);
+    let accountant = s.accountant(COMPANY_AUDITOR);
     let label = s.text("Acme");
 
-    s.sign(
-        &stranger,
-        "create_company",
-        (&admin, COMPANY_AUDITOR, &label).into_val(&s.e),
-    );
+    for signer in [&stranger, &accountant] {
+        s.sign(
+            signer,
+            "create_company",
+            (&admin, &accountant, COMPANY_AUDITOR, &label).into_val(&s.e),
+        );
 
-    s.assert_auth_failed(
-        s.client()
-            .try_create_company(&admin, &COMPANY_AUDITOR, &label),
-    );
+        s.assert_auth_failed(
+            s.client()
+                .try_create_company(&admin, &accountant, &COMPANY_AUDITOR, &label),
+        );
+    }
     assert_eq!(s.client().company_count(), 0);
 }
 

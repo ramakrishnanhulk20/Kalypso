@@ -52,6 +52,7 @@ export const stack = {
     payroll: record.contracts.payroll.id,
   },
   tokenDeployLedger: record.contracts.token.deployTx.ledger,
+  tokenDeployTx: { hash: record.contracts.token.deployTx.hash, ledger: record.contracts.token.deployTx.ledger },
   usdc: { sac: USDC_SAC, issuer: USDC_ISSUER, asset: new sdk.Asset("USDC", USDC_ISSUER) },
 };
 
@@ -66,10 +67,16 @@ export const events = core.createRpcEventsPort({ rpcUrl: stack.rpcUrl });
 export const txSource = core.createTxSourcePort({ rpcUrl: stack.rpcUrl, horizonUrl: "https://horizon-testnet.stellar.org" });
 export const rpcServer = new sdk.rpc.Server(stack.rpcUrl);
 
-/** The confidential keys a Freighter user with this keypair gets in the app. */
+/**
+ * The confidential keys a Freighter user with this keypair gets in the app. Core takes two
+ * signatures of the key message and requires them equal (C40), as the app asks Freighter twice;
+ * an ed25519 key signs the same message to the same bytes, so signing twice here passes for real.
+ */
 export function kalypsoKeys(keypair) {
   const p = { domain: KEY_DOMAIN, network: "testnet", token: stack.contracts.token, account: keypair.publicKey() };
-  return core.deriveFromWalletSignature(new Uint8Array(keypair.signMessage(core.walletKeyMessage(p))), p);
+  const message = core.walletKeyMessage(p);
+  const sign = () => new Uint8Array(keypair.signMessage(message));
+  return core.deriveFromWalletSignatures(sign(), sign(), p);
 }
 
 /** 64-byte be(x) || be(y), the only form points are compared in across modules. */

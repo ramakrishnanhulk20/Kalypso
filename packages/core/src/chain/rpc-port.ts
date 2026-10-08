@@ -6,6 +6,7 @@ import { ContractCallError, SubmitRejectedError, contractErrorCode, type ChainPo
 export const RPC_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 2_000;
 const MAX_WAIT_MS = 15 * 60_000;
+const MAX_LEDGER = 0xffff_ffff;
 const TX_HASH = /^[0-9a-f]{64}$/;
 
 // A read simulation needs a source account but never loads or charges it. This is the
@@ -107,7 +108,12 @@ export function createRpcChainPort(config: { rpcUrl: string; networkPassphrase: 
       let closeTime: number | undefined;
       try {
         const found = await withTimeout('getTransaction', server.getTransaction(hash));
-        if (found.status === Api.GetTransactionStatus.SUCCESS) return { status: 'SUCCESS' as const, ledger: found.ledger };
+        if (found.status === Api.GetTransactionStatus.SUCCESS) {
+          // The SDK reads returnValue out of the result meta the same getTransaction call carried.
+          return found.returnValue === undefined
+            ? { status: 'SUCCESS' as const, ledger: found.ledger }
+            : { status: 'SUCCESS' as const, ledger: found.ledger, returnValue: found.returnValue };
+        }
         if (found.status === Api.GetTransactionStatus.FAILED) return { status: 'FAILED' as const, ledger: found.ledger };
         closeTime = unixSeconds(found.latestLedgerCloseTime);
       } catch (err) {
@@ -148,5 +154,17 @@ export function createRpcChainPort(config: { rpcUrl: string; networkPassphrase: 
     return { sequence: loaded.sequenceNumber() };
   }
 
-  return { simulate, submit, waitFor, read, sourceAccount };
+  async function latestLedger(): Promise<{ sequence: number; closeTime: number }> {
+    // The raw reply: the parsed getLatestLedger also decodes the ledger's whole close meta (about
+    // 370 KB on testnet), which nothing here reads and which a newer protocol could fail to decode.
+    const reply: { sequence?: unknown; closeTime?: unknown } = await withTimeout('getLatestLedger', server._getLatestLedger());
+    const { sequence } = reply;
+    const closeTime = unixSeconds(reply.closeTime);
+    if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence <= 0 || sequence > MAX_LEDGER || closeTime === undefined) {
+      throw new TypeError('The RPC answered getLatestLedger without a whole ledger sequence and close time.');
+    }
+    return { sequence, closeTime };
+  }
+
+  return { simulate, submit, waitFor, read, sourceAccount, latestLedger };
 }

@@ -5,8 +5,8 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum PayrollError {
     CompanyNotFound = 1,
-    /// The token has no confidential account for this address, or could not
-    /// be read. Both are treated the same way: the call is refused.
+    /// The token answered that it has no confidential account for this
+    /// address: the token's own error 3501.
     NotRegisteredWithToken = 2,
     /// The account is registered with the token under a different auditor id
     /// than the company's.
@@ -36,13 +36,23 @@ pub enum PayrollError {
     InvalidLiveUntil = 19,
     LimitInvalid = 20,
     /// A counter would go past the largest value its type holds, or below
-    /// zero: the next company id, a company's roster length or active worker
-    /// count, or a run's paid count. The call is refused rather than letting
+    /// zero: the next company id, a company's roster length, active worker
+    /// count, runs opened or admin changes, a run's paid count, or a
+    /// worker's membership count. The call is refused rather than letting
     /// the counter wrap.
     CounterOverflow = 21,
     /// A record the contract always writes before it reads it is missing:
-    /// the token address set by the constructor, or a roster entry below the
-    /// company's roster length. No public function can cause this; it fails
-    /// closed if storage is ever not what the code expects.
+    /// the token or registry address set by the constructor, or a roster
+    /// entry below the company's roster length. No public function can cause
+    /// this; it fails closed if storage is ever not what the code expects.
     MissingRecord = 22,
+    /// The auditor registry does not say the named accountant owns the
+    /// auditor id, or could not be read. Both refuse the call, so a treasury
+    /// bound to an id somebody else took first can never found a company.
+    AuditorNotOwnedByAccountant = 23,
+    /// The token could not be read for a reason other than an unregistered
+    /// account: it trapped, has no `confidential_balance`, or answered with
+    /// something that does not decode. The call is refused, and the caller
+    /// can tell an outage from a missing registration.
+    TokenUnavailable = 24,
 }

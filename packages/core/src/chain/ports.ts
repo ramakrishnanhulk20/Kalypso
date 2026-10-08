@@ -29,14 +29,25 @@ export interface ChainPort {
    * With NOT_FOUND, closeTime is the close time in Unix seconds of the latest ledger the network
    * had at the last look. Without it, NOT_FOUND says nothing about whether the transaction can
    * still land.
+   * With SUCCESS, returnValue is the contract call's return value when the network reported one.
+   * It is an RPC answer like any other, so the caller decodes it with that call's strict decoder.
    */
-  waitFor(hash: string, timeoutMs: number): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; closeTime?: number }>;
+  waitFor(
+    hash: string,
+    timeoutMs: number,
+  ): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; closeTime?: number; returnValue?: xdr.ScVal }>;
   /**
    * Read-only contract call by simulation.
    * @throws ContractCallError when the call fails, with the contract's own error code when it raised one.
    */
   read(contractId: string, method: string, args: xdr.ScVal[]): Promise<xdr.ScVal>;
   sourceAccount(address: string): Promise<{ sequence: string }>;
+  /**
+   * The newest ledger the network has closed, as the RPC knows it: its sequence and its close
+   * time in Unix seconds, by the chain's clock, never this machine's.
+   * @throws when the RPC cannot answer, or its sequence or close time is not a whole positive number.
+   */
+  latestLedger(): Promise<{ sequence: number; closeTime: number }>;
 }
 
 export interface SignerPort {
@@ -66,8 +77,13 @@ export interface InFlightPay {
  * untrusted: openings are checked against the chain and records against their shape.
  */
 export interface OpeningStore {
-  get(key: string): Promise<SavedOpening | InFlightPay | undefined>;
-  put(key: string, value: SavedOpening | InFlightPay): Promise<void>;
+  /**
+   * A list value is the treasury's attempts list (attemptsKey): store keys of batch openings that
+   * may still open the chain. It is written through put like any other value, so a store must keep
+   * JSON arrays as well as objects.
+   */
+  get(key: string): Promise<SavedOpening | InFlightPay | readonly string[] | undefined>;
+  put(key: string, value: SavedOpening | InFlightPay | readonly string[]): Promise<void>;
   /** Removes the key. Removing a key that is not there is not an error. */
   delete(key: string): Promise<void>;
 }

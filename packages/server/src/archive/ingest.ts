@@ -1,6 +1,7 @@
 import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { Config } from "../config.ts";
 import { OutboundError } from "../http.ts";
+import type { Logger } from "../log.ts";
 import { RPC_INVALID_REQUEST, RpcError, type RpcClient, type RpcEvent, type RpcEventsPage, type RpcHealth } from "../rpc.ts";
 import { addressOfScVal, canonicalContractId, decodeCanonicalBase64 } from "../stellar.ts";
 import { coverageOf, ingestedThrough } from "./coverage.ts";
@@ -12,6 +13,7 @@ import {
   recordGap,
   recordIngestProgress,
   setArchiveStart,
+  settleArchiveStart,
   type Db,
   type EventRow,
   type GapRecord,
@@ -19,12 +21,16 @@ import {
 
 export interface IngestOptions {
   /**
-   * Where an empty archive starts reading. It must be at or before the ledger
-   * where both contracts were deployed: the archive then vouches for
-   * everything before it too, because nothing of ours existed. Without it an
-   * empty archive starts at RPC's oldest ledger and vouches only from there.
+   * Where an empty archive starts reading; defaults to ARCHIVE_START_LEDGER.
+   * The archive vouches for the ledgers before it only once the start check
+   * passes (see ingestOnce). Without either, an empty archive starts at
+   * RPC's oldest ledger and vouches only from there.
    */
   startLedger?: number;
+  /** The token's deploy transaction hash for the start check; defaults to TOKEN_DEPLOY_TX. */
+  deployTx?: string;
+  /** Where the start check reports its outcome. */
+  log?: Logger;
   /** Stop starting new RPC calls after this long; the API's lazy catch-up uses 2,000. */
   deadlineMs?: number;
   /** Events per getEvents call, 1 to 1,000. */
@@ -64,6 +70,19 @@ const DEFAULT_MAX_PAGES = 1_000;
  * ledgers are recorded as a permanent gap (which raises the health alarm)
  * and reading continues from the oldest ledger.
  *
+ * The start check, the same rule the prove script uses: an archive begun at
+ * a configured start ledger vouches for the ledgers before it only if the
+ * first token event it reads is in that ledger and comes from the token's
+ * own deploy transaction (TOKEN_DEPLOY_TX). No token event can come before
+ * the transaction that created the token, whatever order its constructor
+ * emitted events in. The outcome is recorded in the same transaction as that
+ * event. Anything else, or no deploy transaction configured, leaves it
+ * vouching only from its start ledger, with a warning. It never vouches on
+ * assumption. What this does not cover: the payroll contract emits nothing
+ * when it is created, so payroll events before the start ledger are ruled
+ * out only by payroll being deployed after the token, as the deploy script
+ * does.
+ *
  * Throws on RPC or database failure, or on an RPC reply that breaks the
  * rules, after keeping every page already stored. A deadline is not a
  * failure: the pass returns what it managed.
@@ -85,13 +104,23 @@ export async function ingestOnce(db: Db, rpc: RpcClient, cfg: Config, opts: Inge
     return health.oldestLedger;
   };
 
+  const configuredStart = opts.startLedger ?? cfg.ARCHIVE_START_LEDGER;
+  const deployTx = opts.deployTx ?? cfg.TOKEN_DEPLOY_TX;
   const pass = async (): Promise<void> => {
     let health = await rpc.getHealth(deadline);
     let state = await readArchiveState(db);
     if (state.startLedger === null) {
-      await setArchiveStart(db, opts.startLedger ?? health.oldestLedger, opts.startLedger !== undefined);
+      const checkStart = configuredStart !== undefined && deployTx !== undefined;
+      const started = await setArchiveStart(db, configuredStart ?? health.oldestLedger, checkStart);
+      if (started && configuredStart !== undefined && !checkStart) {
+        opts.log?.warn("archive_start_unproven", {
+          startLedger: configuredStart,
+          meaning: "TOKEN_DEPLOY_TX is not set, so the archive vouches for nothing before its start ledger",
+        });
+      }
       state = await readArchiveState(db);
     }
+    let startCheckPending = state.startCheckPending;
     const through = ingestedThrough(coverageOf(await readCoverage(db)));
     let next = await skipForgotten(through > 0 ? through + 1 : state.startLedger!, health);
     if (next > health.latestLedger) {
@@ -138,12 +167,18 @@ export async function ingestOnce(db: Db, rpc: RpcClient, cfg: Config, opts: Inge
         throw new UpstreamDataError("event outside the requested ledgers");
       }
 
-      await db.transaction(async (tx) => {
+      const firstTokenEvent = startCheckPending ? rows.find((r) => r.contractId === cfg.TOKEN_CONTRACT_ID) : undefined;
+      const settled = await db.transaction(async (tx) => {
         eventsStored += await insertEvents(tx, rows);
         if (fullyRead > readThrough) await addIngestedRange(tx, readThrough + 1, fullyRead);
         await recordIngestProgress(tx, page.latestLedger, page.oldestLedger ?? health.oldestLedger, now());
+        return firstTokenEvent !== undefined && (await settleArchiveStart(tx, isDeployEvent(firstTokenEvent, state.startLedger!, deployTx)));
       });
       if (fullyRead > readThrough) readThrough = fullyRead;
+      if (firstTokenEvent !== undefined) {
+        startCheckPending = false;
+        if (settled) reportStartCheck(opts.log, state.startLedger!, deployTx, firstTokenEvent);
+      }
 
       if (pageCursor === null) return;
       if (page.events.length < limit && pageCursor.endOfLedger && pageCursor.ledger >= page.latestLedger) {
@@ -163,6 +198,26 @@ export async function ingestOnce(db: Db, rpc: RpcClient, cfg: Config, opts: Inge
   }
   const coverage = coverageOf(await readCoverage(db));
   return { ingestedThrough: ingestedThrough(coverage), gaps: coverage.gaps, eventsStored, pages, caughtUp };
+}
+
+/** Both sides are lower-case hex: RPC hashes are checked in toRow, TOKEN_DEPLOY_TX in config. */
+const isDeployEvent = (first: EventRow, startLedger: number, deployTx: string | undefined): boolean =>
+  deployTx !== undefined && first.ledger === startLedger && first.txHash === deployTx;
+
+function reportStartCheck(log: Logger | undefined, startLedger: number, deployTx: string | undefined, first: EventRow): void {
+  if (isDeployEvent(first, startLedger, deployTx)) {
+    log?.info("archive_start_proven", { startLedger, deployTx });
+    return;
+  }
+  log?.warn("archive_start_unproven", {
+    startLedger,
+    firstTokenEvent: first.eventName,
+    firstTokenLedger: first.ledger,
+    firstTokenTx: first.txHash,
+    meaning:
+      "the first token event read is not from the token's deploy transaction in the start ledger, so the archive vouches for nothing before it; " +
+      "ARCHIVE_START_LEDGER and TOKEN_DEPLOY_TX must be the token's deployTx ledger and hash from packages/contracts/deployments/testnet.json",
+  });
 }
 
 interface RpcCursor {

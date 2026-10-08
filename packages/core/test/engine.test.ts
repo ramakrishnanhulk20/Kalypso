@@ -1,7 +1,8 @@
 // Does NOT cover: real proofs, fees or the live network (scratchpad/m5b2/e2e-run.mjs runs the
-// engine on testnet), a wallet that shows the hidden amount (none can), or several devices
-// paying the same run at once (the network's one-transaction-per-account queue and the
-// contract's paid flags handle that, not this engine). The injected prover is a stand-in built
+// engine on testnet), a wallet that shows the hidden amount (none can), or several tabs paying
+// the same run at once from one store (engine-inflight-attacks.test.ts runs those; another
+// device is held off by the network's one-transaction-per-account queue and the contract's paid
+// flags, not by this engine). The injected prover is a stand-in built
 // on the real SDK witness builder with a fake proof, so commitments, salts and openings are real.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,25 +20,44 @@ import {
   type TransferParams,
 } from 'stellar-confidential-token-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AddressError } from '../src/addresses.js';
 import { formatUsdc } from '../src/amounts.js';
 import type { InFlightPay, OpeningStore, SavedOpening } from '../src/chain/ports.js';
 import { decodeInvocation } from '../src/chain/tx.js';
-import { parsePayrollCsv } from '../src/csv.js';
+import { CSV_DEFAULT_MAX_ROWS, parsePayrollCsv } from '../src/csv.js';
 import type { KalypsoKeys } from '../src/keys.js';
 import type { ProverPort, TransferEnvelope } from '../src/prover/port.js';
 import {
   AmountMismatchError,
+  PUBLISHED_DEMO_AUDITOR_IDS,
+  PaidElsewhereError,
   PaymentInFlightError,
   PreflightError,
   SignedTransactionMismatchError,
+  clearInFlight,
   executeRun,
   type PreflightErrorCode,
   type RowStatus,
   type RunInput,
 } from '../src/run/engine.js';
-import { HistoryIncompleteError, readSavedOpening, toSavedOpening, treasuryOpeningKey } from '../src/run/treasury.js';
-import { FakeChain, readTransferData } from './fake-chain.js';
+import {
+  HistoryIncompleteError,
+  attemptsKey,
+  batchOpeningKey,
+  readAttempts,
+  readSavedOpening,
+  saveAttempts,
+  toSavedOpening,
+  treasuryOpeningKey,
+} from '../src/run/treasury.js';
+import { FakeChain, readTransferData, type AccountState } from './fake-chain.js';
 import { PASSPHRASE, testAccount, testContract } from './independent-xdr.js';
+
+// Pass-through spy, so one test can hand the engine an invocation whose record would not read back.
+vi.mock(import('../src/chain/tx.js'), async (importOriginal) => {
+  const tx = await importOriginal();
+  return { ...tx, decodeInvocation: vi.fn(tx.decodeInvocation) };
+});
 
 // The fake proof carries the commitment and the three keys it was built on, which the fake
 // token checks against chain state as the real verifier reads its public inputs.
@@ -79,10 +99,14 @@ const keys: KalypsoKeys = (() => {
 const treasuryKey = treasuryOpeningKey(CONTRACTS.token, treasury);
 // Spelled out rather than imported, so a change to the key format fails here.
 const inFlightRecordKey = `kalypso/v1/inflight/${CONTRACTS.token}/${treasury}`;
+const attemptsListKey = `kalypso/v1/attempts/${CONTRACTS.token}/${treasury}`;
 
-function memoryStore(timeline: string[]): OpeningStore & { data: Map<string, SavedOpening | InFlightPay> } {
-  const data = new Map<string, SavedOpening | InFlightPay>();
-  const kind = (key: string) => (key.startsWith('kalypso/v1/batch/') ? 'batch' : key === inFlightRecordKey ? 'inflight' : 'treasury');
+type Stored = SavedOpening | InFlightPay | readonly string[];
+
+function memoryStore(timeline: string[]): OpeningStore & { data: Map<string, Stored> } {
+  const data = new Map<string, Stored>();
+  const kind = (key: string) =>
+    key.startsWith('kalypso/v1/batch/') ? 'batch' : key === inFlightRecordKey ? 'inflight' : key === attemptsListKey ? 'attempts' : 'treasury';
   return {
     data,
     get: async (key) => data.get(key),
@@ -109,8 +133,8 @@ const signerFor = (kp: Keypair) => ({
 const csvRows = (addresses: string[], amounts = AMOUNTS) =>
   parsePayrollCsv(addresses.map((a, i) => `${a},${formatUsdc(amounts[i] as bigint)}`).join('\n')).rows;
 
-function setup(funds = FUNDS) {
-  const chain = new FakeChain(CONTRACTS);
+function setup(funds = FUNDS, contracts = CONTRACTS) {
+  const chain = new FakeChain(contracts);
   chain.companies.set(COMPANY, { admin: treasury, auditorId: 0, activeWorkers: workers.length });
   chain.runs.set(`${COMPANY}/${RUN}`, { open: true, expected: workers.length, paid: 0 });
   chain.auditorKeys.set(0, scalarMul(1001n, H));
@@ -129,7 +153,7 @@ function setup(funds = FUNDS) {
     signer: signerFor(adminKey),
     store,
     networkPassphrase: PASSPHRASE,
-    contracts: CONTRACTS,
+    contracts,
     companyId: COMPANY,
     runId: RUN,
     rows: csvRows(workers),
@@ -144,10 +168,36 @@ const statuses = (report: Awaited<ReturnType<typeof executeRun>>) => report.rows
 const transfersPerWorker = (chain: FakeChain) => workers.map((w) => chain.transfersTo.get(w) ?? 0);
 const treasuryOpening = (store: ReturnType<typeof memoryStore>) => readSavedOpening(store.data.get(treasuryKey));
 const batchKeys = (store: ReturnType<typeof memoryStore>) => [...store.data.keys()].filter((key) => key.startsWith('kalypso/v1/batch/'));
+const attempts = (store: ReturnType<typeof memoryStore>) => readAttempts(store.data.get(attemptsListKey));
+const chainSpendable = (chain: FakeChain) => (chain.accounts.get(treasury) as AccountState).spendable;
 const unbuildable = async (): Promise<never> => {
   throw new Error('the circuit refused the witness');
 };
 const sigmaOfCall = async (i: number) => readTransferData((await prove.mock.results[i]?.value).payload).sigma;
+
+/** Runs change once, just before the engine first waits on the n-th submitted transaction. */
+function onFirstWait(chain: FakeChain, n: number, change: () => unknown) {
+  const waitFor = chain.waitFor.bind(chain);
+  let done = false;
+  chain.waitFor = async (hash, timeoutMs) => {
+    if (!done && hash === chain.submitted[n]) {
+      done = true;
+      await change();
+    }
+    return waitFor(hash, timeoutMs);
+  };
+}
+
+// Another tab's pay of 5,000 stroops from another company, landing on top of whatever the chain holds.
+const OTHER_PAY_LEFT = FUNDS - 5_000n;
+const otherKey = batchOpeningKey({ payroll: CONTRACTS.payroll, companyId: 8n, runId: RUN, firstWorker: workers[0] as string, txHash: 'ab'.repeat(32) });
+
+/** The other tab lists its opening after ours, as it would, and the chain balance moves to it. */
+async function landOnTop(chain: FakeChain, store: ReturnType<typeof memoryStore>) {
+  await store.put(otherKey, toSavedOpening(OTHER_PAY_LEFT, 4242n));
+  await saveAttempts(store, CONTRACTS.token, treasury, [...(attempts(store) ?? []), otherKey]);
+  (chain.accounts.get(treasury) as AccountState).spendable = commit(OTHER_PAY_LEFT, 4242n);
+}
 
 afterEach(() => {
   prove.mockClear();
@@ -167,11 +217,12 @@ describe('executeRun on a clean run', () => {
     expect(report.rows.map((r) => [r.line, r.txHash])).toEqual([[1, t1], [2, t1], [3, t2], [4, t2], [5, t3]]);
     expect(report.rows.map((r) => r.address)).toEqual(workers);
     expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 1]);
-    expect(chain.timeline).toEqual([
-      'put:treasury',
-      ...Array.from({ length: 3 }, () => ['put:batch', 'put:inflight', 'submit', 'put:treasury', 'delete:inflight']).flat(),
-    ]);
+    // Each later batch's adoption passes the one before it, which is then unlisted and removed.
+    const batch = ['put:batch', 'put:attempts', 'put:inflight', 'submit', 'put:treasury', 'delete:inflight'];
+    expect(chain.timeline).toEqual(['put:treasury', ...batch, ...batch, 'put:attempts', 'delete:batch', ...batch, 'put:attempts', 'delete:batch']);
     expect(store.data.has(inFlightRecordKey)).toBe(false);
+    expect(batchKeys(store).map((key) => key.slice(-64))).toEqual([t3]);
+    expect(attempts(store)).toEqual(batchKeys(store));
 
     const left = treasuryOpening(store);
     expect(left?.v).toBe(FUNDS - TOTAL);
@@ -212,6 +263,12 @@ describe('executeRun when a transaction does not land cleanly', () => {
   it('retries a FAILED transaction once, with new proofs from chain state and fresh salts', async () => {
     const { chain, store, input } = setup();
     chain.failNext('FAILED');
+    const written: string[] = [];
+    const put = store.put;
+    store.put = async (key, value) => {
+      if (key.startsWith('kalypso/v1/batch/')) written.push(key);
+      return put(key, value);
+    };
     const report = await executeRun(input);
 
     expect(chain.submitted).toHaveLength(4);
@@ -223,9 +280,10 @@ describe('executeRun when a transaction does not land cleanly', () => {
     expect(await sigmaOfCall(2)).not.toBe(await sigmaOfCall(0));
     expect(await sigmaOfCall(3)).not.toBe(await sigmaOfCall(1));
     expect(chain.violations).toEqual([]);
-    // Each attempt's opening sits under its own hash, so the retry overwrote nothing.
-    expect(batchKeys(store)).toHaveLength(4);
-    expect(batchKeys(store).map((key) => key.slice(-64))).toEqual(chain.submitted);
+    // Each attempt's opening sat under its own hash, so the retry overwrote nothing. Openings the
+    // chain has moved past are removed once a later pay is adopted.
+    expect(written.map((key) => key.slice(-64))).toEqual(chain.submitted);
+    expect(batchKeys(store)).toEqual([written.at(-1)]);
   });
 
   it('stops after failing on chain twice: those rows and every later row report failed, nothing is paid', async () => {
@@ -436,23 +494,50 @@ describe('executeRun survives a key rotation', () => {
 });
 
 describe('executeRun checks what was paid against the CSV (C14)', () => {
-  it('stops with AmountMismatchError when the chain balance after a batch is not the approved one', async () => {
-    const { chain, input } = setup();
+  // After a SUCCESS, a balance that no saved opening opens, not even the treasury opening from
+  // before the pay, is not a read that lags: the record is kept, every later run refuses, and the
+  // console offers the rebuild, which shows the difference (rebuild.test.ts).
+  it('stops, keeping the record, when the chain balance after a batch is not the approved one', async () => {
+    const { chain, store, input } = setup();
     chain.failNext('OK', 'TAMPER');
     const err = await executeRun(input).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(AmountMismatchError);
-    expect((err as AmountMismatchError).lines).toEqual([3, 4]);
+    expect((err as PaymentInFlightError).reason).toBe('DOES_NOT_MATCH_CHAIN');
+    expect((err as PaymentInFlightError).rebuildable).toBe(true);
     expect(chain.submitted).toHaveLength(2);
     expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 0]);
+    expect(readSavedOpening(store.data.get(treasuryKey))?.v).toBe(FUNDS - (AMOUNTS[0] as bigint) - (AMOUNTS[1] as bigint));
+
+    const proofs = prove.mock.calls.length;
+    expect(((await executeRun(input).catch((e: unknown) => e)) as PaymentInFlightError).reason).toBe('DOES_NOT_MATCH_CHAIN');
+    expect([chain.submitted.length, prove.mock.calls.length]).toEqual([2, proofs]);
+    expect(store.data.has(inFlightRecordKey)).toBe(true);
   });
 
-  it('never labels a row paid from a SUCCESS reply the chain does not back (C13)', async () => {
-    const { chain, events, input } = setup();
+  // The contract sets every paid flag in the same call that moves the balance, so with the pay's
+  // own opening on chain an unpaid row can only be a read behind the chain (NEW-1).
+  it('stops with PAID_FLAGS_BEHIND, sending nothing more, when its own opening is on chain but a row reads unpaid', async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('OK', 'OK');
+    onFirstWait(chain, 1, () => chain.paid.delete(`${COMPANY}/${RUN}/${workers[3]}`));
+    const err = await executeRun(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PaymentInFlightError);
+    expect([(err as PaymentInFlightError).reason, (err as PaymentInFlightError).rebuildable]).toEqual(['PAID_FLAGS_BEHIND', false]);
+    expect((err as Error).message).toContain('paid marks are not readable yet');
+    // The balance is settled: the pay's own opening was adopted and its record removed.
+    expect([store.data.has(inFlightRecordKey), treasuryOpening(store)?.commitment.equals(chainSpendable(chain))]).toEqual([false, true]);
+    expect(chain.submitted).toHaveLength(2);
+  });
+
+  it('never labels a row paid from a SUCCESS reply the chain does not back, and keeps the record (C13)', async () => {
+    const { chain, store, events, input } = setup();
     chain.failNext('LYING_SUCCESS');
     const err = await executeRun(input).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(AmountMismatchError);
+    expect(err).toBeInstanceOf(PaymentInFlightError);
+    expect((err as PaymentInFlightError).reason).toBe('UNCONFIRMED');
+    expect((err as PaymentInFlightError).rebuildable).toBe(false);
     expect(events.some((e) => e.status === 'paid')).toBe(false);
     expect(transfersPerWorker(chain)).toEqual([0, 0, 0, 0, 0]);
+    expect(store.data.has(inFlightRecordKey)).toBe(true);
   });
 
   it('refuses a proof that moves even 1 stroop more than its row, before anything is sent', async () => {
@@ -462,6 +547,140 @@ describe('executeRun checks what was paid against the CSV (C14)', () => {
     expect(err).toBeInstanceOf(AmountMismatchError);
     expect((err as AmountMismatchError).lines).toEqual([1]);
     expect([chain.simulations, chain.submitted.length]).toEqual([0, 0]);
+  });
+});
+
+describe('executeRun settles a pay against every opening this device saved (C13, C29)', () => {
+  it.each<['FAILED' | 'DROPPED', string]>([
+    ['FAILED', 'TRANSACTION_FAILED'],
+    ['DROPPED', 'TRANSACTION_EXPIRED'],
+  ])('removes only the record of a %s pay: its opening stays listed until a later adoption passes it', async (mode, reason) => {
+    const { chain, store, input } = setup();
+    chain.failNext(mode, mode);
+    const report = await executeRun(input);
+    expect(report.rows[0]?.reason).toBe(reason);
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
+    expect(attempts(store)?.map((key) => key.slice(-64))).toEqual(chain.submitted);
+    expect(batchKeys(store)).toEqual(attempts(store));
+
+    expect(statuses(await executeRun(input))).toEqual(Array(5).fill('paid'));
+    expect(batchKeys(store).map((key) => key.slice(-64))).toEqual([chain.submitted.at(-1)]);
+  });
+
+  it('counts its batch as landed when its pay succeeded and a newer pay from another tab already moved the balance', async () => {
+    const { chain, store, input } = setup();
+    onFirstWait(chain, 0, () => landOnTop(chain, store));
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect(report.rows.map((r) => r.txHash)).toEqual([chain.submitted[0], chain.submitted[0], chain.submitted[1], chain.submitted[1], chain.submitted[2]]);
+    expect(prove.mock.calls[2]?.[0].v).toBe(OTHER_PAY_LEFT);
+    expect(treasuryOpening(store)?.commitment.equals(chainSpendable(chain))).toBe(true);
+    // Each adoption removed the keys listed before it: ours under the other tab's, then the other tab's under the next batch.
+    expect(batchKeys(store).map((key) => key.slice(-64))).toEqual([chain.submitted[2]]);
+  });
+
+  it('stops with PAID_FLAGS_BEHIND when its pay succeeded under a newer balance but a row reads unpaid', async () => {
+    const { chain, store, input } = setup();
+    onFirstWait(chain, 0, async () => {
+      await landOnTop(chain, store);
+      chain.paid.delete(`${COMPANY}/${RUN}/${workers[1]}`);
+    });
+    const err = await executeRun(input).catch((e: unknown) => e);
+    expect((err as PaymentInFlightError).reason).toBe('PAID_FLAGS_BEHIND');
+    expect(chain.submitted).toHaveLength(1);
+  });
+
+  it('rebuilds from the newer opening when its own pay failed and nothing of the batch was paid', async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('FAILED');
+    onFirstWait(chain, 0, () => landOnTop(chain, store));
+    const report = await executeRun(input);
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect(prove.mock.calls[2]?.[0].v).toBe(OTHER_PAY_LEFT);
+    expect(transfersPerWorker(chain)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('raises PaidElsewhereError, never AmountMismatchError, when its own pay failed and another paid the rows', async () => {
+    const { chain, store, input } = setup();
+    chain.failNext('FAILED');
+    onFirstWait(chain, 0, async () => {
+      await landOnTop(chain, store);
+      for (const worker of workers.slice(0, 2)) chain.paid.add(`${COMPANY}/${RUN}/${worker}`);
+    });
+    const err = await executeRun(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PaidElsewhereError);
+    expect((err as PaidElsewhereError).lines).toEqual([1, 2]);
+    expect((err as Error).message).toBe('These rows were paid by another transaction, probably another tab or device. Nothing was paid twice. Reload the run.');
+    expect(chain.submitted).toHaveLength(1);
+  });
+
+  it("leaves another tab's in-flight record alone: the record is deleted only while it holds the settled hash", async () => {
+    const { chain, store, input } = setup();
+    const otherRecord: InFlightPay = { hash: 'ab'.repeat(32), maxTime: chain.closeTime + 60, batchKey: otherKey };
+    onFirstWait(chain, 0, () => store.put(inFlightRecordKey, otherRecord));
+    let storedWhenBatchOnePaid: unknown;
+    input.onProgress = (e) => {
+      if (e.row === 1 && e.status === 'paid') storedWhenBatchOnePaid = store.data.get(inFlightRecordKey);
+    };
+    const report = await executeRun(input);
+    expect(storedWhenBatchOnePaid).toEqual(otherRecord);
+    // The next batch settled the other record first: never seen on chain, so it was removed then.
+    expect(statuses(report)).toEqual(Array(5).fill('paid'));
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
+  });
+
+  it('reads a damaged attempts list as no candidates and replaces it on the next append', async () => {
+    const { store, input } = setup();
+    store.data.set(attemptsListKey, ['kalypso/v1/batch/not-a-key']);
+    expect(statuses(await executeRun(input))).toEqual(Array(5).fill('paid'));
+    expect(attempts(store)).toEqual(batchKeys(store));
+  });
+
+  it('never writes an in-flight record it could not read back, and sends nothing', async () => {
+    const { chain, store, input } = setup();
+    const decode = vi.mocked(decodeInvocation);
+    decode.mockImplementationOnce((txXdr, passphrase) => ({ ...decode.getMockImplementation()!(txXdr, passphrase), maxTime: 0 }));
+    const err = await executeRun(input).catch((e: unknown) => e);
+    expect((err as PaymentInFlightError).reason).toBe('UNREADABLE');
+    expect(chain.submitted).toHaveLength(0);
+    expect(store.data.has(inFlightRecordKey)).toBe(false);
+  });
+});
+
+describe('the attempts list and clearInFlight', () => {
+  const key = (n: number) => batchOpeningKey({ payroll: CONTRACTS.payroll, companyId: COMPANY, runId: RUN, firstWorker: treasury, txHash: n.toString(16).padStart(64, '0') });
+
+  it('pins the list key and reads back only a list of distinct batch keys', () => {
+    expect(attemptsKey(CONTRACTS.token, treasury)).toBe(attemptsListKey);
+    expect(() => attemptsKey(treasury, treasury)).toThrow(AddressError);
+    expect(readAttempts([key(1), key(2)])).toEqual([key(1), key(2)]);
+    expect(readAttempts([])).toEqual([]);
+    for (const bad of [undefined, null, key(1), { 0: key(1) }, [key(1), key(1)], [key(1), 7], [`${key(1)}x`], [treasuryKey], [`${key(1).slice(0, -64)}${'AB'.repeat(32)}`], [`kalypso/v1/batch/${'x'.repeat(300)}/${'ab'.repeat(32)}`]]) {
+      expect(readAttempts(bad)).toBeUndefined();
+    }
+    expect(readAttempts(Array.from({ length: CSV_DEFAULT_MAX_ROWS + 1 }, (_, i) => key(i)))).toBeUndefined();
+  });
+
+  it('keeps the newest keys when the list is over its cap, keeps a repeated key in its first place, and writes only batch keys', async () => {
+    const { store } = setup();
+    await saveAttempts(store, CONTRACTS.token, treasury, Array.from({ length: CSV_DEFAULT_MAX_ROWS + 2 }, (_, i) => key(i)));
+    expect(attempts(store)).toEqual(Array.from({ length: CSV_DEFAULT_MAX_ROWS }, (_, i) => key(i + 2)));
+    await saveAttempts(store, CONTRACTS.token, treasury, [key(1), key(2), key(1)]);
+    expect(attempts(store)).toEqual([key(1), key(2)]);
+    await expect(saveAttempts(store, CONTRACTS.token, treasury, [key(3), treasuryKey])).rejects.toThrow(TypeError);
+    expect(attempts(store)).toEqual([key(1), key(2)]);
+  });
+
+  it('clearInFlight removes the in-flight record and nothing else', async () => {
+    const { store } = setup();
+    const record: InFlightPay = { hash: '0'.repeat(63) + '1', maxTime: 1, batchKey: key(1) };
+    store.data.set(inFlightRecordKey, record);
+    store.data.set(key(1), toSavedOpening(1n, 1n));
+    store.data.set(attemptsListKey, [key(1)]);
+    const before = [...store.data.keys()];
+    await clearInFlight(store, CONTRACTS.token, treasury);
+    expect([...store.data.keys()]).toEqual(before.filter((k) => k !== inFlightRecordKey));
+    await expect(clearInFlight(store, treasury, treasury)).rejects.toThrow(AddressError);
   });
 });
 
@@ -516,6 +735,66 @@ describe('executeRun preflight refuses the whole run and sends nothing', () => {
     expect(prove).not.toHaveBeenCalled();
   });
 
+  describe('under the published demo auditor registry', () => {
+    const published = Object.keys(PUBLISHED_DEMO_AUDITOR_IDS)[0] as string;
+    const demoId = PUBLISHED_DEMO_AUDITOR_IDS[published]?.[0] as number;
+    const demoSetup = () => {
+      const s = setup(FUNDS, { ...CONTRACTS, auditor: published });
+      s.chain.auditorKeys.set(demoId, scalarMul(5555n, H));
+      return s;
+    };
+    // The treasury's token account sits under the company's auditor id, as registration puts it.
+    const underDemoId = (s: ReturnType<typeof setup>) => {
+      s.chain.companies.set(COMPANY, { admin: treasury, auditorId: demoId, activeWorkers: 5 });
+      (s.chain.accounts.get(treasury) as AccountState).auditorId = demoId;
+    };
+    const refusal = async (input: RunInput) => {
+      const err = await executeRun(input).catch((e: unknown) => e);
+      return err instanceof PreflightError ? [err.code, err.line] : err;
+    };
+
+    it('holds id 5 for the deployed auditor registry, frozen', () => {
+      expect(PUBLISHED_DEMO_AUDITOR_IDS).toEqual({ CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG: [5] });
+      expect(Object.isFrozen(PUBLISHED_DEMO_AUDITOR_IDS)).toBe(true);
+      expect(Object.isFrozen(PUBLISHED_DEMO_AUDITOR_IDS[published])).toBe(true);
+    });
+
+    it('refuses a company or a worker under the published id with no demoAuditorIds passed (C34)', async () => {
+      const company = demoSetup();
+      company.chain.companies.set(COMPANY, { admin: treasury, auditorId: demoId, activeWorkers: 5 });
+      expect(await refusal(company.input)).toEqual(['DEMO_AUDITOR_ID', undefined]);
+
+      const worker = demoSetup();
+      (worker.chain.accounts.get(workers[1] as string) as AccountState).auditorId = demoId;
+      expect(await refusal(worker.input)).toEqual(['DEMO_AUDITOR_ID', 2]);
+      expect([company.chain.simulations, worker.chain.simulations]).toEqual([0, 0]);
+    });
+
+    it('pays under the published id only with allowPublishedDemoAuditor, and still refuses demoAuditorIds then', async () => {
+      const showcase = demoSetup();
+      underDemoId(showcase);
+      showcase.input.allowPublishedDemoAuditor = true;
+      expect(statuses(await executeRun(showcase.input))).toEqual(Array(5).fill('paid'));
+
+      const listed = demoSetup();
+      underDemoId(listed);
+      listed.input.allowPublishedDemoAuditor = true;
+      listed.input.demoAuditorIds = [demoId];
+      expect(await refusal(listed.input)).toEqual(['DEMO_AUDITOR_ID', undefined]);
+
+      const sloppy = demoSetup();
+      sloppy.input.allowPublishedDemoAuditor = 'true' as unknown as boolean;
+      expect(await refusal(sloppy.input)).toEqual(['INVALID_INPUT', undefined]);
+    });
+
+    it('does not refuse the same id under another auditor registry', async () => {
+      const s = setup();
+      s.chain.auditorKeys.set(demoId, scalarMul(5555n, H));
+      underDemoId(s);
+      expect(statuses(await executeRun(s.input))).toEqual(Array(5).fill('paid'));
+    });
+  });
+
   it('refuses a treasury balance that does not cover the unpaid rows', async () => {
     const s = setup(TOTAL - 1n);
     const err = await executeRun(s.input).catch((e: unknown) => e);
@@ -529,11 +808,13 @@ describe('executeRun preflight refuses the whole run and sends nothing', () => {
     const err = await executeRun(wrong.input).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HistoryIncompleteError);
     expect((err as HistoryIncompleteError).reason).toBe('DOES_NOT_OPEN');
+    expect((err as HistoryIncompleteError).rebuildable).toBe(true);
     expect([wrong.chain.simulations, wrong.chain.submitted.length]).toEqual([0, 0]);
 
     const missing = setup();
     missing.store.data.clear();
-    expect(((await executeRun(missing.input).catch((e: unknown) => e)) as HistoryIncompleteError).reason).toBe('NO_SAVED_OPENING');
+    const none = await executeRun(missing.input).catch((e: unknown) => e);
+    expect([(none as HistoryIncompleteError).reason, (none as HistoryIncompleteError).rebuildable]).toEqual(['NO_SAVED_OPENING', true]);
     expect(missing.chain.submitted).toHaveLength(0);
   });
 });

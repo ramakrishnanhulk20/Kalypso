@@ -3,6 +3,7 @@ import { MAX_STROOPS } from '../amounts.js';
 import { parseAccount, sameAccount } from '../addresses.js';
 import { CSV_DEFAULT_MAX_ROWS, type CsvRow } from '../csv.js';
 import type { KalypsoKeys } from '../keys.js';
+import { mapInOrder } from '../map-in-order.js';
 import {
   PayrollErrorCode,
   buildPay,
@@ -16,15 +17,18 @@ import {
 import { SubmitRejectedError, type ChainPort, type InFlightPay, type OpeningStore, type SignerPort } from '../chain/ports.js';
 import { requireAccount, requireU32, requireU64 } from '../chain/scval.js';
 import { confidentialBalance, getAuditorKey, type ConfidentialAccountView } from '../chain/token.js';
-import { DEFAULT_TX_TIMEOUT_SECONDS, assembleFromSimulation, decodeInvocation, transactionHash } from '../chain/tx.js';
+import { DEFAULT_TX_TIMEOUT_SECONDS, FeeCapError, MAX_PAY_FEE_STROOPS, assembleFromSimulation, decodeInvocation, transactionHash } from '../chain/tx.js';
 import type { ProverPort, TransferEnvelope } from '../prover/port.js';
 import { planRun } from './plan.js';
 import {
+  attemptsKey,
   batchOpeningKey,
   inFlightKey,
   loadTreasuryOpening,
+  readAttempts,
   readInFlight,
   readSavedOpening,
+  saveAttempts,
   toSavedOpening,
   treasuryOpeningKey,
   type Opening,
@@ -45,25 +49,44 @@ export interface RunInput {
   /** Called as each row moves on. `row` is the CSV line number. Events never carry an amount. */
   onProgress?: (e: { row: number; status: RowStatus }) => void;
   /**
-   * Auditor ids whose secret key is published for the demo. A run is refused when the company,
-   * or any worker in it, is registered under one of them, so real pay is never readable by
-   * whoever holds the demo key. Default none.
+   * Further auditor ids whose secret key is published, for deployments other than the ones in
+   * PUBLISHED_DEMO_AUDITOR_IDS. A run is refused when the company, or any worker in it, is
+   * registered under one of them, so real pay is never readable by whoever holds the key. These
+   * are refused even when allowPublishedDemoAuditor is set. Default none.
    */
   demoAuditorIds?: number[];
+  /**
+   * When true, the ids PUBLISHED_DEMO_AUDITOR_IDS lists for this auditor contract are not refused.
+   * Only the showcase seed sets it, because the showcase is meant to be readable by anyone.
+   * Default false.
+   */
+  allowPublishedDemoAuditor?: boolean;
 }
+
+/**
+ * Auditor ids whose secret key is published on purpose, keyed by the auditor registry contract
+ * they live in. executeRun always refuses them (threat model C34) unless allowPublishedDemoAuditor
+ * is set, so a frontend that forgets to pass demoAuditorIds cannot send real pay under them.
+ */
+export const PUBLISHED_DEMO_AUDITOR_IDS: Readonly<Record<string, readonly number[]>> = Object.freeze({
+  CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG: Object.freeze([5]),
+});
+
 
 export type RowStatus = 'already-paid' | 'proving' | 'submitted' | 'paid' | 'failed';
 
 /**
  * Why a row was not paid, taken from its batch's last attempt. A code, never an amount.
  * PROOF_FAILED and SIMULATION_FAILED mean the batch could not be built even with every key
- * re-read from chain: only that batch fails and the run goes on. SUBMIT_REFUSED,
- * TRANSACTION_FAILED and TRANSACTION_EXPIRED (never included before its validity window closed)
- * mean the network said no: the run stops, and every row after it reports RUN_STOPPED.
+ * re-read from chain, and FEE_TOO_HIGH that its simulation asked for a fee over
+ * MAX_PAY_FEE_STROOPS, so nothing was signed: only that batch fails and the run goes on.
+ * SUBMIT_REFUSED, TRANSACTION_FAILED and TRANSACTION_EXPIRED (never included before its validity
+ * window closed) mean the network said no: the run stops, and every row after it reports RUN_STOPPED.
  */
 export type RowFailureReason =
   | 'PROOF_FAILED'
   | 'SIMULATION_FAILED'
+  | 'FEE_TOO_HIGH'
   | 'SUBMIT_REFUSED'
   | 'TRANSACTION_FAILED'
   | 'TRANSACTION_EXPIRED'
@@ -99,7 +122,8 @@ export type PreflightErrorCode =
 
 // Messages name lines, never amounts or balances (threat model C12).
 const PREFLIGHT_MESSAGES: Record<PreflightErrorCode, string> = {
-  INVALID_INPUT: 'The run settings are invalid: a contract id, the signer address, the company id, the run id or the prover.',
+  INVALID_INPUT:
+    'The run settings are invalid: a contract id, the signer address, the company id, the run id, the prover or a demo auditor setting.',
   NO_ROWS: 'There are no rows to pay.',
   TOO_MANY_ROWS: `A run takes at most ${CSV_DEFAULT_MAX_ROWS} rows.`,
   INVALID_ROW: 'This row has an address or amount that did not come from the CSV parser.',
@@ -157,29 +181,64 @@ export class SignedTransactionMismatchError extends Error {
   }
 }
 
-export type PaymentInFlightReason = 'PENDING' | 'UNREADABLE';
+/**
+ * Rows of this batch were paid by a transaction this call did not see land, most likely another
+ * tab or device paying the same run. Nobody was paid twice: the contract's paid flags refuse
+ * that. The run stops; running it again reports those rows as already paid.
+ */
+export class PaidElsewhereError extends Error {
+  readonly lines: number[];
+
+  constructor(lines: number[]) {
+    super('These rows were paid by another transaction, probably another tab or device. Nothing was paid twice. Reload the run.');
+    this.name = 'PaidElsewhereError';
+    this.lines = lines;
+  }
+}
+
+export type PaymentInFlightReason = 'PENDING' | 'UNREADABLE' | 'UNCONFIRMED' | 'DOES_NOT_MATCH_CHAIN' | 'PAID_FLAGS_BEHIND';
 
 const IN_FLIGHT_MESSAGES: Record<PaymentInFlightReason, string> = {
   PENDING:
     'A payment from this treasury is still waiting on the network, so nothing new was proved or sent. Run it again in a few minutes and it carries on from there.',
-  UNREADABLE: "This device's record of the payment in flight is damaged, so nothing new was proved or sent.",
+  UNREADABLE: "This device's record of the payment in flight is damaged, so nothing was sent.",
+  UNCONFIRMED:
+    'The chain says the last payment landed, but the balance read does not show it yet. Nothing new was proved or sent. Try again in a minute.',
+  DOES_NOT_MATCH_CHAIN:
+    "The chain's balance for this treasury does not match this device's records. Nothing new was proved or sent. Rebuild the treasury from the chain to see the difference and carry on.",
+  PAID_FLAGS_BEHIND:
+    'The payment landed and the balance shows it, but the paid marks are not readable yet. Nothing new was proved or sent. Try again in a minute.',
 };
 
 /**
- * A pay transaction from this treasury is not final yet, or its record cannot be read, so this
- * call proved and sent nothing new (threat model C13). The record stays until the chain settles it.
+ * A pay transaction from this treasury is not final yet, its record cannot be read, the chain
+ * reports it applied while no saved opening opens the balance it returns, or it is proved landed
+ * while its paid marks do not read yet, so this call proved and sent nothing new (threat model C13).
+ *
+ * PENDING, UNREADABLE, UNCONFIRMED and DOES_NOT_MATCH_CHAIN keep the record until the chain
+ * settles it. PAID_FLAGS_BEHIND comes after the pay's own opening (or a newer one, with SUCCESS)
+ * was adopted and the record removed: the balance is settled, only the is_paid reads lag, and the
+ * next run reads them again. It is not rebuildable.
+ *
+ * UNCONFIRMED means the balance read still opens with the treasury opening from before the pay,
+ * and the chain's clock is within UNCONFIRMED_GRACE_SECONDS of the pay's maxTime, so the read is
+ * behind the pay and clears by itself. DOES_NOT_MATCH_CHAIN means it opens with neither, or is
+ * still behind past that grace, so the treasury is not where this device's records say (a merge
+ * elsewhere, a pay that left another balance than the one approved (C14), a SUCCESS the chain
+ * never applied, or a rebuild cut short). Only that one is rebuildable: the console offers
+ * rebuildTreasuryOpening for it.
  */
 export class PaymentInFlightError extends Error {
   readonly reason: PaymentInFlightReason;
+  readonly rebuildable: boolean;
 
   constructor(reason: PaymentInFlightReason) {
     super(IN_FLIGHT_MESSAGES[reason]);
     this.name = 'PaymentInFlightError';
     this.reason = reason;
+    this.rebuildable = reason === 'DOES_NOT_MATCH_CHAIN';
   }
 }
-
-const READ_CONCURRENCY = 8;
 // The first wait for a result runs this long past the validity window by this machine's clock.
 // It only sets how long to wait: whether the window has closed is judged by chain time.
 const CLOCK_MARGIN_MS = 30_000;
@@ -191,6 +250,11 @@ const LEDGER_GAP_MS = 6_000;
 // The live port refuses waits over 15 minutes; a record from the store can claim any maxTime.
 const MAX_WAIT_MS = 10 * 60_000;
 const MAX_LOOKS = 3;
+/**
+ * RPC nodes trail the network by seconds, not a minute, so a balance read still behind a pay this
+ * long after its window closed is no longer lag: UNCONFIRMED becomes DOES_NOT_MATCH_CHAIN.
+ */
+export const UNCONFIRMED_GRACE_SECONDS = 60;
 
 interface PayableRow extends CsvRow {
   pvk: Point;
@@ -198,7 +262,7 @@ interface PayableRow extends CsvRow {
 }
 
 /** Where a treasury's openings and pay in flight are kept and checked. */
-interface TreasuryRef {
+export interface TreasuryRef {
   port: ChainPort;
   store: OpeningStore;
   token: string;
@@ -217,35 +281,26 @@ interface RunContext extends TreasuryRef {
 
 type Attempt =
   | { kind: 'landed'; hash: string }
-  | { kind: 'not-built'; reason: 'PROOF_FAILED' | 'SIMULATION_FAILED' }
+  | { kind: 'not-built'; reason: 'PROOF_FAILED' | 'SIMULATION_FAILED' | 'FEE_TOO_HIGH' }
   | { kind: 'not-landed'; reason: 'SUBMIT_REFUSED' | 'TRANSACTION_FAILED' | 'TRANSACTION_EXPIRED' };
 
 type BatchOutcome = { kind: 'landed'; hash: string } | { kind: 'skip' | 'stop'; reason: RowFailureReason };
-
-/** Runs fn over items, at most READ_CONCURRENCY at a time, keeping results in item order. */
-async function mapInOrder<T, R>(items: readonly T[], fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index] as T);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(READ_CONCURRENCY, items.length) }, worker));
-  return results;
-}
 
 function checkSettings(input: RunInput) {
   if (typeof input.prover?.proveTransfer !== 'function') throw new PreflightError('INVALID_INPUT');
   const demoIds = input.demoAuditorIds ?? [];
   if (!Array.isArray(demoIds)) throw new PreflightError('INVALID_INPUT');
+  const allowPublished = input.allowPublishedDemoAuditor ?? false;
+  if (typeof allowPublished !== 'boolean') throw new PreflightError('INVALID_INPUT');
   try {
+    const auditor = requireAccount(input.contracts.auditor, ['C']);
+    // The lookup uses the decoded address, the same form the constant is written in.
+    const published = !allowPublished && Object.hasOwn(PUBLISHED_DEMO_AUDITOR_IDS, auditor) ? (PUBLISHED_DEMO_AUDITOR_IDS[auditor] ?? []) : [];
     return {
-      demoAuditorIds: new Set(demoIds.map((id) => requireU32(id, 'demoAuditorIds'))),
+      demoAuditorIds: new Set([...published, ...demoIds.map((id) => requireU32(id, 'demoAuditorIds'))]),
       payroll: requireAccount(input.contracts.payroll, ['C']),
       token: requireAccount(input.contracts.token, ['C']),
-      auditor: requireAccount(input.contracts.auditor, ['C']),
+      auditor,
       // The treasury is the transaction source, and only a G account can be one.
       treasury: requireAccount(input.signer.address, ['G']),
       companyId: requireU64(input.companyId, 'companyId'),
@@ -293,35 +348,43 @@ async function orRefuse<T>(work: Promise<T>, code: (typeof PayrollErrorCode)[key
  *
  * In order:
  * 1. A pay transaction this treasury left in flight, from this run or an earlier call, is
- *    waited on until final before anything is read or proved. If it landed, its saved opening
- *    becomes the treasury opening. If it cannot be shown final, the call stops with
- *    PaymentInFlightError and sends nothing.
+ *    waited on until final before anything is read or proved. The first saved candidate that
+ *    opens the chain, its own batch opening or one from the attempts list, becomes the treasury
+ *    opening. If the pay cannot be shown final, or the chain reports SUCCESS but no candidate
+ *    opens the balance, the call stops with PaymentInFlightError and sends nothing.
  * 2. Preflight, before any transaction. The company exists and its admin is the signer; the run
  *    exists, is open and has room for every unpaid row; every row's worker is active in this
- *    company and registered with the token; neither the company nor any worker is under a demo
- *    auditor id; the keys belong to the treasury; the treasury's verified balance covers the
+ *    company and registered with the token; neither the company nor any worker is under a
+ *    published demo auditor id (PUBLISHED_DEMO_AUDITOR_IDS for this auditor contract, plus
+ *    demoAuditorIds); the keys belong to the treasury; the treasury's verified balance covers the
  *    unpaid rows. Viewing keys and both auditor keys are read from chain. Any failure refuses
  *    the whole run and sends nothing.
  * 3. Rows already paid on chain are reported as already-paid and skipped, which is how a
  *    crashed run resumes.
  * 4. Batches run strictly one after another. Each starts from the treasury opening verified
  *    against chain, proves each transfer on the previous one's result, checks every proof
- *    moves exactly its row's CSV amount, simulates and signs, saves the opening it leaves under
- *    a key holding its hash, records itself as in flight, then submits and waits until the
- *    chain's answer is final: SUCCESS, FAILED, or NOT_FOUND once a ledger has closed 30 seconds
- *    past its validity window.
+ *    moves exactly its row's CSV amount, simulates, refuses a fee over MAX_PAY_FEE_STROOPS, signs,
+ *    saves the opening it leaves under a key holding its hash, adds that key to the attempts
+ *    list, records itself as in flight, then submits and waits until the chain's answer is
+ *    final: SUCCESS, FAILED, or NOT_FOUND once a ledger has closed 30 seconds past its validity
+ *    window.
  * 5. A batch that did not land is built once more, with fresh salts, from chain state and with
- *    every key re-read from chain. If that rebuild cannot be proved or simulated, only this
- *    batch's rows fail and the next batch starts from the same verified opening. If the network
- *    refused it or it failed on chain, the run stops and every later row reports RUN_STOPPED.
+ *    every key re-read from chain. If that rebuild cannot be proved, simulated or kept under the
+ *    fee cap, only this batch's rows fail and the next batch starts from the same verified
+ *    opening. If the network refused it or it failed on chain, the run stops and every later row
+ *    reports RUN_STOPPED.
  * 6. After each landed batch the chain's treasury commitment must open with the saved result,
- *    which is the starting balance minus exactly the CSV amounts of the batch.
+ *    which is the starting balance minus exactly the CSV amounts of the batch. A batch whose rows
+ *    were paid by a transaction this call did not see land stops the run with PaidElsewhereError.
  * 7. Report statuses are read from the on-chain paid check, never from a submit reply.
  *
  * @throws PreflightError, PaymentInFlightError, HistoryIncompleteError (the saved treasury
- *   balance does not match chain), AmountMismatchError (the run stops),
+ *   balance does not match chain), AmountMismatchError or PaidElsewhereError (the run stops),
  *   SignedTransactionMismatchError, or any error from the port or the signer. After an error,
- *   calling executeRun again with the same store resumes without paying anyone twice.
+ *   calling executeRun again with the same store resumes without paying anyone twice. An error
+ *   with rebuildable true (HistoryIncompleteError NO_SAVED_OPENING or DOES_NOT_OPEN,
+ *   PaymentInFlightError DOES_NOT_MATCH_CHAIN) is cleared by rebuildTreasuryOpening, which this
+ *   never runs on its own so the employer sees any difference first.
  */
 export async function executeRun(input: RunInput): Promise<RunReport> {
   const settings = checkSettings(input);
@@ -377,7 +440,8 @@ export async function executeRun(input: RunInput): Promise<RunReport> {
     kAudR: auditorKeys[auditorIds.indexOf(account.auditorId)] as Point,
   }));
 
-  const start = await loadTreasuryOpening({ port, store: input.store, token, treasury });
+  const pendingKeys = await loadAttempts({ port, store: input.store, token, treasury });
+  const start = await loadTreasuryOpening({ port, store: input.store, token, treasury, pendingKeys });
   const startValue = (readSavedOpening(start) as Opening).v;
   if (payable.reduce((sum, row) => sum + row.amount, 0n) > startValue) throw new PreflightError('INSUFFICIENT_FUNDS');
   await input.store.put(treasuryOpeningKey(token, treasury), start);
@@ -431,8 +495,9 @@ async function payBatch(ctx: RunContext, batch: PayableRow[]): Promise<BatchOutc
 }
 
 /**
- * Builds, sends and settles one attempt at a batch. Throws AmountMismatchError when a proof or
- * the chain disagrees with the CSV amounts, which stops the run.
+ * Builds, sends and settles one attempt at a batch. Throws AmountMismatchError when a proof does
+ * not move its row's CSV amount, and PAID_FLAGS_BEHIND when the pay is proved landed but a row
+ * still reads unpaid; either stops the run.
  */
 async function attemptBatch(ctx: RunContext, rows: PayableRow[]): Promise<Attempt> {
   const { input, port, store, payroll, token, treasury, notify } = ctx;
@@ -442,7 +507,8 @@ async function attemptBatch(ctx: RunContext, rows: PayableRow[]): Promise<Attemp
 
   // Every attempt starts from what opens the chain right now, so a retry never builds on a
   // failed attempt's balance (threat model C13, C16).
-  let { v, r } = readSavedOpening(await loadTreasuryOpening({ port, store, token, treasury })) as Opening;
+  const pendingKeys = await loadAttempts(ctx);
+  let { v, r } = readSavedOpening(await loadTreasuryOpening({ port, store, token, treasury, pendingKeys })) as Opening;
   const items: PayItem[] = [];
   for (const row of rows) {
     notify(row.line, 'proving');
@@ -468,7 +534,15 @@ async function attemptBatch(ctx: RunContext, rows: PayableRow[]): Promise<Attemp
   );
   const sim = await port.simulate(unsigned);
   if (!sim.ok) return { kind: 'not-built', reason: 'SIMULATION_FAILED' };
-  const assembled = assembleFromSimulation(unsigned, sim, networkPassphrase);
+  let assembled: string;
+  try {
+    // The simulation names the resource fee, so a lying RPC could otherwise name any fee up to the
+    // XDR ceiling of about 429 XLM and the wallet would be asked to sign it (threat model C20).
+    assembled = assembleFromSimulation(unsigned, sim, networkPassphrase, MAX_PAY_FEE_STROOPS);
+  } catch (err) {
+    if (err instanceof FeeCapError) return { kind: 'not-built', reason: 'FEE_TOO_HIGH' };
+    throw err;
+  }
   const hash = transactionHash(assembled, networkPassphrase);
 
   const signed = await signer.signTransaction(assembled, networkPassphrase);
@@ -484,7 +558,11 @@ async function attemptBatch(ctx: RunContext, rows: PayableRow[]): Promise<Attemp
   // Only this opening can ever spend what the batch leaves behind, so it is saved before the
   // transaction can land.
   await store.put(batchKey, toSavedOpening(v, r));
+  // Listed before the transaction exists on the network, so whatever happens to this record the
+  // opening stays a candidate until one opens the chain (threat model C29).
+  await saveAttempts(store, token, treasury, [...(await loadAttempts(ctx)), batchKey]);
   const record: InFlightPay = { hash, maxTime: decodeInvocation(assembled, networkPassphrase).maxTime, batchKey };
+  if (readInFlight(record) === undefined) throw new PaymentInFlightError('UNREADABLE');
   await store.put(inFlightKey(token, treasury), record);
 
   let refused = false;
@@ -500,11 +578,17 @@ async function attemptBatch(ctx: RunContext, rows: PayableRow[]): Promise<Attemp
   const settled = await settleRecord(ctx, record);
 
   const paidNow = await mapInOrder(rows, (row) => isPaid(port, payroll, companyId, runId, row.address));
-  if (paidNow.every(Boolean) && settled.landed) {
+  // This attempt's own opening on chain proves it landed whatever the status says. A newer opening
+  // proves only that some pay landed, so it counts for this attempt only with SUCCESS.
+  if (settled.adopted === 'own' || (settled.adopted === 'newer' && settled.status === 'SUCCESS')) {
+    // The pay is proved landed, and the contract sets every paid flag in the same call, so a row
+    // that reads unpaid here is a read behind the chain: stop, and the next run reads it again.
+    if (!paidNow.every(Boolean)) throw new PaymentInFlightError('PAID_FLAGS_BEHIND');
     for (const row of rows) notify(row.line, 'paid');
     return { kind: 'landed', hash };
   }
-  if (settled.status === 'SUCCESS' || paidNow.some(Boolean)) throw new AmountMismatchError(rows.map((row) => row.line), 'chain');
+  const paidByAnother = rows.filter((_, i) => paidNow[i] === true);
+  if (paidByAnother.length > 0) throw new PaidElsewhereError(paidByAnother.map((row) => row.line));
   if (refused) return { kind: 'not-landed', reason: 'SUBMIT_REFUSED' };
   return { kind: 'not-landed', reason: settled.status === 'FAILED' ? 'TRANSACTION_FAILED' : 'TRANSACTION_EXPIRED' };
 }
@@ -523,10 +607,31 @@ async function rereadKeys(ctx: RunContext, rows: PayableRow[]): Promise<PayableR
 }
 
 /**
- * Settles the treasury's pay in flight, if this device recorded one.
- * @throws PaymentInFlightError UNREADABLE for a damaged record, or PENDING when it is not final.
+ * Removes this device's record of the treasury's pay in flight, and nothing else. It is for the
+ * console, behind a confirmation, when the record is damaged (PaymentInFlightError UNREADABLE) or
+ * the person knows the pay is settled. No opening is touched: every batch opening this device
+ * wrote stays a candidate through the attempts list, so the next run still starts from whichever
+ * one opens the chain.
+ *
+ * @throws AddressError when token is not a C address or treasury is not a G or C address.
  */
-async function settleInFlight(at: TreasuryRef): Promise<void> {
+export async function clearInFlight(store: OpeningStore, token: string, treasury: string): Promise<void> {
+  await store.delete(inFlightKey(token, treasury));
+}
+
+/** The treasury's attempts list. A damaged one offers no candidate and is replaced on the next append. */
+async function loadAttempts(at: TreasuryRef): Promise<string[]> {
+  return readAttempts(await at.store.get(attemptsKey(at.token, at.treasury))) ?? [];
+}
+
+/**
+ * Settles the treasury's pay in flight, if this device recorded one. Exported for
+ * rebuildTreasuryOpening only, so a rebuild settles a record exactly as a run does.
+ * @throws PaymentInFlightError UNREADABLE for a damaged record, PENDING when it is not final, or
+ *   UNCONFIRMED or DOES_NOT_MATCH_CHAIN when the chain reports SUCCESS but no saved opening opens
+ *   the balance (see settleRecord).
+ */
+export async function settleInFlight(at: TreasuryRef): Promise<void> {
   const saved = await at.store.get(inFlightKey(at.token, at.treasury));
   if (saved === undefined) return;
   const record = readInFlight(saved);
@@ -534,19 +639,97 @@ async function settleInFlight(at: TreasuryRef): Promise<void> {
   await settleRecord(at, record);
 }
 
+/** How a record settled: its final status, and whose opening, if any, now opens the chain. */
+interface Settled {
+  status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND';
+  /**
+   * own: the record's batch opening. newer: a key listed after it. older: a key listed before it,
+   * or in a list that no longer holds it, adopted only when the pay did not succeed. none: nothing.
+   */
+  adopted: 'own' | 'newer' | 'older' | 'none';
+}
+
 /**
- * Waits until the chain's answer for the record is final, makes its opening the treasury
- * opening if that opening opens the chain now, and only then removes the record, so a crash at
- * any point leaves something the next call can settle again.
+ * Waits until the chain's answer for the record is final, then adopts as the treasury opening the
+ * first candidate that opens the chain now: the record's batch opening, then each key listed after
+ * it, then, only when the answer is not SUCCESS, each key listed before it. A SUCCESS means the
+ * chain is past every earlier opening, so one of those opening the read means the read is behind,
+ * never that it is the treasury's balance. Only then is the record removed, so a crash at any
+ * point leaves something the next call can settle again (threat model C13, C29).
+ *
+ * The record is removed by compare: only while the stored record still has this hash. The store
+ * has no atomic compare-and-delete, so two tabs can still race here and remove a newer record;
+ * recovery from that race goes through the attempts list, which keeps every batch opening this
+ * device wrote as a candidate until one opens the chain.
+ *
+ * A FAILED or NOT_FOUND answer never deletes an opening: both come from the RPC, which can lie.
+ * Openings leave the store only when a later adoption passes them in the attempts list.
+ *
+ * @throws PaymentInFlightError PENDING when the answer is not final. When the chain reports
+ *   SUCCESS but no candidate opens the balance it returns: UNCONFIRMED while the treasury opening
+ *   from before the pay still opens it (the read is behind the pay) and pastUnconfirmedGrace is
+ *   false, DOES_NOT_MATCH_CHAIN otherwise. The record stays in every case.
  */
-async function settleRecord(at: TreasuryRef, record: InFlightPay): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; landed: boolean }> {
+async function settleRecord(at: TreasuryRef, record: InFlightPay): Promise<Settled> {
   const status = await finalStatus(at.port, record);
   const account = await confidentialBalance(at.port, at.token, at.treasury);
-  const opening = readSavedOpening(await at.store.get(record.batchKey));
-  const landed = account !== null && opening !== undefined && opening.commitment.equals(account.spendable);
-  if (landed) await at.store.put(treasuryOpeningKey(at.token, at.treasury), toSavedOpening(opening.v, opening.r));
-  await at.store.delete(inFlightKey(at.token, at.treasury));
-  return { status, landed };
+  const listed = await loadAttempts(at);
+  const own = listed.indexOf(record.batchKey);
+  const newer = own < 0 ? [] : listed.slice(own + 1);
+  const older = listed.filter((key) => key !== record.batchKey && !newer.includes(key));
+  const candidates = [record.batchKey, ...newer, ...(status === 'SUCCESS' ? [] : older)];
+  let adoptedKey: string | undefined;
+  if (account !== null) {
+    for (const key of candidates) {
+      const opening = readSavedOpening(await at.store.get(key));
+      if (opening === undefined || !opening.commitment.equals(account.spendable)) continue;
+      await at.store.put(treasuryOpeningKey(at.token, at.treasury), toSavedOpening(opening.v, opening.r));
+      adoptedKey = key;
+      break;
+    }
+  }
+  if (adoptedKey === undefined && status === 'SUCCESS') {
+    // A read that names no account shows no balance to compare, so it is treated as behind too.
+    const before = readSavedOpening(await at.store.get(treasuryOpeningKey(at.token, at.treasury)));
+    const behind = account === null || (before !== undefined && before.commitment.equals(account.spendable));
+    throw new PaymentInFlightError(behind && !(await pastUnconfirmedGrace(at.port, record)) ? 'UNCONFIRMED' : 'DOES_NOT_MATCH_CHAIN');
+  }
+
+  const recordKey = inFlightKey(at.token, at.treasury);
+  if (readInFlight(await at.store.get(recordKey))?.hash === record.hash) await at.store.delete(recordKey);
+  if (adoptedKey !== undefined) await dropAttemptsBefore(at, adoptedKey);
+  const adopted = adoptedKey === undefined ? 'none' : adoptedKey === record.batchKey ? 'own' : newer.includes(adoptedKey) ? 'newer' : 'older';
+  return { status, adopted };
+}
+
+/**
+ * Removes from the attempts list, and from the store, every batch opening listed before the one
+ * just adopted. Each was appended before the adopted pay was built, so it was proved at or below
+ * that pay's sequence on a balance the chain has since left, and it can never land after it. The
+ * adopted key stays listed until a later adoption passes it, so a slow tab that writes an older
+ * treasury opening over the adopted one cannot orphan it.
+ */
+async function dropAttemptsBefore(at: TreasuryRef, adoptedKey: string): Promise<void> {
+  const attempts = await loadAttempts(at);
+  const index = attempts.indexOf(adoptedKey);
+  if (index <= 0) return;
+  await saveAttempts(at.store, at.token, at.treasury, attempts.slice(index));
+  for (const key of attempts.slice(0, index)) await at.store.delete(key);
+}
+
+/**
+ * True once the chain's latest ledger (port.latestLedger) closed more than
+ * UNCONFIRMED_GRACE_SECONDS after the record's maxTime, by the chain's own clock. A port that
+ * cannot answer, or answers with a close time that is not a whole number, leaves the read
+ * counted as behind (UNCONFIRMED), which offers no rebuild.
+ */
+async function pastUnconfirmedGrace(port: ChainPort, record: InFlightPay): Promise<boolean> {
+  try {
+    const { closeTime } = await port.latestLedger();
+    return Number.isSafeInteger(closeTime) && closeTime > record.maxTime + UNCONFIRMED_GRACE_SECONDS;
+  } catch {
+    return false;
+  }
 }
 
 /**

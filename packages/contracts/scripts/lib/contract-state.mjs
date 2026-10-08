@@ -111,3 +111,4 @@ export function addressesInInstance(instance) {
 }
 
 export const payrollTokenKey = scv.variant("Token");
+export const payrollRegistryKey = scv.variant("AuditorRegistry");

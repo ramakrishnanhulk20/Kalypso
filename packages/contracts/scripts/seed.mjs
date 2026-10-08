@@ -7,6 +7,11 @@
 // to deployments/showcase-testnet.json; secrets, amounts and balance openings go only to the
 // git-ignored .stellar/showcase-secrets.json.
 //
+// After a payroll release (deploy --payroll-only) it moves the same showcase onto the new payroll:
+// accounts, auditor ids and token registrations stay, because the token and registry stay, and the
+// companies, runs and pay are made again on the new contract. The earlier payroll's part of the
+// record is kept under `previous`.
+//
 //   npm run seed:testnet
 import { randomInt } from "node:crypto";
 import path from "node:path";
@@ -51,6 +56,12 @@ const CENT = 100_000n;
 const AUDITOR_KEY_NOTE =
   "A demo key, published on purpose so anyone can open the accountant view: it reads only this demo company's payments and its treasury balance after each one, so never bind anything real to it.";
 
+// Transactions bound to one payroll contract, or made to fund its runs. Everything else the seed
+// records (accounts, auditor keys, token registrations, trustlines, the outsider's planted
+// payments) belongs to the token and the registry, which a payroll release keeps.
+const PAYROLL_SCOPED = /^(create_company |invite_worker |accept_invite |open_run |pay |treasury deposit for |treasury merge for |funder\d+ )/;
+const FUNDER = /^funder(\d+)$/;
+
 const log = (s = "") => console.log(s);
 const WIDTH = 54;
 
@@ -87,8 +98,23 @@ async function step(name, { check, run }) {
 const keypair = (name) => sdk.Keypair.fromSecret(secrets.keys[name]);
 const address = (name) => keypair(name).publicKey();
 const auditorSecret = (name) => BigInt(secrets.auditorSecrets[name]);
+const auditorPoint = (name) => cts.scalarMul(auditorSecret(name), cts.H);
 const getProver = () => (prover ??= createNodeProver());
 const scvU32 = (n) => sdk.xdr.ScVal.scvU32(n);
+const idSlot = (name) => (name === "accountant" ? pub.accountant : name === "outsider" ? pub.outsider : pub.workers[WORKERS.indexOf(name)]);
+const freshRuns = () => RUNS.map((r) => ({ id: r.id.toString(), label: r.label, expectedCount: WORKERS.length, payTransactions: [] }));
+
+/**
+ * The auditor id `name` registers with the token under, who must own it and the key it must hold.
+ * The treasury binds to the accountant's id; every other account to the id it registered itself.
+ * Each id is the one its owner's confirmed register_key returned (C43).
+ */
+function expectedAuditor(name) {
+  const ownerName = name === "treasury" ? "accountant" : name;
+  const id = idSlot(ownerName).auditorId;
+  if (id === null || id === undefined) throw new Error(`${ownerName} has no confirmed auditor id yet`);
+  return { id, ownerName, owner: address(ownerName), key: auditorPoint(ownerName) };
+}
 
 function drawCents([lo, hi]) {
   for (;;) {
@@ -224,7 +250,7 @@ function newPublicRecord(fromLedger) {
       demoAccountantKeyNote: AUDITOR_KEY_NOTE,
     },
     workers: WORKERS.map((w) => ({ account: address(w), auditorId: null, explorer: explorer.account(address(w)) })),
-    runs: RUNS.map((r) => ({ id: r.id.toString(), label: r.label, expectedCount: WORKERS.length, payTransactions: [] })),
+    runs: freshRuns(),
     outsider: { account: address("outsider"), auditorId: null, companyId: null, companyLabel: OUTSIDER_LABEL, plantedOn: address(PLANTED_ON) },
     funders: [],
     transactions: {},
@@ -241,19 +267,26 @@ async function auditorKeyHeld(name, id) {
     return { done: false, how: e.message };
   }
   const onChain = pointHex(await core.getAuditorKey(port, stack.contracts.auditor, id));
-  const mine = pointHex(cts.scalarMul(auditorSecret(name), cts.H));
+  const mine = pointHex(auditorPoint(name));
   return owner === address(name) && onChain === mine
     ? { done: true, how: `auditor id ${id}, owned by this account, holds this key` }
     : { done: false, how: `auditor id ${id} is not this account's key` };
 }
 
-async function registeredUnder(name, auditorId) {
+/**
+ * Done when `name` is already registered with the token under the expected id, with its own keys,
+ * and the registry still says that id's owner and key are the expected ones. A token registration
+ * is permanent, so an account registered any other way stops the seed: it is never registered again.
+ */
+async function registeredUnder(name, expected) {
   const account = await core.confidentialBalance(port, stack.contracts.token, address(name));
   if (account === null) return { done: false, how: "not registered" };
-  const keysMatch = pointHex(account.pvk) === pointHex(kalypsoKeys(keypair(name)).PVK);
-  return account.auditorId === auditorId && keysMatch
-    ? { done: true, how: `registered under auditor id ${auditorId} with this account's keys` }
-    : { done: false, how: `registered under auditor id ${account.auditorId}${keysMatch ? "" : " with other keys"}` };
+  if (account.auditorId !== expected.id) {
+    throw new Error(`${name} is registered with the token under auditor id ${account.auditorId}, not ${expected.id}`);
+  }
+  if (pointHex(account.pvk) !== pointHex(kalypsoKeys(keypair(name)).PVK)) throw new Error(`${name} is registered with the token with other keys`);
+  await core.requireAuditorBinding(port, stack.contracts.auditor, account.auditorId, { owner: expected.owner, key: expected.key });
+  return { done: true, how: `registered under auditor id ${account.auditorId}, which ${expected.ownerName} owns with its key` };
 }
 
 async function landed(label) {
@@ -300,23 +333,37 @@ async function setupAccounts() {
     });
   }
   for (const name of ["treasury", "accountant", ...WORKERS, "outsider"]) await recordCreation(name, address(name));
-  const idSlot = (name) => (name === "accountant" ? pub.accountant : name === "outsider" ? pub.outsider : pub.workers[WORKERS.indexOf(name)]);
   for (const name of ["accountant", ...WORKERS, "outsider"]) {
     await step(`${name} auditor key registered`, {
       check: () => auditorKeyHeld(name, idSlot(name).auditorId),
       run: async () => {
-        const point = Buffer.from(cts.pointToBytes(cts.scalarMul(auditorSecret(name), cts.H)));
         const tx = await invoke({
           label: `${name} register_key`,
           signer: keypair(name),
           journal,
-          build: (base) =>
-            core.buildInvocation({ ...base, contractId: stack.contracts.auditor }, "register_key", [new sdk.Address(address(name)).toScVal(), sdk.xdr.ScVal.scvBytes(point)]),
+          build: (base) => core.buildRegisterKey({ ...base, contractId: stack.contracts.auditor }, { owner: address(name), point: auditorPoint(name) }),
         });
-        idSlot(name).auditorId = tx.returnValue.u32();
+        // The id is the one this confirmed transaction handed out, never one predicted from key_count (C43).
+        idSlot(name).auditorId = core.readRegisteredAuditorId(tx.returnValue);
         persistPublic();
       },
     });
+  }
+}
+
+/**
+ * The showcase's accountant key is published on purpose, so its id must be the one core refuses
+ * by default for this registry: then the app labels the showcase publicly readable, and only this
+ * seed opts in to paying under it. Checked before the treasury binds to the id for good.
+ */
+function requirePublishedShowcaseId() {
+  const registry = stack.contracts.auditor;
+  const published = Object.hasOwn(core.PUBLISHED_DEMO_AUDITOR_IDS, registry) ? core.PUBLISHED_DEMO_AUDITOR_IDS[registry] : [];
+  if (!published.includes(pub.accountant.auditorId)) {
+    throw new Error(
+      `the showcase accountant's auditor id ${pub.accountant.auditorId} is not core's published demo id for registry ${registry} ` +
+        `(${published.length ? published.join(", ") : "none"}). Add it to PUBLISHED_DEMO_AUDITOR_IDS in @kalypso/core, rebuild core, then run the seed again`,
+    );
   }
 }
 
@@ -326,43 +373,54 @@ async function registerWithToken() {
     check: async () => ((await usdcBalance(address("treasury"))) !== null ? { done: true, how: "trustline exists" } : { done: false, how: "no trustline" }),
     run: () => ensureTrustline({ label: "treasury USDC trustline", keypair: keypair("treasury"), journal }),
   });
-  const under = (name) => (name === "treasury" ? pub.accountant.auditorId : name === "outsider" ? pub.outsider.auditorId : pub.workers[WORKERS.indexOf(name)].auditorId);
   for (const name of ["treasury", ...WORKERS, "outsider"]) {
     await step(`${name} registered with the token`, {
-      check: () => registeredUnder(name, under(name)),
+      check: () => registeredUnder(name, expectedAuditor(name)),
       run: () =>
         invoke({
           label: `${name} token register`,
           signer: keypair(name),
           journal,
           build: async (base) => {
+            const expected = expectedAuditor(name);
             const envelope = await getProver().proveRegister(kalypsoKeys(keypair(name)));
-            return core.buildRegister({ ...base, contractId: stack.contracts.token }, { account: address(name), auditorId: under(name), data: envelope });
+            return core.buildCheckedRegister(port, { ...base, contractId: stack.contracts.token }, {
+              account: address(name),
+              auditorId: expected.id,
+              data: envelope,
+              registry: stack.contracts.auditor,
+              auditorOwner: expected.owner,
+              auditorKey: expected.key,
+            });
           },
         }),
     });
   }
 }
 
-async function companyMatches(id, admin, auditorId, label) {
+async function companyMatches(id, admin, accountant, auditorId, label) {
   if (id === null) return { done: false, how: "no company id yet" };
   const c = await core.getCompany(port, stack.contracts.payroll, BigInt(id));
-  return c.admin === admin && c.auditorId === auditorId && c.label === label
-    ? { done: true, how: `company ${id}, admin ${admin.slice(0, 6)}..., auditor id ${auditorId}` }
+  return c.admin === admin && c.accountant === accountant && c.auditorId === auditorId && c.label === label
+    ? { done: true, how: `company ${id}, admin ${admin.slice(0, 6)}..., accountant ${accountant.slice(0, 6)}..., auditor id ${auditorId}` }
     : { done: false, how: `company ${id} does not match` };
 }
 
 async function setupCompanies() {
   log("Companies and roster");
+  // create_company names the accountant and the payroll refuses unless the registry says it owns the id.
   await step(`company "${COMPANY_LABEL}" created`, {
-    check: () => companyMatches(pub.company.id, address("treasury"), pub.accountant.auditorId, COMPANY_LABEL),
+    check: () => companyMatches(pub.company.id, address("treasury"), address("accountant"), pub.accountant.auditorId, COMPANY_LABEL),
     run: async () => {
       const tx = await invoke({
         label: "create_company Andes Studio",
         signer: keypair("treasury"),
         journal,
         build: (base) =>
-          core.buildCreateCompany({ ...base, contractId: stack.contracts.payroll }, { admin: address("treasury"), auditorId: pub.accountant.auditorId, label: COMPANY_LABEL }),
+          core.buildCreateCompany(
+            { ...base, contractId: stack.contracts.payroll },
+            { admin: address("treasury"), accountant: address("accountant"), auditorId: pub.accountant.auditorId, label: COMPANY_LABEL },
+          ),
       });
       pub.company.id = tx.returnValue.u64().toBigInt().toString();
       persistPublic();
@@ -398,20 +456,44 @@ async function setupCompanies() {
         }),
     });
   }
+  // The outsider is its own accountant: it registered the key under its id itself.
   await step(`company "${OUTSIDER_LABEL}" created`, {
-    check: () => companyMatches(pub.outsider.companyId, address("outsider"), pub.outsider.auditorId, OUTSIDER_LABEL),
+    check: () => companyMatches(pub.outsider.companyId, address("outsider"), address("outsider"), pub.outsider.auditorId, OUTSIDER_LABEL),
     run: async () => {
       const tx = await invoke({
         label: "create_company Outsider Co",
         signer: keypair("outsider"),
         journal,
         build: (base) =>
-          core.buildCreateCompany({ ...base, contractId: stack.contracts.payroll }, { admin: address("outsider"), auditorId: pub.outsider.auditorId, label: OUTSIDER_LABEL }),
+          core.buildCreateCompany(
+            { ...base, contractId: stack.contracts.payroll },
+            { admin: address("outsider"), accountant: address("outsider"), auditorId: pub.outsider.auditorId, label: OUTSIDER_LABEL },
+          ),
       });
       pub.outsider.companyId = tx.returnValue.u64().toBigInt().toString();
       persistPublic();
     },
   });
+}
+
+const buysLabel = (name) => `${name} buys USDC for the treasury`;
+
+/** Funder names no earlier payroll's showcase spent. A funder spends almost all its XLM in one purchase. */
+function unspentFunders() {
+  const spent = new Set((pub.previous ?? []).flatMap((p) => p.funders));
+  return Object.keys(secrets.keys).filter((k) => FUNDER.test(k) && !spent.has(address(k)));
+}
+
+/** Adds throwaway funder keys until the funders not yet used here can buy `usdc` stroops, plus one spare. */
+async function ensureFunders(usdc) {
+  const m = await measurePurchase(usdc);
+  const perFunder = Number(FRIENDBOT_XLM_STROOPS - XLM_KEPT_STROOPS);
+  const needed = Math.ceil(Number(m.quote.xlm) / perFunder) + 1;
+  const usable = unspentFunders().filter((k) => !pub.transactions[buysLabel(k)]?.ledger);
+  if (usable.length >= needed) return;
+  let next = Math.max(0, ...Object.keys(secrets.keys).map((k) => Number(FUNDER.exec(k)?.[1] ?? 0))) + 1;
+  for (let i = usable.length; i < needed; i++) secrets.keys[`funder${next++}`] = sdk.Keypair.random().secret();
+  saveSecrets(secrets);
 }
 
 async function fundTreasury() {
@@ -428,16 +510,15 @@ async function fundTreasury() {
       return (await usdcBalance(address("treasury"))) >= need ? { done: true, how: "the balance covers every deposit still to make" } : { done: false, how: "short" };
     },
     run: async () => {
-      const funders = Object.keys(secrets.keys)
-        .filter((k) => k.startsWith("funder"))
-        .map((k) => ({ label: `${k} buys USDC for the treasury`, keypair: keypair(k) }));
+      await ensureFunders((await outstanding()) - (await usdcBalance(address("treasury"))));
+      const funders = unspentFunders().map((k) => ({ label: buysLabel(k), keypair: keypair(k) }));
       await topUpUsdc({ destination: address("treasury"), target: await outstanding(), funders, journal, log: (s) => log(`    ${s}`) });
       pub.funders = funders.filter((f) => pub.transactions[f.label]).map((f) => f.keypair.publicKey());
       persistPublic();
     },
   });
   for (const g of pub.funders) {
-    const name = Object.keys(secrets.keys).find((k) => k.startsWith("funder") && address(k) === g);
+    const name = Object.keys(secrets.keys).find((k) => FUNDER.test(k) && address(k) === g);
     await recordCreation(name, g);
   }
 }
@@ -553,6 +634,9 @@ async function payRuns() {
             keys: kalypsoKeys(treasury),
             prover: getProver(),
             onProgress: (e) => log(`    CSV line ${e.row}: ${e.status}`),
+            // Only this call opts in, and it pays only the showcase company, whose accountant id is
+            // the published demo id (requirePublishedShowcaseId). Every other run stays refused.
+            allowPublishedDemoAuditor: true,
           });
           if (report.rows.some((r) => r.status === "failed")) throw new Error(`${run.label}: some rows failed`);
         }
@@ -657,6 +741,76 @@ async function plantPayments() {
   });
 }
 
+/**
+ * Moves the showcase onto the payroll in deployments/testnet.json when it was seeded on another
+ * one. Only a payroll release may differ: the accounts are registered with this token under ids in
+ * this registry, so another token or registry stops the seed. The earlier payroll's companies,
+ * runs and transactions go to pub.previous. What each worker was paid there, read from that
+ * contract's paid flags, goes to the secrets file: it is still in the worker's balance, and the
+ * prove command accounts for every unit of it.
+ */
+async function moveToNewPayroll() {
+  const earlier = pub.contracts.payroll.id;
+  if (earlier === stack.contracts.payroll) return;
+  const kept = [
+    ["verifier", stack.contracts.verifier],
+    ["auditorRegistry", stack.contracts.auditor],
+    ["token", stack.contracts.token],
+  ];
+  for (const [name, id] of kept) {
+    if (pub.contracts[name].id !== id) {
+      throw new Error(
+        `${path.basename(PUBLIC_FILE)} was seeded on another ${name} (${pub.contracts[name].id}), so its accounts cannot move to this stack. ` +
+          "Move both showcase files away to seed a new showcase",
+      );
+    }
+  }
+  const pending = Object.keys(pub.pending);
+  if (pending.length > 0) throw new Error(`transactions on the earlier payroll are still pending (${pending.join(", ")}), so the showcase cannot move yet`);
+  log(`Moving the showcase from payroll ${earlier} to ${stack.contracts.payroll}`);
+
+  secrets.amounts.earlier ??= [];
+  if (!secrets.amounts.earlier.some((e) => e.payroll === earlier)) {
+    const runs = {};
+    if (pub.company.id !== null) {
+      for (const run of RUNS) {
+        for (const w of WORKERS) {
+          if (await core.isPaid(port, earlier, BigInt(pub.company.id), run.id, address(w))) {
+            (runs[run.key] ??= {})[address(w)] = secrets.amounts.runs[run.key][address(w)];
+          }
+        }
+      }
+    }
+    secrets.amounts.earlier.push({ payroll: earlier, companyId: pub.company.id, runs });
+    saveSecrets(secrets);
+  }
+
+  const moved = {};
+  for (const [label, t] of Object.entries(pub.transactions)) {
+    if (!PAYROLL_SCOPED.test(label)) continue;
+    moved[label] = t;
+    delete pub.transactions[label];
+  }
+  pub.previous ??= [];
+  pub.previous.push({
+    payroll: pub.contracts.payroll,
+    companyId: pub.company.id,
+    outsiderCompanyId: pub.outsider.companyId,
+    runs: pub.runs,
+    funders: pub.funders,
+    seededAt: pub.seededAt ?? null,
+    transactions: moved,
+  });
+  pub.contracts.payroll = { id: stack.contracts.payroll, explorer: explorer.contract(stack.contracts.payroll) };
+  pub.company.id = null;
+  pub.outsider.companyId = null;
+  pub.runs = freshRuns();
+  pub.funders = [];
+  delete pub.seededAt;
+  persistPublic();
+  log(`  ${"earlier payroll kept under previous".padEnd(WIDTH)} done (${Object.keys(moved).length} of its transactions moved)`);
+}
+
 function feeSummary() {
   const kinds = [
     ["register_key", / register_key$/],
@@ -696,8 +850,10 @@ async function main() {
   // The note travels with the published key, so it always says what this code says it reads.
   pub.accountant.demoAccountantKeyNote = AUDITOR_KEY_NOTE;
   persistPublic();
+  await moveToNewPayroll();
 
   await setupAccounts();
+  requirePublishedShowcaseId();
   await registerWithToken();
   await setupCompanies();
   await fundTreasury();

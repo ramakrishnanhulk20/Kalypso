@@ -35,8 +35,13 @@ interface AccountRecord {
 
 interface CompanyRecord {
   admin: string;
+  accountant: string;
   auditorId: number;
   label: string;
+  /** Raised by every accepted handover, as accept_admin does. */
+  adminChanges: number;
+  /** Every worker who ever joined, in first-join order, as get_roster pages it. */
+  roster: string[];
 }
 
 export interface ArchiveOptions {
@@ -73,6 +78,8 @@ const BASE = 'https://archive.kalypso.test/api/archive/';
 const SUBMITTER = testAccount('fake ledger submitter').publicKey();
 /** The token takes any proof bytes in this model, since it verifies none. */
 const STAND_IN_PROOF = new Uint8Array([4, 2]);
+/** The accountant a company names when a test does not care which. */
+export const FAKE_ACCOUNTANT = testAccount('fake ledger accountant').publicKey();
 export const sym = (name: string) => xdr.ScVal.scvSymbol(name);
 const addressOf = (v: xdr.ScVal) => Address.fromScVal(v).toString();
 
@@ -123,7 +130,7 @@ export class FakeLedger implements ChainPort {
     this.ledger++;
     this.txCount++;
     const { envelopeXdr, txHash } = this.envelope(call ?? { contract: 'token', method: 'unbound_call', args: [] });
-    this.transactions.set(txHash, { envelopeXdr, successful: true });
+    this.transactions.set(txHash, { envelopeXdr, successful: true, ledger: this.ledger });
     let eventIndex = 0;
     emit((contract, topics, data) => {
       const value = data instanceof xdr.ScVal ? data : raw.struct(data);
@@ -231,11 +238,11 @@ export class FakeLedger implements ChainPort {
     );
   }
 
-  createCompany(id: bigint, admin: string, auditorId: number, label: string): string {
-    this.companies.set(id, { admin, auditorId, label });
-    const call = { contract: 'payroll', method: 'create_company', args: [raw.address(admin), raw.u32(auditorId), raw.str(label)] };
+  createCompany(id: bigint, admin: string, auditorId: number, label: string, accountant = FAKE_ACCOUNTANT): string {
+    this.companies.set(id, { admin, accountant, auditorId, label, adminChanges: 0, roster: [] });
+    const call = { contract: 'payroll', method: 'create_company', args: [raw.address(admin), raw.address(accountant), raw.u32(auditorId), raw.str(label)] };
     return this.tx(
-      (emit) => emit('payroll', [sym('company_created'), raw.u64(id)], { admin: raw.address(admin), auditor_id: raw.u32(auditorId), label: raw.str(label) }),
+      (emit) => emit('payroll', [sym('company_created'), raw.u64(id)], { admin: raw.address(admin), accountant: raw.address(accountant), auditor_id: raw.u32(auditorId), label: raw.str(label) }),
       call,
     );
   }
@@ -244,6 +251,7 @@ export class FakeLedger implements ChainPort {
     const company = this.companies.get(id) as CompanyRecord;
     const previous = company.admin;
     company.admin = newAdmin;
+    company.adminChanges++;
     return this.tx(
       (emit) => emit('payroll', [sym('admin_changed'), raw.u64(id)], { previous_admin: raw.address(previous), new_admin: raw.address(newAdmin) }),
       { contract: 'payroll', method: 'accept_admin', args: [raw.u64(id)] },
@@ -252,6 +260,8 @@ export class FakeLedger implements ChainPort {
 
   join(id: bigint, worker: string): string {
     this.members.set(`${id}/${worker}`, 'Active');
+    const roster = (this.companies.get(id) as CompanyRecord).roster;
+    if (!roster.includes(worker)) roster.push(worker);
     return this.tx((emit) => emit('payroll', [sym('worker_joined'), raw.u64(id), raw.address(worker)], {}), {
       contract: 'payroll',
       method: 'accept_invite',
@@ -326,19 +336,33 @@ export class FakeLedger implements ChainPort {
       if (key === undefined) throw new ContractCallError(method, 3301);
       return raw.bytes(pointBytes(key));
     }
+    if (contractId === this.contracts.payroll && method === 'memberships_of') {
+      const worker = address(a0);
+      return raw.u32([...this.companies.values()].filter((c) => c.roster.includes(worker)).length);
+    }
     if (contractId === this.contracts.payroll) {
       const companyId = a0.u64().toBigInt();
       if (method === 'get_company') {
         const c = this.companies.get(companyId);
         if (c === undefined) throw new ContractCallError(method, 1);
+        const active = c.roster.filter((w) => this.members.get(`${companyId}/${w}`) === 'Active').length;
         return raw.struct({
           admin: raw.address(c.admin),
+          accountant: raw.address(c.accountant),
           auditor_id: raw.u32(c.auditorId),
           label: raw.str(c.label),
           created_ledger: raw.u32(1),
-          active_workers: raw.u32(0),
-          roster_len: raw.u32(0),
+          active_workers: raw.u32(active),
+          roster_len: raw.u32(c.roster.length),
+          runs_opened: raw.u32([...this.runs.keys()].filter((key) => key.startsWith(`${companyId}/`)).length),
+          admin_changes: raw.u32(c.adminChanges),
         });
+      }
+      if (method === 'get_roster') {
+        const c = this.companies.get(companyId);
+        if (c === undefined) throw new ContractCallError(method, 1);
+        const from = a1.u32();
+        return raw.vec(c.roster.slice(from, from + a2.u32()).map((w) => raw.address(w)));
       }
       if (method === 'get_run') {
         const key = `${companyId}/${a1.u64().toBigInt()}`;
@@ -380,6 +404,11 @@ export class FakeLedger implements ChainPort {
 
   async sourceAccount(): Promise<{ sequence: string }> {
     return { sequence: '41' };
+  }
+
+  /** Ledgers close every 5 seconds from a fixed testnet-era start, so the clock follows the ledger count. */
+  async latestLedger(): Promise<{ sequence: number; closeTime: number }> {
+    return { sequence: this.ledger, closeTime: 1_791_000_000 + this.ledger * 5 };
   }
 
   /**

@@ -27,6 +27,7 @@ pub const RECORD_EXTEND_THRESHOLD: u32 = RECORD_EXTEND_TO - DAY_IN_LEDGERS;
 #[derive(Clone)]
 enum DataKey {
     Token,
+    AuditorRegistry,
     NextCompanyId,
     Company(u64),
     Worker(u64, Address),
@@ -34,6 +35,7 @@ enum DataKey {
     Run(u64, u64),
     Paid(u64, u64, Address),
     PendingAdmin(u64),
+    Memberships(Address),
 }
 
 /// The value stored under `DataKey::Worker`. `on_roster` remembers that the
@@ -87,6 +89,19 @@ pub fn token(e: &Env) -> Address {
     e.storage()
         .instance()
         .get(&DataKey::Token)
+        .unwrap_or_else(|| panic_with_error!(e, PayrollError::MissingRecord))
+}
+
+pub fn set_auditor_registry(e: &Env, registry: &Address) {
+    e.storage().instance().set(&DataKey::AuditorRegistry, registry);
+}
+
+/// Written by the constructor next to the token, so the same reasoning as
+/// `token` holds: a missing address fails with a named error.
+pub fn auditor_registry(e: &Env) -> Address {
+    e.storage()
+        .instance()
+        .get(&DataKey::AuditorRegistry)
         .unwrap_or_else(|| panic_with_error!(e, PayrollError::MissingRecord))
 }
 
@@ -159,6 +174,18 @@ pub fn pending_admin(e: &Env, company_id: u64) -> Option<PendingAdmin> {
 
 pub fn set_pending_admin(e: &Env, company_id: u64, pending: &PendingAdmin) {
     write_record(e, &DataKey::PendingAdmin(company_id), pending);
+}
+
+/// A worker who never joined any company has no entry, which reads as 0.
+pub fn memberships(e: &Env, worker: &Address) -> u32 {
+    e.storage()
+        .persistent()
+        .get(&DataKey::Memberships(worker.clone()))
+        .unwrap_or(0)
+}
+
+pub fn set_memberships(e: &Env, worker: &Address, count: u32) {
+    write_record(e, &DataKey::Memberships(worker.clone()), &count);
 }
 
 pub fn remove_pending_admin(e: &Env, company_id: u64) {

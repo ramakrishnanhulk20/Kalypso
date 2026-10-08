@@ -19,7 +19,7 @@ export async function clearTables(db: Db, tables: readonly string[]): Promise<vo
 export async function resetArchive(db: Db): Promise<void> {
   await clearTables(db, ["events", "ingested_ranges", "gaps"]);
   await db.exec(
-    "update archive_state set start_ledger = null, covers_from_genesis = false, latest_ledger = null, " +
+    "update archive_state set start_ledger = null, covers_from_genesis = false, start_check_pending = false, latest_ledger = null, " +
       "rpc_oldest_ledger = null, last_ingest_at = null, ingest_started_at = null",
   );
 }

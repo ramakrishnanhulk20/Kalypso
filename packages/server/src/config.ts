@@ -21,11 +21,17 @@ export interface Config {
   readonly FEE_CAP_STROOPS: bigint;
   readonly DAILY_FEE_BUDGET_STROOPS: bigint;
   readonly PER_IP_LIMIT_PER_HOUR: number;
+  /** Relays each authorising address may have per UTC day. */
+  readonly PER_ADDRESS_LIMIT_PER_DAY: number;
   readonly TRUSTED_IP_HEADER: string;
   /** The bearer token the scheduler sends to the ingest route. */
   readonly CRON_SECRET: string;
   /** The key for the tag that stands in for a caller's IP in log lines. */
   readonly LOG_SALT: string;
+  /** Where an empty archive starts reading: the token's deploy ledger. */
+  readonly ARCHIVE_START_LEDGER?: number;
+  /** The token's deploy transaction hash, lower-case hex: the only proof of where its history begins. */
+  readonly TOKEN_DEPLOY_TX?: string;
 }
 
 export class ConfigError extends Error {
@@ -102,6 +108,11 @@ const apiKey = z
     error: "must be 16 to 256 characters from A-Z a-z 0-9 . _ ~ + / = -",
   });
 
+const countUpTo99999 = z
+  .string()
+  .refine((v) => /^[1-9]\d{0,4}$/.test(v), { error: "must be a whole number from 1 to 99999" })
+  .transform(Number);
+
 // A shared secret that travels in a header: no whitespace or control
 // characters, and long enough that guessing it is hopeless.
 const sharedSecret = z
@@ -132,17 +143,24 @@ const schema = z
     DATABASE_URL_API: postgresUrl,
     FEE_CAP_STROOPS: stroops(10_000_000_000n).default(2_000_000n),
     DAILY_FEE_BUDGET_STROOPS: stroops(1_000_000_000_000n).default(200_000_000n),
-    PER_IP_LIMIT_PER_HOUR: z
-      .string()
-      .refine((v) => /^[1-9]\d{0,4}$/.test(v), { error: "must be a whole number from 1 to 99999" })
-      .transform(Number)
-      .default(60),
+    PER_IP_LIMIT_PER_HOUR: countUpTo99999.default(60),
+    PER_ADDRESS_LIMIT_PER_DAY: countUpTo99999.default(20),
     TRUSTED_IP_HEADER: z
       .string()
       .refine((v) => /^[a-z0-9-]{1,64}$/.test(v), { error: "must be a lower-case HTTP header name" })
       .default("x-real-ip"),
     CRON_SECRET: sharedSecret,
     LOG_SALT: sharedSecret,
+    ARCHIVE_START_LEDGER: z
+      .string()
+      .refine((v) => /^[1-9]\d{0,9}$/.test(v) && Number(v) <= 0xffffffff, { error: "must be a ledger number from 1 to 4294967295" })
+      .transform(Number)
+      .optional(),
+    // One spelling only, because it is compared as a string with RPC's event hashes.
+    TOKEN_DEPLOY_TX: z
+      .string()
+      .refine((v) => /^[0-9a-f]{64}$/.test(v), { error: "must be 64 lower-case hex characters" })
+      .optional(),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.DAILY_FEE_BUDGET_STROOPS < cfg.FEE_CAP_STROOPS) {
@@ -151,6 +169,14 @@ const schema = z
         path: ["DAILY_FEE_BUDGET_STROOPS"],
         message: "must be at least FEE_CAP_STROOPS",
       });
+    }
+    if (cfg.TOKEN_DEPLOY_TX !== undefined && cfg.ARCHIVE_START_LEDGER === undefined) {
+      ctx.addIssue({ code: "custom", path: ["TOKEN_DEPLOY_TX"], message: "needs ARCHIVE_START_LEDGER, the ledger of that transaction" });
+    }
+    // The cron secret is sent by the scheduler on every call, so one leak of
+    // it would also untag every caller IP in the logs if the two were equal.
+    if (cfg.CRON_SECRET === cfg.LOG_SALT) {
+      ctx.addIssue({ code: "custom", path: ["LOG_SALT"], message: "must be different from CRON_SECRET" });
     }
     const ids = [cfg.PAYROLL_CONTRACT_ID, cfg.TOKEN_CONTRACT_ID, cfg.USDC_SAC_ID, cfg.AUDITOR_CONTRACT_ID, cfg.VERIFIER_CONTRACT_ID];
     if (new Set(ids).size !== ids.length) {

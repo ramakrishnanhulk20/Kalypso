@@ -40,7 +40,8 @@ async function sendAndWait(label, tx, journal) {
   const s = await txStatus(hash);
   const entry = { hash, ledger: s.ledger, feeStroops: Number(s.feeCharged?.toString() ?? 0) };
   journal.done(label, entry);
-  return { ...entry, returnValue: s.returnValue, reused: false };
+  // The value the confirmed transaction returned, as core's waitFor read it; callers decode it strictly.
+  return { ...entry, returnValue: res.returnValue ?? s.returnValue, reused: false };
 }
 
 /**
@@ -83,7 +84,17 @@ export async function invoke({ label, signer, build, journal }) {
   const unsigned = await build({ source: { address: signer.publicKey(), sequence }, networkPassphrase: stack.passphrase, timeoutSeconds: TIMEOUT_SECONDS });
   const sim = await port.simulate(unsigned);
   if (!sim.ok) throw new Error(`${label}: simulation failed: ${firstLine(sim.error)}`);
-  return sendAndWait(label, signWith(signer, core.assembleFromSimulation(unsigned, sim, stack.passphrase)), journal);
+  // The call is read back from the envelope itself, with core's decoder, to pick its fee cap.
+  const call = core.decodeInvocation(unsigned, stack.passphrase);
+  const isPay = call.contractId === stack.contracts.payroll && call.method === "pay";
+  let assembled;
+  try {
+    assembled = core.assembleFromSimulation(unsigned, sim, stack.passphrase, isPay ? core.MAX_PAY_FEE_STROOPS : core.MAX_SETUP_FEE_STROOPS);
+  } catch (e) {
+    if (e instanceof core.FeeCapError) throw new Error(`${label}: refused before signing: ${e.message}`);
+    throw e;
+  }
+  return sendAndWait(label, signWith(signer, assembled), journal);
 }
 
 /** One classic transaction (trustline, path payment) signed by `signer`. */
@@ -140,10 +151,15 @@ export async function simulate({ source, contractId, method, args, mode, auth = 
   if (auth.length > 0) op.body().invokeHostFunctionOp().auth(auth);
   const tx = new sdk.TransactionBuilder(account, { fee: sdk.BASE_FEE, networkPassphrase: stack.passphrase }).addOperation(op).setTimeout(TIMEOUT_SECONDS).build();
   const sim = await rpcServer.simulateTransaction(tx, undefined, mode);
-  if (sdk.rpc.Api.isSimulationError(sim)) return { ok: false, ...readFailure(sim.error) };
-  if (sdk.rpc.Api.isSimulationRestore(sim)) return { ok: false, head: "archived state must be restored first", contractCode: null, auth: null };
-  return { ok: true, head: "the simulation succeeded", contractCode: null, auth: null };
+  // The ledger the simulation ran against, so a caller can tell whether two simulations saw the same one.
+  const latestLedger = sim.latestLedger;
+  if (sdk.rpc.Api.isSimulationError(sim)) return { ok: false, latestLedger, ...readFailure(sim.error) };
+  if (sdk.rpc.Api.isSimulationRestore(sim)) return { ok: false, latestLedger, head: "archived state must be restored first", contractCode: null, auth: null };
+  return { ok: true, latestLedger, head: "the simulation succeeded", contractCode: null, auth: null };
 }
+
+/** A journal that keeps nothing, for throwaway accounts whose transactions are never resumed. */
+export const memoryJournal = () => ({ get: () => undefined, pending() {}, done() {} });
 
 /**
  * An authorisation entry that claims to come from `claimed` for the call `method(args)` on

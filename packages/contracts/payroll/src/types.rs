@@ -6,6 +6,10 @@ use soroban_sdk::{contracttype, Address, String};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Company {
     pub admin: Address,
+    /// The address the auditor registry named as the owner of `auditor_id`
+    /// when the company was created. Not updated if the id is later handed
+    /// to someone else in the registry.
+    pub accountant: Address,
     /// The auditor id the admin is registered under in the token. Checked
     /// against the token at creation and at every admin handover.
     pub auditor_id: u32,
@@ -17,6 +21,14 @@ pub struct Company {
     /// Length of the append-only roster. A worker is added the first time they
     /// join and never removed from the list, so the list is also the history.
     pub roster_len: u32,
+    /// How many runs this company has ever opened. Run ids are chosen by the
+    /// admin and never listed on chain, so a history reader compares this
+    /// count with the `RunOpened` events it holds to know none is hidden.
+    pub runs_opened: u32,
+    /// How many admin handovers this company has completed. A history reader
+    /// compares it with the `AdminChanged` events it holds, for the same
+    /// reason.
+    pub admin_changes: u32,
 }
 
 #[contracttype]

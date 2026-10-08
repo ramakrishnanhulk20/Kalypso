@@ -11,6 +11,8 @@ pub struct CompanyCreated {
     #[topic]
     pub company_id: u64,
     pub admin: Address,
+    /// The owner of `auditor_id` in the auditor registry at creation.
+    pub accountant: Address,
     pub auditor_id: u32,
     pub label: String,
 }

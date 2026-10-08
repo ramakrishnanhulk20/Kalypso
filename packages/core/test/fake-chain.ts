@@ -4,12 +4,17 @@
 // verification (the fake proof carries the commitment and the three keys it was built on, and
 // the fake token checks them against the stored balance, the recipient's viewing key and both
 // auditor keys, as the verifier reads its public inputs from chain), fees, or rent. Its ledger
-// clock only moves when a caller waits for a transaction the network has not settled.
+// clock only moves when a caller waits for a transaction the network has not settled. The
+// registry hands out ids through register_key; key rotation and id handovers are not modelled.
+// Token history: each included transfer emits its token event, and recordRegister and
+// depositAndMerge emit theirs, served by rpc() in one page; payroll events are not emitted.
+import { createHash } from 'node:crypto';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { Address, Keypair, SorobanDataBuilder, StrKey, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk/base';
-import { G, pointFromBytes, type Point } from 'stellar-confidential-token-sdk';
+import { G, commit, pointFromBytes, type Point } from 'stellar-confidential-token-sdk';
 import { ContractCallError, SubmitRejectedError, type ChainPort, type SimResult } from '../src/chain/ports.js';
 import { RpcTimeoutError } from '../src/chain/rpc-port.js';
+import type { EventsPort, RpcContractEvent } from '../src/history/rpc-events.js';
 import { PASSPHRASE, accountStruct, pointBytes, raw } from './independent-xdr.js';
 
 /**
@@ -33,6 +38,7 @@ export type SubmitMode =
 type WorkerState = 'Invited' | 'Active' | 'Removed';
 interface CompanyState {
   admin: string;
+  accountant?: string;
   auditorId: number;
   activeWorkers: number;
 }
@@ -75,14 +81,29 @@ export function readTransferData(data: Uint8Array) {
   };
 }
 
+/** The token transfer event's data: the payload's fields without its two commitments, as storage.rs emits it. */
+function transferEventData(data: Uint8Array): xdr.ScVal {
+  const fields = new Map((xdr.ScVal.fromXDR(Buffer.from(data)).map() ?? []).map((e) => [e.key().sym().toString(), e.val()]));
+  const payload = (fields.get('payload')?.map() ?? []).filter((e) => !['c_spend_new', 'c_transfer'].includes(e.key().sym().toString()));
+  return raw.struct(Object.fromEntries(payload.map((e) => [e.key().sym().toString(), e.val()])));
+}
+
 export class FakeChain implements ChainPort {
   ledger = 5_100_000;
+  /** The first ledger of the token history rpc() serves: a fromLedger at or before every registration. */
+  readonly historyStart = this.ledger;
+  /** Every token event of an included transaction or a history helper, in ledger order. */
+  events: RpcContractEvent[] = [];
   companies = new Map<bigint, CompanyState>();
   workers = new Map<string, WorkerState>();
   runs = new Map<string, RunState>();
   paid = new Set<string>();
   accounts = new Map<string, AccountState>();
   auditorKeys = new Map<number, Point>();
+  /** Owners of ids handed out by register_key. Keys placed straight into auditorKeys have none. */
+  auditorOwners = new Map<number, string>();
+  /** The registry's key_count: the id the next register_key hands out. */
+  keyCount = 0;
   sequences = new Map<string, bigint>();
   /** Confidential transfers each worker received. Above 1 for a worker is a double payment. */
   transfersTo = new Map<string, number>();
@@ -99,7 +120,12 @@ export class FakeChain implements ChainPort {
   private pending: string | undefined;
   private held: Transaction | undefined;
   private modes: SubmitMode[] = [];
-  private results = new Map<string, { status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; crash?: boolean }>();
+  /** Token events of the transaction being applied, kept only if it is included. */
+  private emitted: { topics: xdr.ScVal[]; data: xdr.ScVal }[] = [];
+  private results = new Map<
+    string,
+    { status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; crash?: boolean; returnValue?: xdr.ScVal }
+  >();
 
   constructor(readonly contracts: { payroll: string; token: string; auditor: string }) {}
 
@@ -135,6 +161,10 @@ export class FakeChain implements ChainPort {
     return { sequence: (this.sequences.get(address) ?? 0n).toString() };
   }
 
+  async latestLedger(): Promise<{ sequence: number; closeTime: number }> {
+    return { sequence: this.ledger, closeTime: this.closeTime };
+  }
+
   async simulate(txXdr: string): Promise<SimResult> {
     this.simulations++;
     if (this.simulationFailures > 0) {
@@ -157,6 +187,7 @@ export class FakeChain implements ChainPort {
       throw err;
     } finally {
       this.restore(snapshot);
+      this.emitted = [];
     }
   }
 
@@ -196,7 +227,10 @@ export class FakeChain implements ChainPort {
     return { hash };
   }
 
-  async waitFor(hash: string, timeoutMs: number): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; closeTime?: number }> {
+  async waitFor(
+    hash: string,
+    timeoutMs: number,
+  ): Promise<{ status: 'SUCCESS' | 'FAILED' | 'NOT_FOUND'; ledger?: number; closeTime?: number; returnValue?: xdr.ScVal }> {
     if (this.held !== undefined && bytesToHex(this.held.hash()) === hash) throw new Error('the RPC stopped answering about this transaction');
     const result = this.results.get(hash) ?? { status: 'NOT_FOUND' as const };
     if (result.crash) throw new Error('connection lost while waiting for the transaction');
@@ -207,7 +241,12 @@ export class FakeChain implements ChainPort {
       this.closeTime += Math.floor(timeoutMs / 1000);
       return this.reportsCloseTime ? { status: 'NOT_FOUND', closeTime: this.closeTime } : { status: 'NOT_FOUND' };
     }
-    return result.ledger === undefined ? { status: result.status } : { status: result.status, ledger: result.ledger };
+    const { status, ledger, returnValue } = result;
+    return {
+      status,
+      ...(ledger === undefined ? {} : { ledger }),
+      ...(status === 'SUCCESS' && returnValue !== undefined ? { returnValue } : {}),
+    };
   }
 
   /** Puts a transaction in a ledger: moves the source's sequence on, then applies it or fails it. */
@@ -219,15 +258,20 @@ export class FakeChain implements ChainPort {
       return;
     }
     const before = this.snapshot();
+    let returnValue: xdr.ScVal | undefined;
+    this.emitted = [];
     try {
-      this.apply(tx);
+      returnValue = this.apply(tx);
     } catch (err) {
       if (!(err instanceof Revert)) throw err;
       // A failing call undoes everything it did, as on chain.
       this.restore(before);
+      this.emitted = [];
       this.results.set(hash, { status: 'FAILED', ledger: this.ledger });
       return;
     }
+    this.recordEvents(hash, this.emitted);
+    this.emitted = [];
     if (mode === 'TAMPER') {
       const treasury = this.accounts.get(tx.source) as AccountState;
       treasury.spendable = treasury.spendable.add(G);
@@ -236,11 +280,18 @@ export class FakeChain implements ChainPort {
       status: mode === 'LOST_STATUS' ? 'NOT_FOUND' : 'SUCCESS',
       ledger: this.ledger,
       crash: mode === 'CRASH',
+      ...(returnValue === undefined ? {} : { returnValue }),
     });
   }
 
   private answer(contractId: string, method: string, args: xdr.ScVal[]): xdr.ScVal {
     const [a0, a1, a2] = args;
+    if (contractId === this.contracts.payroll && method === 'memberships_of') {
+      const worker = addressOf(a0 as xdr.ScVal);
+      // The fake has no revoke_invite, so any status past Invited followed a join.
+      const joined = [...this.workers].filter(([key, status]) => key.endsWith(`/${worker}`) && status !== 'Invited');
+      return raw.u32(joined.length);
+    }
     if (contractId === this.contracts.payroll) {
       const companyId = (a0 as xdr.ScVal).u64().toBigInt();
       if (method === 'get_company') {
@@ -248,11 +299,15 @@ export class FakeChain implements ChainPort {
         if (!c) throw contractError(1);
         return raw.struct({
           admin: raw.address(c.admin),
+          // Engine fixtures set no accountant, so the admin stands in for one.
+          accountant: raw.address(c.accountant ?? c.admin),
           auditor_id: raw.u32(c.auditorId),
           label: raw.str('Fake Co'),
           created_ledger: raw.u32(1),
           active_workers: raw.u32(c.activeWorkers),
           roster_len: raw.u32(c.activeWorkers),
+          runs_opened: raw.u32([...this.runs.keys()].filter((key) => key.startsWith(`${companyId}/`)).length),
+          admin_changes: raw.u32(0),
         });
       }
       if (method === 'get_run') {
@@ -284,15 +339,26 @@ export class FakeChain implements ChainPort {
       if (!key) throw contractError(3301);
       return raw.bytes(pointBytes(key));
     }
+    if (contractId === this.contracts.auditor && method === 'owner_of') {
+      const owner = this.auditorOwners.get((a0 as xdr.ScVal).u32());
+      if (owner === undefined) throw contractError(100);
+      return raw.address(owner);
+    }
+    if (contractId === this.contracts.auditor && method === 'key_count') return raw.u32(this.keyCount);
     throw new Error(`the fake chain has no ${method} on ${contractId}`);
   }
 
-  /** Applies pay the way contract.rs does, with the source account as the only signer. */
-  private apply(tx: Transaction): void {
+  /**
+   * Applies pay the way contract.rs does, or the registry's register_key, with the source account
+   * as the only signer. Returns the call's return value when it has one the tests read.
+   */
+  private apply(tx: Transaction): xdr.ScVal | undefined {
     const op = tx.toEnvelope().v1().tx().operations()[0] as xdr.Operation;
     const call = op.body().invokeHostFunctionOp().hostFunction().invokeContract();
     const contractId = StrKey.encodeContract(Buffer.from(call.contractAddress().contractId() as unknown as Uint8Array));
-    if (contractId !== this.contracts.payroll || call.functionName().toString() !== 'pay') throw new Revert('not a pay call');
+    const method = call.functionName().toString();
+    if (contractId === this.contracts.auditor && method === 'register_key') return this.registerKey(tx.source, call.args());
+    if (contractId !== this.contracts.payroll || method !== 'pay') throw new Revert('the fake chain applies only pay and register_key');
     const [companyArg, runArg, itemsArg] = call.args() as [xdr.ScVal, xdr.ScVal, xdr.ScVal];
     const companyId = companyArg.u64().toBigInt();
     const runId = runArg.u64().toBigInt();
@@ -317,6 +383,29 @@ export class FakeChain implements ChainPort {
       if (run.paid > run.expected) throw contractError(15);
       this.transfer(company.admin, worker, new Uint8Array(dataArg.bytes()));
     }
+    return undefined;
+  }
+
+  /** register_key(owner, point) as packages/contracts/auditor does it: the next id, never reused. */
+  private registerKey(source: string, args: xdr.ScVal[]): xdr.ScVal {
+    const [ownerArg, pointArg] = args as [xdr.ScVal, xdr.ScVal];
+    const owner = addressOf(ownerArg);
+    if (owner !== source) throw new Revert('HostError: Error(Auth, InvalidAction)');
+    const bytes = new Uint8Array(pointArg.bytes());
+    if (bytes.length !== 64) throw new Revert('HostError: Error(Value, UnexpectedType)');
+    let point: Point;
+    try {
+      point = pointFromBytes(bytes);
+      if (!point.is0()) point.assertValidity();
+    } catch {
+      throw contractError(3303);
+    }
+    if (point.is0()) throw contractError(3302);
+    const auditorId = this.keyCount;
+    this.auditorKeys.set(auditorId, point);
+    this.auditorOwners.set(auditorId, owner);
+    this.keyCount++;
+    return raw.u32(auditorId);
   }
 
   private transfer(from: string, to: string, data: Uint8Array): void {
@@ -334,6 +423,63 @@ export class FakeChain implements ChainPort {
     sender.spendable = d.cSpendNew;
     recipient.receiving = recipient.receiving.add(d.cTransfer);
     this.transfersTo.set(to, (this.transfersTo.get(to) ?? 0) + 1);
+    this.emitted.push({ topics: [xdr.ScVal.scvSymbol('transfer'), raw.address(from), raw.address(to)], data: transferEventData(data) });
+  }
+
+  /** The register event of an account already placed in accounts, in a ledger of its own. */
+  recordRegister(address: string): void {
+    const account = this.accounts.get(address) as AccountState;
+    this.ledger++;
+    this.recordEvents(this.helperHash('register', address), [
+      { topics: [xdr.ScVal.scvSymbol('register'), raw.address(address)], data: raw.struct({ auditor_id: raw.u32(account.auditorId) }) },
+    ]);
+  }
+
+  /** A public deposit into the account and its merge, each in a ledger of its own, moving the spendable balance as the token does. */
+  depositAndMerge(address: string, amount: bigint): void {
+    const account = this.accounts.get(address) as AccountState;
+    this.ledger++;
+    this.recordEvents(this.helperHash('deposit', address), [
+      { topics: [xdr.ScVal.scvSymbol('deposit'), raw.address(address), raw.address(address)], data: raw.struct({ amount: raw.i128(amount) }) },
+    ]);
+    this.ledger++;
+    this.recordEvents(this.helperHash('merge', address), [{ topics: [xdr.ScVal.scvSymbol('merge'), raw.address(address)], data: raw.struct({}) }]);
+    account.spendable = account.spendable.add(commit(amount, 0n));
+  }
+
+  /**
+   * The RPC's getEvents view of the token history, from historyStart, in one page. oldestLedger
+   * moves the start of the window, as an RPC that has dropped older ledgers would.
+   */
+  rpc(opts: { oldestLedger?: number } = {}): EventsPort {
+    return {
+      ledgerWindow: async () => ({ oldestLedger: opts.oldestLedger ?? this.historyStart, latestLedger: this.ledger }),
+      contractEvents: async (query) => {
+        const from = 'startLedger' in query ? query.startLedger : this.historyStart;
+        const events = this.events.filter((e) => e.contractId === query.contractId && e.ledger >= from).map((e) => ({ ...e }));
+        return { events, cursor: null, latestLedger: this.ledger };
+      },
+    };
+  }
+
+  private helperHash(name: string, address: string): string {
+    return createHash('sha256').update(`fake chain ${name} ${address} ${this.ledger}`).digest('hex');
+  }
+
+  private recordEvents(txHash: string, events: { topics: xdr.ScVal[]; data: xdr.ScVal }[]): void {
+    events.forEach(({ topics, data }, eventIndex) =>
+      this.events.push({
+        ledger: this.ledger,
+        txIndex: 1,
+        opIndex: 0,
+        eventIndex,
+        txHash,
+        contractId: this.contracts.token,
+        topicsXdr: topics.map((t) => t.toXDR('base64')),
+        dataXdr: data.toXDR('base64'),
+        successful: true,
+      }),
+    );
   }
 
   private snapshot() {
@@ -342,6 +488,9 @@ export class FakeChain implements ChainPort {
       paid: new Set(this.paid),
       accounts: new Map([...this.accounts].map(([k, v]) => [k, { ...v }])),
       transfersTo: new Map(this.transfersTo),
+      keyCount: this.keyCount,
+      auditorKeys: new Map(this.auditorKeys),
+      auditorOwners: new Map(this.auditorOwners),
     };
   }
 
@@ -350,5 +499,11 @@ export class FakeChain implements ChainPort {
     this.paid = s.paid;
     this.accounts = s.accounts;
     this.transfersTo = s.transfersTo;
+    this.keyCount = s.keyCount;
+    // Refilled in place, because engine tests keep changing chain.auditorKeys between calls.
+    this.auditorKeys.clear();
+    for (const [id, key] of s.auditorKeys) this.auditorKeys.set(id, key);
+    this.auditorOwners.clear();
+    for (const [id, owner] of s.auditorOwners) this.auditorOwners.set(id, owner);
   }
 }

@@ -176,14 +176,24 @@ export interface TxOptions {
   soroban?: boolean;
   /** The footprint the envelope declares; empty unless given. */
   footprint?: Footprint;
+  /** The limits the envelope declares; all zero unless given. */
+  limits?: Limits;
+}
+
+/** Soroban resource limits: instructions, bytes read from disk, bytes written. */
+export interface Limits {
+  instructions: number;
+  diskReadBytes: number;
+  writeBytes: number;
 }
 
 export function envelope(opts: TxOptions = {}): string {
   const source = opts.signer === null ? worker : (opts.signer ?? worker);
-  const sorobanData = new SorobanDataBuilder()
+  const data = new SorobanDataBuilder()
     .setResourceFee(opts.resourceFee ?? 500_000)
-    .setFootprint(opts.footprint?.readOnly ?? [], opts.footprint?.readWrite ?? [])
-    .build();
+    .setFootprint(opts.footprint?.readOnly ?? [], opts.footprint?.readWrite ?? []);
+  if (opts.limits) data.setResources(opts.limits.instructions, opts.limits.diskReadBytes, opts.limits.writeBytes);
+  const sorobanData = data.build();
   const builder = new TransactionBuilder(new Account(source.publicKey(), "100"), {
     fee: opts.fee ?? "600000",
     networkPassphrase: opts.network ?? Networks.TESTNET,

@@ -5,8 +5,9 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { coverageOf, ingestedFrom, ingestedThrough, isComplete, mergeRanges } from "../../src/archive/coverage.ts";
-import { readCoverage, type Db } from "../../src/archive/db.ts";
+import { readArchiveState, readCoverage, settleArchiveStart, type Db } from "../../src/archive/db.ts";
 import { UpstreamDataError, ingestOnce, parseRpcCursor } from "../../src/archive/ingest.ts";
+import { createLogger } from "../../src/log.ts";
 import type { RpcClient } from "../../src/rpc.ts";
 import { PAYROLL, STRANGER, TOKEN, contractFor, keypairFor, testConfig } from "../helpers.ts";
 import { freshDb, resetArchive } from "../db.ts";
@@ -14,12 +15,15 @@ import {
   FakeChain,
   addrVal,
   companyCreated,
+  depositEvent,
   endOfLedgerCursor,
   mergeEvent,
   payslipIssued,
   rpcEvent,
+  deployTxEvent,
   sym,
   transferEvent,
+  txHashOf,
   u64,
 } from "./fake-chain.ts";
 
@@ -27,6 +31,8 @@ const cfg = testConfig();
 const alice = keypairFor("alice").publicKey();
 const bob = keypairFor("bob").publicKey();
 const wallet = contractFor("bob passkey");
+/** busyChain's token is deployed by transaction 1 of ledger 100. */
+const DEPLOY_TX = txHashOf(100);
 
 let db: Db;
 beforeAll(async () => {
@@ -42,6 +48,7 @@ const coverage = async () => coverageOf(await readCoverage(db));
 function busyChain(): FakeChain {
   const chain = new FakeChain(100, 400);
   chain.window = 150;
+  chain.add(deployTxEvent(TOKEN, 100));
   for (let ledger = 110; ledger <= 390; ledger += 12) chain.add(transferEvent(TOKEN, ledger, alice, bob));
   chain.add(mergeEvent(TOKEN, 200, bob, 2), mergeEvent(TOKEN, 200, bob, 3), mergeEvent(TOKEN, 200, bob, 4));
   return chain;
@@ -79,7 +86,7 @@ describe("ingestOnce", () => {
 
   it("records a permanent gap when RPC has already forgotten the next ledger, and carries on", async () => {
     const chain = busyChain();
-    await ingestOnce(db, chain, cfg, { startLedger: 100 });
+    await ingestOnce(db, chain, cfg, { startLedger: 100, deployTx: DEPLOY_TX });
     chain.oldestLedger = 450;
     chain.latestLedger = 600;
     chain.add(transferEvent(TOKEN, 420, bob, alice), transferEvent(TOKEN, 500, bob, alice));
@@ -102,12 +109,13 @@ describe("ingestOnce", () => {
     expect(isComplete(await coverage(), 1, 400)).toBe(false);
   });
 
-  it("vouches only from RPC's oldest ledger when no start ledger was given", async () => {
+  it("vouches only from RPC's oldest ledger when no start ledger was given, even with the token's creation event read first", async () => {
     await ingestOnce(db, busyChain(), cfg);
     const c = await coverage();
     expect(ingestedFrom(c)).toBe(100);
     expect(isComplete(c, 100, 400)).toBe(true);
     expect(isComplete(c, 1, 400)).toBe(false);
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: false, startCheckPending: false });
   });
 
   it("looks again when the retention floor moves between getHealth and getEvents", async () => {
@@ -224,6 +232,111 @@ describe("ingestOnce", () => {
 
   it("rejects bad page limits", async () => {
     await expect(ingestOnce(db, busyChain(), cfg, { pageLimit: 0 })).rejects.toBeInstanceOf(RangeError);
+  });
+});
+
+describe("the start check", () => {
+  const capture = () => {
+    const lines: string[] = [];
+    return { lines, log: createLogger([], (line) => lines.push(line)) };
+  };
+
+  it("vouches from genesis when the first token events read in the start ledger come from the deploy transaction, in any order, and says so once", async () => {
+    const { lines, log } = capture();
+    const chain = new FakeChain(100, 400).add(
+      deployTxEvent(TOKEN, 100, "auditor_set", 0),
+      deployTxEvent(TOKEN, 100, "address_as_field_set", 1),
+      deployTxEvent(TOKEN, 100, "underlying_asset_set", 2),
+      transferEvent(TOKEN, 110, alice, bob),
+    );
+    await ingestOnce(db, chain, cfg, { startLedger: 100, deployTx: DEPLOY_TX, log });
+    const c = await coverage();
+    expect(c.coversFromGenesis).toBe(true);
+    expect(ingestedFrom(c)).toBe(1);
+    expect(isComplete(c, 1, 400)).toBe(true);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ event: "archive_start_proven", startLedger: 100, deployTx: DEPLOY_TX });
+  });
+
+  it("vouches only from its start, and warns, when a token event from another transaction is read first", async () => {
+    const { lines, log } = capture();
+    await ingestOnce(db, busyChain(), cfg, { startLedger: 105, deployTx: DEPLOY_TX, log });
+    const c = await coverage();
+    expect(c.coversFromGenesis).toBe(false);
+    expect(ingestedFrom(c)).toBe(105);
+    expect(isComplete(c, 1, 400)).toBe(false);
+    expect(isComplete(c, 105, 400)).toBe(true);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({
+      level: "warn",
+      event: "archive_start_unproven",
+      startLedger: 105,
+      firstTokenEvent: "transfer",
+      firstTokenLedger: 110,
+      firstTokenTx: txHashOf(110),
+    });
+  });
+
+  it("refuses when a token event from another transaction in the start ledger comes before the deploy transaction's", async () => {
+    const chain = new FakeChain(100, 200).add(depositEvent(TOKEN, 100, alice, alice, 1n, 1), deployTxEvent(TOKEN, 100, "underlying_asset_set", 0, 2));
+    await ingestOnce(db, chain, cfg, { startLedger: 100, deployTx: txHashOf(100, 2) });
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: false, startCheckPending: false });
+  });
+
+  it("refuses the deploy transaction when it is read after the start ledger, the same rule the prove script applies", async () => {
+    const chain = busyChain();
+    chain.oldestLedger = 90;
+    await ingestOnce(db, chain, cfg, { startLedger: 95, deployTx: DEPLOY_TX });
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: false, startCheckPending: false });
+    expect(ingestedFrom(await coverage())).toBe(95);
+  });
+
+  it("never vouches before its start without a deploy transaction, even when it reads the deploy events first, and warns once when it starts", async () => {
+    const { lines, log } = capture();
+    await ingestOnce(db, busyChain(), cfg, { startLedger: 100, log });
+    expect(await readArchiveState(db)).toMatchObject({ startLedger: 100, coversFromGenesis: false, startCheckPending: false });
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ level: "warn", event: "archive_start_unproven", startLedger: 100 });
+    await ingestOnce(db, busyChain(), cfg, { startLedger: 100, log });
+    expect(lines).toHaveLength(1);
+  });
+
+  it("waits across passes until it reads a token event, and decides only once", async () => {
+    const { lines, log } = capture();
+    const chain = new FakeChain(90, 99);
+    await ingestOnce(db, chain, cfg, { startLedger: 100, deployTx: DEPLOY_TX, log });
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: false, startCheckPending: true });
+    chain.latestLedger = 300;
+    chain.add(deployTxEvent(TOKEN, 100));
+    await ingestOnce(db, chain, cfg, { deployTx: DEPLOY_TX, log });
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: true, startCheckPending: false });
+    chain.latestLedger = 400;
+    chain.add(transferEvent(TOKEN, 350, alice, bob));
+    await ingestOnce(db, chain, cfg, { deployTx: DEPLOY_TX, log });
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: true, startCheckPending: false });
+    expect(lines.filter((l) => l.includes("archive_start_"))).toHaveLength(1);
+  });
+
+  it("reports nothing when another pass recorded the outcome first", async () => {
+    const { lines, log } = capture();
+    const chain = busyChain();
+    const rpc: RpcClient = {
+      getHealth: (signal) => chain.getHealth(signal),
+      simulateTransaction: () => chain.simulateTransaction(),
+      getLedgerEntries: () => chain.getLedgerEntries(),
+      getEvents: async (query, signal) => {
+        await settleArchiveStart(db, false);
+        return chain.getEvents(query, signal);
+      },
+    };
+    await ingestOnce(db, rpc, cfg, { startLedger: 100, deployTx: DEPLOY_TX, log });
+    expect(await readArchiveState(db)).toMatchObject({ coversFromGenesis: false, startCheckPending: false });
+    expect(lines).toEqual([]);
+  });
+
+  it("takes the start ledger and deploy transaction from ARCHIVE_START_LEDGER and TOKEN_DEPLOY_TX when no option is given", async () => {
+    await ingestOnce(db, busyChain(), testConfig({ ARCHIVE_START_LEDGER: "100", TOKEN_DEPLOY_TX: DEPLOY_TX }));
+    expect(await readArchiveState(db)).toMatchObject({ startLedger: 100, coversFromGenesis: true });
   });
 });
 

@@ -1,6 +1,7 @@
 import { Address, hash, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { OutboundError } from "../../src/http.ts";
 import { RPC_INVALID_REQUEST, RpcError, type GetEventsQuery, type RpcClient, type RpcEvent, type RpcEventsPage } from "../../src/rpc.ts";
+import { USDC } from "../helpers.ts";
 
 /**
  * An in-memory stand-in for Stellar RPC's getHealth and getEvents, written to
@@ -120,12 +121,15 @@ export function rpcEvent(spec: EventSpec): RpcEvent {
     id: toid.toString().padStart(19, "0") + "-" + String(index).padStart(10, "0"),
     operationIndex: 0,
     transactionIndex: tx,
-    txHash: hash(Buffer.from("tx " + spec.ledger + " " + tx)).toString("hex"),
+    txHash: txHashOf(spec.ledger, tx),
     inSuccessfulContractCall: spec.ok ?? true,
     topic: spec.topics.map((t) => t.toXDR("base64")),
     value: (spec.value ?? xdr.ScVal.scvMap([])).toXDR("base64"),
   };
 }
+
+/** The hash every fake event in that ledger and transaction carries. */
+export const txHashOf = (ledger: number, tx = 1): string => hash(Buffer.from("tx " + ledger + " " + tx)).toString("hex");
 
 export const sym = (s: string) => xdr.ScVal.scvSymbol(s);
 export const addrVal = (a: string) => new Address(a).toScVal();
@@ -147,6 +151,14 @@ export function transferEvent(contract: string, ledger: number, from: string, to
 
 export const mergeEvent = (contract: string, ledger: number, account: string, tx = 1, index = 0): RpcEvent =>
   rpcEvent({ ledger, tx, index, contract, topics: [sym("merge"), addrVal(account)] });
+
+/**
+ * A configuration event the token's constructor emits in its deploy
+ * transaction: only its name as a topic. The constructor emits several, and
+ * nothing here depends on their order.
+ */
+export const deployTxEvent = (contract: string, ledger: number, name = "underlying_asset_set", index = 0, tx = 1): RpcEvent =>
+  rpcEvent({ ledger, tx, index, contract, topics: [sym(name)], value: addrVal(USDC) });
 
 export const depositEvent = (contract: string, ledger: number, from: string, to: string, amount: bigint, tx = 1): RpcEvent =>
   rpcEvent({

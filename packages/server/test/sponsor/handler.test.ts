@@ -6,21 +6,23 @@ import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Networks } from "@stellar/stellar-sdk";
-import { dailyFeeSpent, type Db } from "../../src/archive/db.ts";
+import { dailyFeeSpent, reserveDailyFee, type Db } from "../../src/archive/db.ts";
 import { createLogger } from "../../src/log.ts";
 import { clientBucket, ipTag } from "../../src/sponsor/client-ip.ts";
-import { DEDUPE_WINDOW_MS, sponsorHandler, sponsorStatusHandler, type SponsorContext } from "../../src/sponsor/handler.ts";
+import { CLAIM_WINDOW_MS, sponsorHandler, sponsorStatusHandler, type SponsorContext } from "../../src/sponsor/handler.ts";
 import { INCLUSION_FEE_ALLOWANCE_STROOPS, type SimulateFn } from "../../src/sponsor/validate.ts";
 import { API_KEY, CRON_SECRET, DB_API, DB_INGEST, LOG_SALT, STRANGER, TOKEN, testConfig } from "../helpers.ts";
 import { clearTables, freshDb } from "../db.ts";
-import { fakeSimulation } from "./fake-rpc.ts";
+import { defaultFootprint, fakeSimulation } from "./fake-rpc.ts";
 import {
+  LATEST_LEDGER,
   addr,
   b64,
   codeKey,
   contractAccountEntry,
   createContractOperation,
   depositTree,
+  employer,
   envelope,
   fakeCode,
   hostCall,
@@ -96,7 +98,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await clearTables(db, ["ip_hour", "day_budget", "relay_dedupe"]);
+  await clearTables(db, ["ip_hour", "address_day", "day_budget", "relay_dedupe", "relay_auth"]);
   seen.length = 0;
   nextReply = okReply;
 });
@@ -114,6 +116,12 @@ function context(overrides: Partial<SponsorContext> = {}, env: Record<string, st
 }
 
 const at = (ms: number) => () => new Date(NOW.getTime() + ms);
+
+/** How many relays the address has used on 7 Oct; 0 when it has no row. */
+async function relaysUsed(address: string): Promise<number> {
+  const rows = await db.query<{ count: number }>("select count from address_day where address = $1 and day = '2026-10-07'", [address]);
+  return rows[0]?.count ?? 0;
+}
 
 /** Every client IP this file sends, as sent and as its rate-limit bucket, for the log sweep at the end. */
 const sentIps = new Set<string>();
@@ -164,7 +172,7 @@ describe("POST /api/sponsor relays a valid worker action", () => {
   });
 
   it("relays a signed envelope as {params: {xdr, skipWait}}", async () => {
-    const xdr = envelope();
+    const xdr = envelope({ footprint: defaultFootprint() });
     expect((await send({ xdr }, context())).status).toBe(200);
     expect(seen[0]!.body).toEqual({ params: { xdr, skipWait: true } });
   });
@@ -301,22 +309,150 @@ describe("per-IP hourly limit and daily fee budget", () => {
     expect(await send(third, ctx)).toEqual({ status: 429, body: { error: "daily_budget_spent" } });
     expect(seen).toHaveLength(2);
     expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE * 2n);
+    expect(await relaysUsed(worker.publicKey())).toBe(2);
     expect((await send(third, context({ now: () => new Date("2026-10-08T00:00:01Z") }, env))).status).toBe(200);
+  });
+
+  it("counts refused bodies against the IP before any parsing: bad JSON, a wrong content type and a refused shape", async () => {
+    const ctx = context();
+    expect(await send("{not json", ctx)).toEqual({ status: 400, body: { error: "invalid_json" } });
+    expect((await send(await mergeFuncAuth(), ctx, { "content-type": "text/plain" })).status).toBe(415);
+    expect(await send({ nope: 1 }, ctx)).toEqual({ status: 400, body: { error: "bad_shape" } });
+    expect(await send(await mergeFuncAuth(), ctx)).toEqual({ status: 429, body: { error: "rate_limited" } });
+    expect(seen).toHaveLength(0);
+  });
+
+  it("gives the reserved fee and the worker's daily relay back when Channels refuses with a 4xx, and keeps both on a 5xx or a timeout", async () => {
+    const env = { PER_IP_LIMIT_PER_HOUR: "10" };
+    nextReply = () => ({ status: 400, body: { success: false, data: { code: "INVALID_PARAMS" }, error: "bad" } });
+    expect(await send(await mergeFuncAuth(), context({}, env))).toEqual({ status: 502, body: { error: "relay_refused" } });
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(0n);
+    expect(await relaysUsed(worker.publicKey())).toBe(0);
+    nextReply = () => ({ status: 503, body: { success: false, data: { code: "PLUGIN_ERROR" }, error: "down" } });
+    expect(await send(await mergeFuncAuth(), context({}, env))).toEqual({ status: 502, body: { error: "relay_refused" } });
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE);
+    expect(await relaysUsed(worker.publicKey())).toBe(1);
+    nextReply = (body) => ({ ...okReply(body), delayMs: 300 });
+    expect(await send(await mergeFuncAuth(), context({ relayTimeoutMs: 50 }, env))).toEqual({ status: 504, body: { error: "relay_timeout" } });
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE * 2n);
+    expect(await relaysUsed(worker.publicKey())).toBe(2);
   });
 });
 
-describe("the same body twice within 120 seconds is relayed once", () => {
-  it("returns the first transactionId without relaying or paying again, and relays again after the window", async () => {
+describe("which Channels refusals give the claim, the fee and the daily count back", () => {
+  it("keeps all three on a 4xx that can follow a submission: ONCHAIN_FAILED, an undocumented code, a hash in the body, or a body that is not a plugin error", async () => {
+    const env = { PER_IP_LIMIT_PER_HOUR: "20" };
+    const replies: StubReply[] = [
+      { status: 400, body: { success: false, data: { code: "ONCHAIN_FAILED", details: { hash: HASH } }, error: "Transaction failed" } },
+      { status: 400, body: { success: false, data: { code: "ONCHAIN_FAILED" }, error: "Transaction failed" } },
+      { status: 409, body: { success: false, data: { code: "SOMETHING_NEW" }, error: "conflict" } },
+      { status: 400, body: { success: false, data: { code: "SIMULATION_FAILED" }, error: "seen as " + "c".repeat(64) } },
+      { status: 401, body: "Unauthorized" },
+      { status: 400, body: { success: true, data: { code: "INVALID_PARAMS" } } },
+    ];
+    for (const [i, reply] of replies.entries()) {
+      nextReply = () => reply;
+      const body = await mergeFuncAuth();
+      expect(await send(body, context({}, env)), JSON.stringify(reply.body)).toEqual({ status: 502, body: { error: "relay_refused" } });
+      expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE * BigInt(i + 1));
+      expect(await relaysUsed(worker.publicKey())).toBe(i + 1);
+      nextReply = okReply;
+      expect(await send(body, context({}, env))).toEqual({ status: 409, body: { error: "duplicate_in_flight" } });
+    }
+  });
+
+  it("gives all three back on documented pre-submission refusals with no hash in them", async () => {
+    const env = { PER_IP_LIMIT_PER_HOUR: "20" };
+    for (const [status, code] of [
+      [400, "SIMULATION_SIGNED_AUTH_VALIDATION_FAILED"],
+      [400, "TIMEBOUNDS_EXPIRED"],
+      [400, "AUTH_EXPIRY_TOO_SHORT"],
+      [429, "FEE_LIMIT_EXCEEDED"],
+    ] as const) {
+      nextReply = () => ({ status, body: { success: false, data: { code, details: { consumed: 5, fee: 7 } }, error: "refused" } });
+      const body = await mergeFuncAuth();
+      expect((await send(body, context({}, env))).body).toEqual({ error: "relay_refused" });
+      expect(await dailyFeeSpent(db, "2026-10-07")).toBe(0n);
+      expect(await relaysUsed(worker.publicKey())).toBe(0);
+      nextReply = okReply;
+      expect((await send(body, context({}, env))).status).toBe(200);
+      await clearTables(db, ["day_budget", "address_day"]);
+    }
+  });
+});
+
+describe("per-address daily limit", () => {
+  it("refuses an authorising address over its daily relays from any IP, never counting a refused simulation", async () => {
+    const env = { PER_ADDRESS_LIMIT_PER_DAY: "2" };
+    const failing: SimulateFn = async () => ({ ok: false, code: "simulation_failed" });
+    expect((await send(await mergeFuncAuth(), context({ simulate: failing }, env), { "x-real-ip": "198.51.100.30" })).status).toBe(400);
+    expect((await send(await mergeFuncAuth(), context({}, env), { "x-real-ip": "198.51.100.31" })).status).toBe(200);
+    expect((await send(await mergeFuncAuth(), context({}, env), { "x-real-ip": "198.51.100.32" })).status).toBe(200);
+    const third = await mergeFuncAuth();
+    expect(await send(third, context({}, env), { "x-real-ip": "198.51.100.33" })).toEqual({ status: 429, body: { error: "address_rate_limited" } });
+    expect(logs.at(-1)).toContain('"code":"address_rate_limited"');
+    expect(logs.at(-1)).not.toContain(worker.publicKey());
+    expect(seen).toHaveLength(2);
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE * 2n);
+    expect((await send(await mergeFuncAuth(employer), context({}, env), { "x-real-ip": "198.51.100.34" })).status).toBe(200);
+    expect((await send(third, context({ now: () => new Date("2026-10-08T00:00:01Z") }, env), { "x-real-ip": "198.51.100.35" })).status).toBe(200);
+  });
+
+  it("never spends a worker's last relay of the day on a relay the budget or Channels refused", async () => {
+    const env = { PER_ADDRESS_LIMIT_PER_DAY: "1", PER_IP_LIMIT_PER_HOUR: "10" };
+    const spent = { ...env, DAILY_FEE_BUDGET_STROOPS: String(CHARGE), FEE_CAP_STROOPS: String(CHARGE) };
+    await reserveDailyFee(db, "2026-10-07", 1n, CHARGE);
+    expect(await send(await mergeFuncAuth(), context({}, spent))).toEqual({ status: 429, body: { error: "daily_budget_spent" } });
+    await clearTables(db, ["day_budget"]);
+    nextReply = () => ({ status: 429, body: { success: false, data: { code: "FEE_LIMIT_EXCEEDED" }, error: "limit" } });
+    expect(await send(await mergeFuncAuth(), context({}, env))).toEqual({ status: 502, body: { error: "relay_refused" } });
+    expect(await relaysUsed(worker.publicKey())).toBe(0);
+    nextReply = okReply;
+    expect((await send(await mergeFuncAuth(), context({}, env))).status).toBe(200);
+    expect(await send(await mergeFuncAuth(), context({}, env))).toEqual({ status: 429, body: { error: "address_rate_limited" } });
+  });
+});
+
+/** A merge whose entry lives 500 ledgers, so it outlasts the default fixture's 100. */
+async function longLivedMerge(signer = employer) {
+  const call = { contract: TOKEN, fn: "merge", args: [addr(signer.publicKey())] };
+  return {
+    func: b64(hostCall(TOKEN, "merge", [addr(signer.publicKey())])),
+    auth: [b64(await signedEntry(call, signer, { validUntil: LATEST_LEDGER + 500 }))],
+  };
+}
+
+describe("the same body is relayed once while its auth entries can still land", () => {
+  it("returns the first transactionId without relaying or paying again, seconds or many minutes later", async () => {
+    const env = { PER_IP_LIMIT_PER_HOUR: "10" };
     const good = await mergeFuncAuth();
-    const first = await send(good, context());
-    const again = await send(JSON.parse(JSON.stringify(good)), context({ now: at(DEDUPE_WINDOW_MS - 1) }));
-    expect(again).toEqual({ status: 200, body: first.body });
+    const first = await send(good, context({}, env));
+    for (const later of [1_000, CLAIM_WINDOW_MS, 2 * CLAIM_WINDOW_MS + 1, 25 * 60_000]) {
+      expect(await send(JSON.parse(JSON.stringify(good)), context({ now: at(later) }, env))).toEqual({ status: 200, body: first.body });
+    }
     expect(seen).toHaveLength(1);
     expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE);
     expect(logs.at(-1)).toContain('"event":"sponsor_duplicate"');
-    const later = await send(good, context({ now: at(DEDUPE_WINDOW_MS) }));
-    expect(later.status).toBe(200);
-    expect(later.body.transactionId).not.toBe(first.body.transactionId);
+  });
+
+  it("forgets the body once a simulation reports its entries' expiry ledger, and then refuses a copy as expired without relaying it", async () => {
+    const env = { PER_IP_LIMIT_PER_HOUR: "10" };
+    const good = await mergeFuncAuth();
+    expect((await send(good, context({}, env))).status).toBe(200);
+    const expiryReached = () => fakeSimulation({ enforce: { latestLedger: LATEST_LEDGER + 100 } });
+    expect((await send(await longLivedMerge(), context({ rpc: expiryReached() }, env))).status).toBe(200);
+    expect(await send(good, context({ rpc: expiryReached(), now: at(20 * 60_000) }, env))).toEqual({ status: 400, body: { error: "auth_expired" } });
+    expect(seen).toHaveLength(2);
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CHARGE * 2n);
+  });
+
+  it("keeps holding a body whose entries have not expired when another relay prunes", async () => {
+    const env = { PER_IP_LIMIT_PER_HOUR: "10" };
+    const good = await longLivedMerge();
+    const first = await send(good, context({}, env));
+    const pruning = () => fakeSimulation({ enforce: { latestLedger: LATEST_LEDGER + 499 } });
+    expect((await send(await longLivedMerge(worker), context({ rpc: pruning() }, env))).status).toBe(200);
+    expect(await send(good, context({ rpc: pruning(), now: at(30 * 60_000) }, env))).toEqual({ status: 200, body: first.body });
     expect(seen).toHaveLength(2);
   });
 
@@ -329,7 +465,7 @@ describe("the same body twice within 120 seconds is relayed once", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("frees the body for an immediate retry when nothing was relayed, and keeps it when the outcome is unknown", async () => {
+  it("frees the body for an immediate retry when nothing was relayed, and holds it past the claim window when the outcome is unknown", async () => {
     const good = await mergeFuncAuth();
     const failing: SimulateFn = async () => ({ ok: false, code: "simulation_failed" });
     expect((await send(good, context({ simulate: failing }))).status).toBe(400);
@@ -344,6 +480,7 @@ describe("the same body twice within 120 seconds is relayed once", () => {
     expect((await send(slow, context({ relayTimeoutMs: 50 }), other)).body).toEqual({ error: "relay_timeout" });
     nextReply = okReply;
     expect(await send(slow, context(), other)).toEqual({ status: 409, body: { error: "duplicate_in_flight" } });
+    expect(await send(slow, context({ now: at(5 * CLAIM_WINDOW_MS) }), other)).toEqual({ status: 409, body: { error: "duplicate_in_flight" } });
   });
 });
 
@@ -357,11 +494,21 @@ describe("GET /api/sponsor/status", () => {
   });
 
   it("refuses an id that is not in Channels' format, or given twice, before calling Channels", async () => {
+    const ctx = context({}, { PER_IP_LIMIT_PER_HOUR: "20" });
     for (const query of ["", "?id=", "?id=tx%201", "?id=tx_1%22%7D", "?id=" + "a".repeat(129), "?id=tx_1&id=tx_2", "?id=" + "1".repeat(3_000)]) {
-      expect(await status(query, context()), query.slice(0, 40)).toEqual({ status: 400, body: { error: "bad_id" } });
+      expect(await status(query, ctx), query.slice(0, 40)).toEqual({ status: 400, body: { error: "bad_id" } });
     }
     expect((await status("?id=tx_1", context(), {})).body).toEqual({ error: "no_client_ip" });
     expect((await status("?id=tx_1", context(), { "x-real-ip": "203.0.113.7" }, "POST")).status).toBe(405);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("counts a bad id against the IP before reading it", async () => {
+    const ctx = context();
+    for (const query of ["?id=tx%201", "?id=" + "1".repeat(3_000), "?id=tx_1&id=tx_2"]) {
+      expect((await status(query, ctx)).body).toEqual({ error: "bad_id" });
+    }
+    expect(await status("?id=tx_1", ctx)).toEqual({ status: 429, body: { error: "rate_limited" } });
     expect(seen).toHaveLength(0);
   });
 

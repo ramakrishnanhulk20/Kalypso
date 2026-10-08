@@ -132,6 +132,38 @@ export function transactionHaystack(raw) {
   return { bytes, text: text.join("\n"), size: bytes.reduce((n, b) => n + b.length, 0) };
 }
 
+/**
+ * The same search space for a transaction past RPC's window, as a stranger can still get it:
+ * Horizon's envelope, and its result and result meta when it serves them, plus the archive's raw
+ * event rows for that transaction (each topic and data value as ScVal XDR). `parts` names what
+ * was there to search, so the report can say what a later reader no longer gets.
+ */
+export function storedHaystack(horizon, eventRows) {
+  const x = sdk.xdr;
+  const parts = [
+    { name: "envelope", type: x.TransactionEnvelope, list: [horizon.envelopeXdr] },
+    { name: "result", type: x.TransactionResult, list: horizon.resultXdr ? [horizon.resultXdr] : [] },
+    { name: "result meta", type: x.TransactionMeta, list: horizon.resultMetaXdr ? [horizon.resultMetaXdr] : [] },
+    { name: "archived events", type: x.ScVal, list: eventRows.flatMap((r) => [...r.topicsXdr, r.dataXdr]) },
+  ];
+  const bytes = [];
+  const text = [];
+  for (const { type, list } of parts) {
+    for (const b64 of list) {
+      if (typeof b64 !== "string") throw new Error("a stored transaction part is not base64 text");
+      bytes.push(Buffer.from(b64, "base64"));
+      text.push(b64);
+    }
+    text.push(...decodeAll(type, list));
+  }
+  return {
+    bytes,
+    text: text.join("\n"),
+    size: bytes.reduce((n, b) => n + b.length, 0),
+    parts: parts.filter((p) => p.list.length > 0).map((p) => p.name),
+  };
+}
+
 /** The names of the encodings of `needles` found in `haystack`. Empty means none. */
 export function findAmount(haystack, needles) {
   const found = new Set();

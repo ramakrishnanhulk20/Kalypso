@@ -1,5 +1,6 @@
 import { MAX_STROOPS } from '../amounts.js';
-import { MAX_PERIOD_LABEL_BYTES, PayrollErrorCode, getCompany, getRun, isPaid, isPayrollError, type Company, type Run } from '../chain/payroll.js';
+import { mapInOrder } from '../map-in-order.js';
+import { MAX_PERIOD_LABEL_BYTES, MAX_ROSTER_PAGE, PayrollErrorCode, getCompany, getRoster, getRun, isPaid, isPayrollError, type Company, type Run } from '../chain/payroll.js';
 import type { ChainPort } from '../chain/ports.js';
 import { utf8Length } from '../chain/scval.js';
 import type { EventMeta, HistoryEvent, TokenEvent } from '../history/decode.js';
@@ -16,17 +17,39 @@ export interface PayslipCandidate {
   treasury: string;
 }
 
+/**
+ * One place where history and the chain's own counts disagree (threat model C48). Each one makes
+ * a view or an audit incomplete; the archive's word that it is complete is never taken alone.
+ */
+export type HistoryGap =
+  /** The chain's memberships_of says `expected` companies; the list given holds `found` with this worker on their roster. */
+  | { reason: 'company_count_mismatch'; expected: number; found: number }
+  /** The company history shows `found` RunOpened events; the chain's runs_opened says `expected`. */
+  | { reason: 'runs_opened_mismatch'; companyId: bigint; expected: number; found: number }
+  /** A run the company history shows opened that the chain says this company never opened. */
+  | { reason: 'run_not_on_chain'; companyId: bigint; runId: bigint }
+  /** The history's AdminChanged events number `found`, not the chain's admin_changes, or do not lead to the admin the chain names. */
+  | { reason: 'admin_changes_mismatch'; companyId: bigint; expected: number; found: number }
+  /** The chain says this worker was paid in this run, and no payslip for it passed every check. */
+  | { reason: 'payslip_missing'; companyId: bigint; runId: bigint }
+  /** History dated this run's payslip at another ledger than its transaction's. */
+  | { reason: 'ledger_mismatch'; companyId: bigint; runId: bigint }
+  /** The run's counted lines number `found`; the chain's paid_count says `expected`. */
+  | { reason: 'paid_count_mismatch'; companyId: bigint; runId: bigint; expected: number; found: number };
+
 export interface CompanyPayslips {
   company: Company;
   candidates: PayslipCandidate[];
   /** Every account that was the company's treasury within the history read, oldest first. */
   treasuries: string[];
-  /** Every run the history shows opened or paid, for any worker, in the order first seen. */
+  /** Every run the history shows opened (RunOpened), in the order first seen. Compared with runs_opened by confirmRuns. */
   runIds: bigint[];
   /** The last ledger the company's history covers. */
   ingestedThrough: number;
   /** False when the company's history is incomplete, unreadable in places, or its admin changes do not add up. */
   complete: boolean;
+  /** An admin_changes_mismatch, when the history's admin changes disagree with the chain. */
+  gaps: HistoryGap[];
 }
 
 export type TransferRecord = EventMeta & { event: Extract<TokenEvent, { type: 'transfer' }> };
@@ -64,7 +87,12 @@ export function adminTimeline(currentAdmin: string, events: HistoryEvent[]): { a
 
 /**
  * The company's payslip events from our payroll contract, each with the treasury of its time.
- * `worker`, when given, keeps only that worker's. Reads get_company and the company's history.
+ * `worker`, when given, keeps only that worker's. Reads get_company (unless `company` is the
+ * answer already read) and the company's history.
+ *
+ * The admin timeline counts only when the history's AdminChanged events number exactly the
+ * chain's admin_changes and lead to the admin get_company names; otherwise no payslip is
+ * attributed to any treasury and the result carries an admin_changes_mismatch (C48).
  */
 export async function readCompanyPayslips(input: {
   port: ChainPort;
@@ -72,22 +100,21 @@ export async function readCompanyPayslips(input: {
   contracts: { payroll: string; token: string };
   companyId: bigint;
   worker?: string;
+  company?: Company;
 }): Promise<CompanyPayslips> {
   const { port, history, contracts, companyId } = input;
-  const company = await getCompany(port, contracts.payroll, companyId);
+  const company = input.company ?? (await getCompany(port, contracts.payroll, companyId));
   const read = await fetchCompanyHistory({ port: history.rpc, ...(history.archive ? { archive: history.archive } : {}), contracts, companyId, fromLedger: history.fromLedger });
   // An unreadable payroll event could be a payslip or an admin change, so the set is not known in full.
   let complete = read.complete && !read.events.some((e) => e.kind === 'undecodable');
-  const runIds = [
-    ...new Set(
-      read.events.flatMap((e) =>
-        e.kind === 'payroll' && (e.event.type === 'run_opened' || e.event.type === 'payslip_issued') && e.event.companyId === companyId ? [e.event.runId] : [],
-      ),
-    ),
-  ];
+  const runIds = [...new Set(read.events.flatMap((e) => (e.kind === 'payroll' && e.event.type === 'run_opened' && e.event.companyId === companyId ? [e.event.runId] : [])))];
   const { ingestedThrough } = read;
-  const timeline = adminTimeline(company.admin, read.events);
-  if (timeline === null) return { company, candidates: [], treasuries: [company.admin], runIds, ingestedThrough, complete: false };
+  const adminChanges = read.events.filter((e) => e.kind === 'payroll' && e.event.type === 'admin_changed').length;
+  const timeline = adminChanges === company.adminChanges ? adminTimeline(company.admin, read.events) : null;
+  if (timeline === null) {
+    const gaps: HistoryGap[] = [{ reason: 'admin_changes_mismatch', companyId, expected: company.adminChanges, found: adminChanges }];
+    return { company, candidates: [], treasuries: [company.admin], runIds, ingestedThrough, complete: false, gaps };
+  }
   const candidates = read.events.flatMap((e): PayslipCandidate[] => {
     if (e.kind !== 'payroll' || e.event.type !== 'payslip_issued' || e.event.companyId !== companyId) return [];
     if (input.worker !== undefined && e.event.worker !== input.worker) return [];
@@ -100,7 +127,53 @@ export async function readCompanyPayslips(input: {
   for (const c of candidates) seen.set(`${c.runId}/${c.worker}`, (seen.get(`${c.runId}/${c.worker}`) ?? 0) + 1);
   const unique = candidates.filter((c) => seen.get(`${c.runId}/${c.worker}`) === 1);
   if (unique.length !== candidates.length) complete = false;
-  return { company, candidates: unique, treasuries: timeline.admins, runIds, ingestedThrough, complete };
+  return { company, candidates: unique, treasuries: timeline.admins, runIds, ingestedThrough, complete, gaps: [] };
+}
+
+/**
+ * The company's runs as the chain knows them (C48): every run id the history shows opened is read
+ * with get_run, and the history must show exactly as many as the chain's runs_opened. A run the
+ * chain does not know is left out with a run_not_on_chain gap; a count that differs is a
+ * runs_opened_mismatch. Together these catch a hidden run, the newest one included, and a
+ * fabricated one, since a run id opens once per company, ever. The get_run reads go
+ * READ_CONCURRENCY at a time, so a caller must not run confirmRuns inside mapInOrder.
+ */
+export async function confirmRuns(
+  checks: ReturnType<typeof chainChecks>,
+  company: Pick<CompanyPayslips, 'company' | 'runIds'> & { companyId: bigint },
+): Promise<{ runs: Map<bigint, Run>; gaps: HistoryGap[] }> {
+  const { companyId } = company;
+  const runs = new Map<bigint, Run>();
+  const gaps: HistoryGap[] = [];
+  if (company.runIds.length !== company.company.runsOpened) {
+    gaps.push({ reason: 'runs_opened_mismatch', companyId, expected: company.company.runsOpened, found: company.runIds.length });
+  }
+  const onChain = await mapInOrder(company.runIds, (runId) => checks.run(companyId, runId));
+  company.runIds.forEach((runId, i) => {
+    const run = onChain[i] ?? null;
+    if (run === null) gaps.push({ reason: 'run_not_on_chain', companyId, runId });
+    else runs.set(runId, run);
+  });
+  return { runs, gaps };
+}
+
+/** get_roster pages one company will be read for; 100 pages is 5,000 workers. Past it, membership is not confirmed. */
+export const MAX_ROSTER_PAGES = 100;
+
+/**
+ * True when `worker` is on the company's roster on chain, which holds exactly the workers who ever
+ * joined, removed ones included. worker_status cannot tell this: a pending invite from any
+ * company, or a revoked one, also has a status. Reads get_roster a page at a time up to
+ * rosterLen, and stops at the worker. Both sides are compared after the same address parser.
+ */
+export async function isOnRoster(port: ChainPort, payroll: string, companyId: bigint, worker: string, rosterLen: number): Promise<boolean> {
+  for (let start = 0, page = 0; start < rosterLen && page < MAX_ROSTER_PAGES; page++) {
+    const entries = await getRoster(port, payroll, companyId, start, Math.min(MAX_ROSTER_PAGE, rosterLen - start));
+    if (entries.includes(worker)) return true;
+    if (entries.length === 0) return false;
+    start += entries.length;
+  }
+  return false;
 }
 
 /**

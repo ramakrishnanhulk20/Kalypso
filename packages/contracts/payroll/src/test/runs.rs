@@ -1,5 +1,5 @@
 //! open_run, close_run and get_run, including two companies using the same
-//! run id.
+//! run id, and the company's runs_opened counter.
 //!
 //! Not covered here: paying into a run (pay.rs) and wrong-signer cases
 //! (auth.rs).
@@ -228,4 +228,78 @@ fn another_company_using_the_same_run_id_leaves_the_first_untouched() {
 
     s.pay(a.company_id, 7, &a.admin, &s.items(&[&a.workers[1]]));
     assert_eq!(s.client().get_run(&a.company_id, &7).paid_count, 2);
+}
+
+/// Run ids are chosen by the admin and never listed on chain, so history
+/// readers compare runs_opened with the RunOpened events they hold. It
+/// counts every run this company opens; pay, close_run, a refused open_run
+/// and another company's runs leave it alone.
+#[test]
+fn runs_opened_counts_every_opened_run_and_nothing_else() {
+    let s = Setup::new();
+    let t = s.team(2);
+    let runs_opened = |company_id: u64| s.client().get_company(&company_id).runs_opened;
+    let label = s.text("October 2026");
+    assert_eq!(runs_opened(t.company_id), 0);
+
+    s.open_run(t.company_id, &t.admin, 7, 2);
+    assert_eq!(runs_opened(t.company_id), 1);
+    s.pay(t.company_id, 7, &t.admin, &s.items(&[&t.workers[0]]));
+    s.close_run(t.company_id, &t.admin, 7);
+    assert_eq!(runs_opened(t.company_id), 1);
+    for (run_id, expected_count, refusal) in [
+        (7u64, 1u32, PayrollError::RunExists),
+        (8, 0, PayrollError::ExpectedCountInvalid),
+    ] {
+        s.sign(
+            &t.admin,
+            "open_run",
+            (t.company_id, run_id, &label, expected_count).into_val(&s.e),
+        );
+        assert_eq!(
+            s.client()
+                .try_open_run(&t.company_id, &run_id, &label, &expected_count),
+            Err(Ok(err(refusal)))
+        );
+    }
+    assert_eq!(runs_opened(t.company_id), 1);
+
+    let b_admin = s.account(OTHER_AUDITOR);
+    let b = s.create_company(&b_admin, OTHER_AUDITOR, "Beta");
+    s.join(b, &b_admin, &s.account(WORKER_AUDITOR));
+    s.open_run(b, &b_admin, 8, 1);
+    assert_eq!(runs_opened(t.company_id), 1);
+    assert_eq!(runs_opened(b), 1);
+
+    s.open_run(t.company_id, &t.admin, 8, 1);
+    s.open_run(t.company_id, &t.admin, 9, 2);
+    assert_eq!(runs_opened(t.company_id), 3);
+}
+
+/// runs_opened is forced to the u32 limit, which no real sequence of calls
+/// reaches. open_run is refused with CounterOverflow and the run is not
+/// stored.
+#[test]
+fn open_run_refuses_when_runs_opened_is_at_its_limit() {
+    let s = Setup::new();
+    let t = s.team(1);
+    s.force_company(t.company_id, |company| company.runs_opened = u32::MAX);
+    let label = s.text("October 2026");
+
+    s.sign(
+        &t.admin,
+        "open_run",
+        (t.company_id, 7u64, &label, 1u32).into_val(&s.e),
+    );
+    assert_eq!(
+        s.client().try_open_run(&t.company_id, &7, &label, &1),
+        Err(Ok(err(PayrollError::CounterOverflow)))
+    );
+
+    assert!(s.payroll_events().events().is_empty());
+    assert_eq!(
+        s.client().try_get_run(&t.company_id, &7),
+        Err(Ok(err(PayrollError::RunNotFound)))
+    );
+    assert_eq!(s.client().get_company(&t.company_id).runs_opened, u32::MAX);
 }

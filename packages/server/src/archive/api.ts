@@ -33,7 +33,9 @@ import { scValToPlainJson } from "./scval-json.ts";
  * C17). `complete` is true only when the archive read every ledger of the
  * requested range in full and no gap touches it. /v1/health answers 503
  * while its alarm is raised: a permanent gap, or no successful ingest for
- * 48 hours.
+ * 48 hours. Its ingested_from is 1 only when the archive proved it began
+ * before our token existed; otherwise it is the first ledger the archive
+ * read, and nothing earlier is ever reported complete.
  *
  * Every parameter is checked before anything else runs (C24): contract ids
  * must equal our configured ids after the shared address parser, accounts
@@ -50,7 +52,7 @@ export interface ArchiveContext {
   log: Logger;
   /** The path prefix this handler is mounted under, for example "/api/archive". */
   basePath?: string;
-  /** Start ledger for the first ingest of an empty archive (see IngestOptions.startLedger). */
+  /** Overrides ARCHIVE_START_LEDGER for the first ingest of an empty archive (see IngestOptions.startLedger). */
   archiveStartLedger?: number;
   now?: () => Date;
   catchUpDeadlineMs?: number;
@@ -143,6 +145,7 @@ async function catchUp(ctx: ArchiveContext): Promise<void> {
     if (!(await claimIngestSlot(ctx.db.ingest, now, ctx.catchUpIntervalMs ?? CATCH_UP_INTERVAL_MS))) return;
     await ingestOnce(ctx.db.ingest, ctx.rpc, ctx.cfg, {
       deadlineMs: ctx.catchUpDeadlineMs ?? CATCH_UP_DEADLINE_MS,
+      log: ctx.log,
       ...(ctx.archiveStartLedger === undefined ? {} : { startLedger: ctx.archiveStartLedger }),
       ...(ctx.now ? { now: ctx.now } : {}),
     });

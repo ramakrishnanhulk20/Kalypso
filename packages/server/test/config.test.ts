@@ -25,6 +25,8 @@ describe("loadConfig", () => {
     expect(cfg.FEE_CAP_STROOPS).toBe(2_000_000n);
     expect(cfg.DAILY_FEE_BUDGET_STROOPS).toBe(200_000_000n);
     expect(cfg.PER_IP_LIMIT_PER_HOUR).toBe(60);
+    expect(cfg.PER_ADDRESS_LIMIT_PER_DAY).toBe(20);
+    expect(cfg.ARCHIVE_START_LEDGER).toBeUndefined();
     expect(cfg.TRUSTED_IP_HEADER).toBe("x-real-ip");
     expect(cfg.PASSKEY_WALLET_WASM_HASH).toBe("97ce047884106b1c6c3bb40b8973cc48db1c4dad95c9e20462bf2c701daa764e");
     expect(cfg.NETWORK_PASSPHRASE).toBe(Networks.TESTNET);
@@ -54,6 +56,32 @@ describe("loadConfig", () => {
       expect(problemsOf(testEnv({ CRON_SECRET: bad }))[0]).toMatch(/^CRON_SECRET: must be 32 to 256 characters/);
       expect(problemsOf(testEnv({ LOG_SALT: bad }))[0]).toMatch(/^LOG_SALT: must be 32 to 256 characters/);
     }
+  });
+
+  it("refuses a log salt equal to the cron secret, without repeating either", () => {
+    const problems = problemsOf(testEnv({ LOG_SALT: CRON_SECRET }));
+    expect(problems).toEqual(["LOG_SALT: must be different from CRON_SECRET"]);
+    expect(JSON.stringify(problems)).not.toContain(CRON_SECRET);
+  });
+
+  it("takes ARCHIVE_START_LEDGER as a ledger number, and refuses anything else", () => {
+    expect(loadConfig(testEnv({ ARCHIVE_START_LEDGER: "5083382" })).ARCHIVE_START_LEDGER).toBe(5_083_382);
+    expect(loadConfig(testEnv({ ARCHIVE_START_LEDGER: "4294967295" })).ARCHIVE_START_LEDGER).toBe(4_294_967_295);
+    for (const bad of ["0", "-1", "1.5", "1e6", " 100", "05083382", "4294967296", "latest"]) {
+      expect(problemsOf(testEnv({ ARCHIVE_START_LEDGER: bad })), bad).toEqual(["ARCHIVE_START_LEDGER: must be a ledger number from 1 to 4294967295"]);
+    }
+  });
+
+  it("takes TOKEN_DEPLOY_TX as 64 lower-case hex characters, only beside ARCHIVE_START_LEDGER", () => {
+    const hash = "855f7e94dcbbbb09946036ce1b6dd1684e2f8f2e2aaad8c3679e2c70c1810891";
+    expect(loadConfig(testEnv()).TOKEN_DEPLOY_TX).toBeUndefined();
+    expect(loadConfig(testEnv({ ARCHIVE_START_LEDGER: "5083382", TOKEN_DEPLOY_TX: hash })).TOKEN_DEPLOY_TX).toBe(hash);
+    for (const bad of [hash.toUpperCase(), hash.slice(1), "0x" + hash.slice(2), "g".repeat(64)]) {
+      expect(problemsOf(testEnv({ ARCHIVE_START_LEDGER: "5083382", TOKEN_DEPLOY_TX: bad })), bad).toEqual([
+        "TOKEN_DEPLOY_TX: must be 64 lower-case hex characters",
+      ]);
+    }
+    expect(problemsOf(testEnv({ TOKEN_DEPLOY_TX: hash }))).toEqual(["TOKEN_DEPLOY_TX: needs ARCHIVE_START_LEDGER, the ledger of that transaction"]);
   });
 
   it("accepts testnet only", () => {
@@ -95,6 +123,10 @@ describe("loadConfig", () => {
       "DAILY_FEE_BUDGET_STROOPS: must be at least FEE_CAP_STROOPS",
     ]);
     expect(problemsOf(testEnv({ PER_IP_LIMIT_PER_HOUR: "0" }))[0]).toMatch(/^PER_IP_LIMIT_PER_HOUR:/);
+    for (const bad of ["0", "-1", "2.5", "100000"]) {
+      expect(problemsOf(testEnv({ PER_ADDRESS_LIMIT_PER_DAY: bad })), bad).toEqual(["PER_ADDRESS_LIMIT_PER_DAY: must be a whole number from 1 to 99999"]);
+    }
+    expect(loadConfig(testEnv({ PER_ADDRESS_LIMIT_PER_DAY: "5" })).PER_ADDRESS_LIMIT_PER_DAY).toBe(5);
     expect(problemsOf(testEnv({ TRUSTED_IP_HEADER: "X Real IP" }))[0]).toMatch(/^TRUSTED_IP_HEADER:/);
   });
 

@@ -9,9 +9,9 @@ import { recordGap, type Db } from "../../src/archive/db.ts";
 import { createLogger } from "../../src/log.ts";
 import { PAYROLL, STRANGER, TOKEN, contractFor, keypairFor, testConfig } from "../helpers.ts";
 import { freshDb, resetArchive } from "../db.ts";
-import { FakeChain, addrVal, depositEvent, mergeEvent, payslipIssued, rpcEvent, sym, transferEvent } from "./fake-chain.ts";
+import { FakeChain, addrVal, deployTxEvent, depositEvent, mergeEvent, payslipIssued, rpcEvent, sym, transferEvent, txHashOf } from "./fake-chain.ts";
 
-const cfg = testConfig();
+const cfg = testConfig({ ARCHIVE_START_LEDGER: "100", TOKEN_DEPLOY_TX: txHashOf(100) });
 const alice = keypairFor("alice").publicKey();
 const bob = keypairFor("bob").publicKey();
 const carol = contractFor("carol passkey");
@@ -29,6 +29,7 @@ beforeEach(async () => {
   await resetArchive(db);
   chain = new FakeChain(100, 500);
   chain.add(
+    deployTxEvent(TOKEN, 100),
     depositEvent(TOKEN, 110, alice, alice, 5_000_000n),
     transferEvent(TOKEN, 120, alice, bob),
     transferEvent(TOKEN, 130, alice, carol),
@@ -195,7 +196,7 @@ describe("GET /v1/tokens/{contract}/accounts/{account}/events", () => {
   });
 
   it("vouches for nothing before RPC's oldest ledger when the archive was not started at deployment", async () => {
-    const res = await get(tokenEvents(bob, "?from_ledger=0"), context({ archiveStartLedger: undefined }));
+    const res = await get(tokenEvents(bob, "?from_ledger=0"), context({ cfg: testConfig(), archiveStartLedger: undefined }));
     expect(res.body.complete).toBe(false);
     expect((await get(tokenEvents(bob, "?from_ledger=100"))).body.complete).toBe(true);
   });
@@ -232,7 +233,7 @@ describe("GET /v1/payroll/{contract}/companies/{companyId}/events", () => {
 
 describe("GET /contracts/{contract}/events (the SDK IndexerClient shape)", () => {
   it("serves the token's whole stream as decoded JSON rows with source-independent ids", async () => {
-    const res = await get("/contracts/" + TOKEN + "/events?startLedger=100&endLedger=125&limit=200");
+    const res = await get("/contracts/" + TOKEN + "/events?startLedger=101&endLedger=125&limit=200");
     expect(res.status).toBe(200);
     const deposit = chain.events.find((e) => e.ledger === 110)!;
     expect(res.body).toMatchObject({ latestLedger: 500, cursor: null, complete: true, ingested_through: 500 });
@@ -250,7 +251,7 @@ describe("GET /contracts/{contract}/events (the SDK IndexerClient shape)", () =>
   });
 
   it("continues from a cursor, and refuses (409) any range it cannot vouch for", async () => {
-    const first = await get("/contracts/" + TOKEN + "/events?startLedger=100&limit=2");
+    const first = await get("/contracts/" + TOKEN + "/events?startLedger=101&limit=2");
     expect(first.body.cursor).toBe("120-1-0-0");
     const second = await get("/contracts/" + TOKEN + "/events?limit=2&cursor=" + first.body.cursor);
     expect(second.body.events.map((e: any) => e.ledger)).toEqual([130, 140]);
