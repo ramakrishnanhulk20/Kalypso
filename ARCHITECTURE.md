@@ -2,7 +2,7 @@
 
 Kalypso pays a team in confidential USDC on Stellar. Amounts are hidden on the public ledger; each worker reads their own pay; the company's accountant reads everything the company paid. This page shows how the pieces fit, one payroll run end to end, and what depends on what.
 
-Testnet stack (from `packages/contracts/deployments/testnet.json`; the final stack is redeployed from an attested GitHub release and this table is updated then):
+Testnet stack (from `packages/contracts/deployments/testnet.json`; the payroll runs attested release v0.1.1 and the auditor registry attested release v0.1.0, whose wasm is byte-identical in both):
 
 | Contract | Code | Role |
 |---|---|---|
@@ -158,4 +158,6 @@ Confidential USDC (OpenZeppelin): `register(account, auditor_id, data)`, `deposi
 
 Server: `POST /api/sponsor` and `GET /api/sponsor/status` (fees for workers' own transactions, never an open relay), and the archive's `/v1/...` endpoints, compatible with the confidential SDK's indexer clients.
 
-Costs on testnet, measured: pay 2 workers 0.49 XLM, pay 1 worker 0.24 XLM, create company 0.56 XLM, invite 0.28 XLM, accept 0.30 XLM, open run 0.38 XLM, token register 0.051 XLM. Most of the one-off figures are storage rent prepaid for about 180 days.
+Costs on testnet, the median per transaction from the v0.1.1 seed, network fee included: pay 2 workers 0.51 XLM, create company 0.68 XLM, invite 0.30 XLM, accept 0.42 XLM, open run 0.40 XLM, token register 0.051 XLM, register an auditor key 0.071 XLM on a registry that already holds keys (the first key on a fresh registry cost about 13 XLM). Most of the one-off figures are storage rent prepaid for about 180 days.
+
+Keeping the stack alive is paid separately, in testnet XLM: extending the payroll and the auditor registry to 180 days cost 147.78 and 88.52 XLM, and extending the token and the verifier to 60 days cost 227.55 XLM together.

@@ -126,7 +126,8 @@
         "ledger": 5083380,
         "feeStroops": 65248,
         "explorer": "https://stellar.expert/explorer/testnet/tx/39a6e909f2e4946c6ca2b8dc2968f614046b49f0731718a925d4ee1394386786"
-      }
+      },
+      "version": "0.1.0"
     },
     "token": {
       "id": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ",
@@ -147,20 +148,22 @@
       }
     },
     "payroll": {
-      "id": "CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
-      "wasmHash": "6f815c99d9ad5a05727d70e5973de94f624f3f4a532a6ec75503bf96933784b6",
+      "id": "CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ",
+      "wasmHash": "41fa76aba28b0f22675d8cd5e68b5215da17e45336dbe2881d1fad0483b755f6",
       "wasmSource": "kalypso_payroll.wasm",
-      "salt": "04f6ceedbc04f037ec34975efdba0623f1c4fb5a13c7947a36add56e4e0122e5",
+      "salt": "8c0a9d8bed36cb0619a038ae6f364063315bb1b2cdc2169777db331c9d8ea5e5",
       "constructor": {
-        "token": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ"
+        "token": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ",
+        "auditorRegistry": "CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG"
       },
       "deployTx": {
-        "hash": "e5f369acaa5707836739f4a18f3368665260f2b95b41f6ca1c01267a7a183cb4",
-        "ledger": 5083384,
-        "feeStroops": 195713455,
-        "explorer": "https://stellar.expert/explorer/testnet/tx/e5f369acaa5707836739f4a18f3368665260f2b95b41f6ca1c01267a7a183cb4"
-      }
+        "hash": "24978aac23b0daa5a8e2433424a30616fbccc6d3b6ab2a1b2ce9064d8eafbd0c",
+        "ledger": 5089917,
+        "feeStroops": 227004231,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/24978aac23b0daa5a8e2433424a30616fbccc6d3b6ab2a1b2ce9064d8eafbd0c"
+      },
+      "version": "0.1.1"
     }
   },
   "uploads": {
@@ -181,6 +184,36 @@
         "feeStroops": 59578982,
         "explorer": "https://stellar.expert/explorer/testnet/tx/ffc524b341f61a221ae6b579801994e9b2934c710d21644f6a9dbb779c43466c"
       }
+    },
+    "41fa76aba28b0f22675d8cd5e68b5215da17e45336dbe2881d1fad0483b755f6": {
+      "file": "kalypso_payroll.wasm",
+      "tx": {
+        "hash": "2eeaba16904060a42a75c82e4112df9dc2a35d3dcab5098efa0b938c148f714f",
+        "ledger": 5089916,
+        "feeStroops": 69063974,
+        "explorer": "https://stellar.expert/explorer/testnet/tx/2eeaba16904060a42a75c82e4112df9dc2a35d3dcab5098efa0b938c148f714f"
+      }
     }
+  },
+  "previous": {
+    "payroll": [
+      {
+        "version": "0.1.0",
+        "id": "CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
+        "explorer": "https://stellar.expert/explorer/testnet/contract/CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA",
+        "wasmHash": "6f815c99d9ad5a05727d70e5973de94f624f3f4a532a6ec75503bf96933784b6",
+        "wasmSource": "kalypso_payroll.wasm",
+        "salt": "04f6ceedbc04f037ec34975efdba0623f1c4fb5a13c7947a36add56e4e0122e5",
+        "constructor": {
+          "token": "CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ"
+        },
+        "deployTx": {
+          "hash": "e5f369acaa5707836739f4a18f3368665260f2b95b41f6ca1c01267a7a183cb4",
+          "ledger": 5083384,
+          "feeStroops": 195713455,
+          "explorer": "https://stellar.expert/explorer/testnet/tx/e5f369acaa5707836739f4a18f3368665260f2b95b41f6ca1c01267a7a183cb4"
+        }
+      }
+    ]
   }
 }

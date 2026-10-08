@@ -58,6 +58,32 @@ About Storage Change Events (15 rows): every flagged function does emit an event
 
 The counter tests write the counter straight into contract storage at its limit, because no test could make billions of real calls. Each one checks that the call fails with the named error and leaves no event and no state change behind.
 
+### Rescan at v0.1.1 (8 Oct 2026)
+
+Scout ran again in CI on commit 03dea90, the code released as v0.1.1. It reports the same 24 findings, every one of a kind justified above, at new line numbers because the payroll gained the accountant check, the handover bound and three counters. No new kind appeared and nothing fixed above came back.
+
+| v0.1.1 location | Same finding as id |
+|---|---|
+| payroll/src/lib.rs:35-38 (twice) | 0, 1 |
+| payroll/src/lib.rs:1, auditor/src/lib.rs:1 | 2, 25 |
+| payroll/src/contract.rs:77 (`create_company`'s `admin`) | 24 |
+| payroll/src/contract.rs:75-81 `create_company` | 13 |
+| payroll/src/contract.rs:129 `propose_admin` | 22 |
+| payroll/src/contract.rs:161 `cancel_admin_proposal` | 19 |
+| payroll/src/contract.rs:193 `accept_admin` | 23 |
+| payroll/src/contract.rs:237 `invite_worker` | 17 |
+| payroll/src/contract.rs:271 `revoke_invite` | 14 |
+| payroll/src/contract.rs:302 `accept_invite` | 16 |
+| payroll/src/contract.rs:352 `remove_worker` | 18 |
+| payroll/src/contract.rs:385-391 `open_run` | 20 |
+| payroll/src/contract.rs:448 `pay` (storage events, Vec input) | 15, 12 |
+| payroll/src/contract.rs:510 `close_run` | 21 |
+| payroll/src/contract.rs:573-580 and :579 `get_roster` | 9, 10 |
+| auditor/src/contract.rs:40, 97, 140, 167 | 32, 29, 30, 31 |
+| auditor/src/storage.rs:119 | 27 |
+
+The new counters (`runs_opened`, `admin_changes`, memberships) use `checked_add` and fail with `CounterOverflow` (21); Scout reports no overflow finding for them. Tests: `open_run_refuses_when_runs_opened_is_at_its_limit`, `accept_admin_refuses_when_admin_changes_is_at_its_limit`, `accept_invite_refuses_a_first_join_when_the_membership_count_is_at_its_limit`.
+
 ## cargo audit
 
 cargo audit 0.22.2 against `packages/contracts/Cargo.lock`: 0 vulnerabilities, 1 warning.
