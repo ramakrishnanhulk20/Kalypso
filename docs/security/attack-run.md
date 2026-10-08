@@ -2,8 +2,8 @@
 
 Kalypso's prove-it command attacks the product's own promises against the live showcase company on Stellar testnet, then prints what each attack tried and what stopped it. It signs nothing and sends nothing. Every attack is a read or a simulation of current testnet state, so anyone can run it without keys.
 
-- Date: 2026-10-08T07:49:02Z (ledger 5084430)
-- Commit: 2c88e5c, with the M6 seed and prove scripts from the working tree on top of it
+- Date: 2026-10-08T08:38:34Z (ledger 5085025)
+- Commit: c597cc0 (backend gate fixes R1 to R3 included; every amount the audit and the worker view count is bound to its transaction)
 - Network: Stellar testnet, RPC https://soroban-testnet.stellar.org
 - Verifier: `CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM`
 - Auditor registry: `CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG`
@@ -33,7 +33,7 @@ This run had the seed's private file, so it also checked every decrypted amount 
 
 ```text
 Kalypso prove-it: attacking the showcase's promises on Stellar testnet
-  when       ledger 5084430, 2026-10-08T07:49:02Z
+  when       ledger 5085025, 2026-10-08T08:38:34Z
   showcase   "Andes Studio (demo)", company 1, treasury GA774NZX5OQGBL222I4QO4IZXGRHGWFTONNH3VYGMYXF5VARMAIYSRZU, 6 workers, runs 202609 "September 2026" and 202610 "October 2026"
   contracts  payroll CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA, token CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ, auditor registry CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG, verifier CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM
   amounts    checked against the private seed file
