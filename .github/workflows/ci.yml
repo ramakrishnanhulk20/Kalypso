@@ -74,6 +74,19 @@ jobs:
         run: |
           docker run --rm --platform linux/amd64             -e SCOUT_OFFLINE=1             -e INPUT_TARGET=/scoutme/packages/contracts             -e INPUT_SCOUT_ARGS="--output-format md,json"             -v "$PWD:/scoutme"             coinfabrik/scout:0.3.17
 
+      # Logs and artifacts need a GitHub sign-in to read, so the findings are also published where
+      # anyone can see them: the run summary and a check annotation readable through the API.
+      - name: Publish Scout report
+        if: always()
+        run: |
+          report=$(find . -name report.md -not -path './node_modules/*' | head -1)
+          if [ -z "$report" ]; then
+            echo "::warning title=Scout::no report.md was produced"
+            exit 0
+          fi
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          python3 -c "import sys; t=open(sys.argv[1]).read()[:60000]; print('::notice title=Scout report::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))" "$report"
+
       - uses: actions/upload-artifact@v7
         with:
           name: scout-report
