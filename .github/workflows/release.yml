@@ -39,7 +39,10 @@ jobs:
           toolchain: 1.99.0
           targets: wasm32v1-none
 
+      # Pinned by commit (C37), so the action cannot read its version from the ref and must be told it.
       - uses: stellar/stellar-cli@c0f4d0da891bbf214c08b8c5035ae6db80e9a3bd # v28.1.0
+        with:
+          version: 28.1.0
 
       - name: Test contracts
         run: |
