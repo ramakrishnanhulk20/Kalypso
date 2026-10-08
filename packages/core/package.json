@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/prover/node.d.ts",
+      "import": "./dist/prover/node.js"
     }
   },
   "types": "./dist/index.d.ts",
