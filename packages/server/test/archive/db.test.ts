@@ -1,6 +1,7 @@
-// Not covered here: the production postgres driver adapter and its session
-// settings (no database server in the test run; the same SQL runs in PGlite),
-// and the hosting provider's role and password handling.
+// Not covered here: Neon itself (its server version, TLS, and its role and
+// password handling). `npm test` runs this SQL in PGlite directly; `npm run
+// test:wire` runs it through the production driver, postgres.js with
+// production's options, over a socket to PGlite standing in for the server.
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   addIngestedRange,
@@ -8,6 +9,7 @@ import {
   claimIngestSlot,
   claimRelay,
   countAuthoriserRelays,
+  creationFeeSpent,
   dailyFeeSpent,
   forgetExpiredRelays,
   holdRelay,
@@ -18,13 +20,23 @@ import {
   releaseRelay,
   reserveDailyFee,
   countSponsorRequest,
+  creationRelaysOf,
+  dropCreationRelay,
+  eventsForAccount,
+  finishCreationRelay,
+  noteCreationHash,
+  startCreationRelay,
   insertEvents,
+  latestCheckpoint,
   readCoverage,
+  recordWalletBirth,
   schemaSql,
   setArchiveStart,
   settleArchiveStart,
+  walletBirthOf,
   type Db,
   type EventRow,
+  type StoredEvent,
 } from "../../src/archive/db.ts";
 import { TOKEN } from "../helpers.ts";
 import { clearTables, freshDb, resetArchive } from "../db.ts";
@@ -37,8 +49,10 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetArchive(db);
-  await clearTables(db, ["ip_hour", "address_day", "day_budget", "relay_dedupe", "relay_auth"]);
+  await clearTables(db, ["ip_hour", "address_day", "day_budget", "creation_budget", "relay_dedupe", "relay_auth", "wallet_births", "relayed_creations"]);
 });
+
+const WALLET = "CBSDDY2NMUMLVTXGTKJ2R7JBJDRWG2NJN6J7ZHLZHT6NJID6ZEYFGKSK";
 
 const row = (id: string, ledger: number, valueXdr = "AAAAAQ=="): EventRow => ({
   id,
@@ -219,6 +233,29 @@ describe("daily fee budget", () => {
     await releaseDailyFee(db, "2026-10-08", 100n);
     expect(await dailyFeeSpent(db, "2026-10-08")).toBe(0n);
   });
+
+  it("reserves a creation from the day and from the creation share together, all or nothing, and gives both back together", async () => {
+    const spent = async () => [await dailyFeeSpent(db, day), await creationFeeSpent(db, day)];
+    expect(await reserveDailyFee(db, day, 400n, 1_000n, 500n)).toBe(true);
+    expect(await reserveDailyFee(db, day, 200n, 1_000n, 500n)).toBe(false);
+    expect(await spent()).toEqual([400n, 400n]);
+    expect(await reserveDailyFee(db, day, 500n, 1_000n)).toBe(true);
+    expect(await reserveDailyFee(db, day, 100n, 1_000n, 500n)).toBe(true);
+    expect(await reserveDailyFee(db, day, 1n, 1_000n, 1_000n)).toBe(false);
+    expect(await spent()).toEqual([1_000n, 500n]);
+    expect(await reserveDailyFee(db, day, 600n, 2_000n, 500n)).toBe(false);
+    await releaseDailyFee(db, day, 100n, true);
+    expect(await spent()).toEqual([900n, 400n]);
+    await releaseDailyFee(db, day, 500n);
+    expect(await spent()).toEqual([400n, 400n]);
+    await releaseDailyFee(db, day, 9_000n, true);
+    expect(await spent()).toEqual([0n, 0n]);
+  });
+
+  it("passes a database failure in a creation reservation on instead of reading it as a spent budget", async () => {
+    const broken: Db = { ...db, transaction: async () => Promise.reject(new Error("connection lost")) };
+    await expect(reserveDailyFee(broken, day, 1n, 10n, 5n)).rejects.toThrow("connection lost");
+  });
 });
 
 describe("per-address daily count", () => {
@@ -260,6 +297,113 @@ describe("per-address daily count", () => {
   });
 });
 
+describe("lists through the driver", () => {
+  // Every list travels as one JSON text parameter. postgres.js serialises again any parameter the
+  // server describes as jsonb, so under test:wire a list that is not cast through text arrives as
+  // one JSON string. Not covered: lists long enough to meet a parameter size limit.
+  const day = "2026-10-07";
+  const counts = () => db.query("select address, count from address_day where day = $1::date order by address", [day]);
+  const stored = (r: EventRow): StoredEvent => ({
+    id: r.id,
+    ledger: r.ledger,
+    txHash: r.txHash,
+    txIndex: r.txIndex,
+    opIndex: r.opIndex,
+    eventIndex: r.eventIndex,
+    contractId: r.contractId,
+    topicsXdr: r.topicsXdr,
+    valueXdr: r.valueXdr,
+    ledgerClosedAt: new Date(r.ledgerClosedAt),
+  });
+
+  it("counts and gives back several authorising addresses in one call", async () => {
+    expect(await countAuthoriserRelays(db, ["GA", "CB", "GC"], day, 2)).toBe(true);
+    expect(await countAuthoriserRelays(db, ["CB", "GC"], day, 2)).toBe(true);
+    expect(await countAuthoriserRelays(db, ["GA", "GC"], day, 2)).toBe(false);
+    expect(await counts()).toEqual([
+      { address: "CB", count: 2 },
+      { address: "GA", count: 1 },
+      { address: "GC", count: 2 },
+    ]);
+    await releaseAuthoriserRelays(db, ["GA", "CB"], day);
+    expect(await counts()).toEqual([
+      { address: "CB", count: 1 },
+      { address: "GC", count: 2 },
+    ]);
+  });
+
+  it("stores several events in one call and reads every value back as sent, filtered by a list of names", async () => {
+    const merge: EventRow = { ...row("e1", 10), accounts: ["GA", "CB"], topicsXdr: ["AAAA", "BBBB"], topic1Address: "GA" };
+    const transfer: EventRow = { ...row("e2", 11), eventName: "transfer", accounts: ["GA"], topic1Address: "GA", ledgerClosedAt: "2026-10-07T12:00:05.123Z" };
+    const deposit: EventRow = { ...row("e3", 12), eventName: "deposit", accounts: ["GA"], topic1Address: "GA" };
+    expect(await insertEvents(db, [merge, transfer, deposit])).toBe(3);
+    expect(await db.query("select accounts from events where id = 'e1'")).toEqual([{ accounts: ["GA", "CB"] }]);
+
+    const read = { contractId: TOKEN, account: "GA", fromLedger: 1, toLedger: 100, after: null, limit: 10 };
+    expect(await eventsForAccount(db, { ...read, types: ["merge", "transfer"] })).toEqual([stored(merge), stored(transfer)]);
+    expect(await eventsForAccount(db, { ...read, types: null })).toEqual([stored(merge), stored(transfer), stored(deposit)]);
+    expect(await latestCheckpoint(db, { contractId: TOKEN, account: "GA", atLedger: 100, eventNames: ["merge", "transfer"] })).toEqual(stored(transfer));
+  });
+});
+
+describe("wallet births", () => {
+  it("keeps the first birth stored for an address and reads it back; an unknown wallet has none", async () => {
+    expect(await walletBirthOf(db, WALLET)).toBeNull();
+    expect(await recordWalletBirth(db, { address: WALLET, hash: "ab".repeat(32), ledger: 5_100_757 })).toBe(true);
+    expect(await recordWalletBirth(db, { address: WALLET, hash: "cd".repeat(32), ledger: 5_100_800 })).toBe(false);
+    expect(await walletBirthOf(db, WALLET)).toBe("ab".repeat(32));
+    expect(await walletBirthOf(db, "CB6BSQ3PXPCF7EM3HGUXBWJBQCLZ3GVYV3C5QH5LKFEDNAHC7URRS6NL")).toBeNull();
+  });
+
+  it("refuses a row whose address, hash or ledger is not in its one format, whatever the caller checked", async () => {
+    for (const birth of [
+      { address: WALLET.toLowerCase(), hash: "ab".repeat(32), ledger: 1 },
+      { address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", hash: "ab".repeat(32), ledger: 1 },
+      { address: WALLET, hash: "AB".repeat(32), ledger: 1 },
+      { address: WALLET, hash: "ab", ledger: 1 },
+      { address: WALLET, hash: "ab".repeat(32), ledger: 0 },
+    ]) {
+      await expect(recordWalletBirth(db, birth), JSON.stringify(birth)).rejects.toThrow();
+    }
+    expect(await walletBirthOf(db, WALLET)).toBeNull();
+  });
+});
+
+describe("relayed creations", () => {
+  const OTHER = "CB6BSQ3PXPCF7EM3HGUXBWJBQCLZ3GVYV3C5QH5LKFEDNAHC7URRS6NL";
+
+  it("keeps each relayed creation per address, lists them newest first, fills one in, notes a hash once, and drops only the one it is given", async () => {
+    const first = await startCreationRelay(db, WALLET);
+    const second = await startCreationRelay(db, WALLET);
+    const elsewhere = await startCreationRelay(db, OTHER);
+    expect(typeof first).toBe("string");
+    expect(new Set([first, second, elsewhere]).size).toBe(3);
+    await finishCreationRelay(db, first, "tx_a", null);
+    await finishCreationRelay(db, second, "tx_b", "cd".repeat(32));
+    await noteCreationHash(db, "tx_a", "ab".repeat(32));
+    await noteCreationHash(db, "tx_b", "ef".repeat(32));
+    await noteCreationHash(db, "tx_unrelated", "ef".repeat(32));
+    expect(await creationRelaysOf(db, WALLET)).toEqual({
+      relayed: [
+        { transactionId: "tx_b", hash: "cd".repeat(32) },
+        { transactionId: "tx_a", hash: "ab".repeat(32) },
+      ],
+      more: false,
+    });
+    await dropCreationRelay(db, first);
+    expect(await creationRelaysOf(db, WALLET)).toEqual({ relayed: [{ transactionId: "tx_b", hash: "cd".repeat(32) }], more: false });
+    expect(await creationRelaysOf(db, OTHER)).toEqual({ relayed: [{ transactionId: null, hash: null }], more: false });
+  });
+
+  it("refuses a row whose address, transaction id or hash is not in its one format", async () => {
+    await expect(startCreationRelay(db, WALLET.toLowerCase())).rejects.toThrow();
+    const id = await startCreationRelay(db, WALLET);
+    await expect(finishCreationRelay(db, id, "tx 1", null)).rejects.toThrow();
+    await expect(finishCreationRelay(db, id, "tx_1", "AB".repeat(32))).rejects.toThrow();
+    expect(await creationRelaysOf(db, WALLET)).toEqual({ relayed: [{ transactionId: null, hash: null }], more: false });
+  });
+});
+
 describe("archive start", () => {
   it("sets the start once, never covering from genesis, and records the start check once", async () => {
     await setArchiveStart(db, 100, true);
@@ -278,7 +422,7 @@ describe("archive start", () => {
 });
 
 describe("the read-only role from the schema comment", () => {
-  it("can read the archive and nothing else, and cannot write anywhere", async () => {
+  it("can read the archive and nothing else, and cannot write anywhere, the wallet births included", async () => {
     const database = (await db.query<{ name: string }>("select current_database() as name"))[0]!.name;
     const statements = schemaSql()
       .split("\n")
@@ -300,6 +444,11 @@ describe("the read-only role from the schema comment", () => {
       await pg.query("select * from gaps");
       await pg.query("select * from archive_state");
       for (const write of [
+        "select * from wallet_births",
+        "insert into wallet_births (address, tx_hash, ledger) values ('" + WALLET + "', '" + "ab".repeat(32) + "', 9)",
+        "update wallet_births set tx_hash = '" + "cd".repeat(32) + "'",
+        "delete from wallet_births",
+        "truncate wallet_births",
         "insert into events (id, ledger, tx_hash, tx_index, op_index, event_index, contract_id, accounts, topics_xdr, value_xdr, ledger_closed_at) values ('x', 1, 'h', 0, 0, 0, 'c', '{}', '{}', 'v', now())",
         "delete from events",
         "update archive_state set latest_ledger = 1",
@@ -308,6 +457,8 @@ describe("the read-only role from the schema comment", () => {
         "select * from ip_hour",
         "select * from address_day",
         "select * from day_budget",
+        "select * from creation_budget",
+        "select * from relayed_creations",
         "select * from relay_dedupe",
         "select * from relay_auth",
       ]) {

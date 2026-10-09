@@ -6,18 +6,20 @@ import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Networks } from "@stellar/stellar-sdk";
-import { dailyFeeSpent, reserveDailyFee, type Db } from "../../src/archive/db.ts";
+import { creationFeeSpent, dailyFeeSpent, reserveDailyFee, type Db } from "../../src/archive/db.ts";
 import { createLogger } from "../../src/log.ts";
-import { clientBucket, ipTag } from "../../src/sponsor/client-ip.ts";
+import { clientBucket, creationBucket, ipTag } from "../../src/sponsor/client-ip.ts";
 import { CLAIM_WINDOW_MS, sponsorHandler, sponsorStatusHandler, type SponsorContext } from "../../src/sponsor/handler.ts";
-import { INCLUSION_FEE_ALLOWANCE_STROOPS, type SimulateFn } from "../../src/sponsor/validate.ts";
+import { INCLUSION_FEE_ALLOWANCE_STROOPS, PASSKEY_KIT_DEPLOYER, type SimulateFn } from "../../src/sponsor/validate.ts";
 import { API_KEY, CRON_SECRET, DB_API, DB_INGEST, LOG_SALT, STRANGER, TOKEN, testConfig } from "../helpers.ts";
 import { clearTables, freshDb } from "../db.ts";
-import { defaultFootprint, fakeSimulation } from "./fake-rpc.ts";
+import { creationFootprintOf, defaultFootprint, fakeSimulation } from "./fake-rpc.ts";
 import {
   LATEST_LEDGER,
   addr,
+  authenticatorData,
   b64,
+  clientDataJson,
   codeKey,
   contractAccountEntry,
   createContractOperation,
@@ -25,8 +27,10 @@ import {
   employer,
   envelope,
   fakeCode,
+  genesisProof,
   hostCall,
   instanceKey,
+  kitSigner,
   mergeFuncAuth,
   passkeyMergeFootprint,
   passkeyWallet,
@@ -34,6 +38,7 @@ import {
   signedEntry,
   thirdPartyOperation,
   uploadOperation,
+  walletCreationBody,
   worker,
 } from "./fixtures.ts";
 
@@ -98,7 +103,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await clearTables(db, ["ip_hour", "address_day", "day_budget", "relay_dedupe", "relay_auth"]);
+  await clearTables(db, ["ip_hour", "address_day", "day_budget", "creation_budget", "relay_dedupe", "relay_auth", "relayed_creations"]);
   seen.length = 0;
   nextReply = okReply;
 });
@@ -128,8 +133,7 @@ const sentIps = new Set<string>();
 function noteIp(value: string | undefined) {
   if (!value) return;
   sentIps.add(value.trim().toLowerCase());
-  const bucket = clientBucket(value);
-  if (bucket) sentIps.add(bucket);
+  for (const bucket of [clientBucket(value), creationBucket(value)]) if (bucket) sentIps.add(bucket);
 }
 
 async function send(body: unknown, ctx: SponsorContext, headers: Record<string, string> = {}) {
@@ -225,7 +229,7 @@ describe("POST /api/sponsor refuses before anything is relayed", () => {
       "nested_contract_not_allowed",
     ],
     ["a mainnet passphrase", async () => ({ xdr: envelope({ network: Networks.PUBLIC }) }), "not_signed_for_testnet"],
-    ["a fee over the cap", async () => ({ xdr: envelope({ fee: "1600000", resourceFee: 500_000 }) }), "fee_over_cap"],
+    ["a fee over the default cap", async () => ({ xdr: envelope({ fee: "24600000", resourceFee: 500_000 }) }), "fee_over_cap"],
   ];
 
   for (const [label, build, code] of refusals) {
@@ -301,7 +305,7 @@ describe("per-IP hourly limit and daily fee budget", () => {
   });
 
   it("refuses a request after the daily budget is spent, and opens again the next day", async () => {
-    const env = { DAILY_FEE_BUDGET_STROOPS: String(CHARGE * 2n), FEE_CAP_STROOPS: String(CHARGE), PER_IP_LIMIT_PER_HOUR: "100" };
+    const env = { DAILY_FEE_BUDGET_STROOPS: String(CHARGE * 2n), FEE_CAP_CALL_STROOPS: String(CHARGE), FEE_CAP_CREATION_STROOPS: String(CHARGE), PER_IP_LIMIT_PER_HOUR: "100" };
     const ctx = context({}, env);
     expect((await send(await mergeFuncAuth(), ctx)).status).toBe(200);
     expect((await send(await mergeFuncAuth(), ctx)).status).toBe(200);
@@ -400,7 +404,7 @@ describe("per-address daily limit", () => {
 
   it("never spends a worker's last relay of the day on a relay the budget or Channels refused", async () => {
     const env = { PER_ADDRESS_LIMIT_PER_DAY: "1", PER_IP_LIMIT_PER_HOUR: "10" };
-    const spent = { ...env, DAILY_FEE_BUDGET_STROOPS: String(CHARGE), FEE_CAP_STROOPS: String(CHARGE) };
+    const spent = { ...env, DAILY_FEE_BUDGET_STROOPS: String(CHARGE), FEE_CAP_CALL_STROOPS: String(CHARGE), FEE_CAP_CREATION_STROOPS: String(CHARGE / 2n) };
     await reserveDailyFee(db, "2026-10-07", 1n, CHARGE);
     expect(await send(await mergeFuncAuth(), context({}, spent))).toEqual({ status: 429, body: { error: "daily_budget_spent" } });
     await clearTables(db, ["day_budget"]);
@@ -581,6 +585,244 @@ describe("what the logs say about callers", () => {
   });
 });
 
+describe("POST /api/sponsor and passkey wallet creation (C20)", () => {
+  // The live deploy's declared resource fee (scratchpad/worker/logs), the dearest worker action.
+  const CREATION_CHARGE = 20_571_654n + INCLUSION_FEE_ALLOWANCE_STROOPS;
+  const IP = "203.0.113.7";
+  const DAY = "2026-10-07";
+  /** The service-wide creation count's key in the per-address daily counter. */
+  const ALL_CREATIONS = "wallet creations";
+  const creationContext = (env: Record<string, string> = {}, overrides: Partial<SponsorContext> = {}) =>
+    context(
+      { rpc: fakeSimulation({ footprintFor: creationFootprintOf, enforce: { minResourceFee: "20571654" } }), ...overrides },
+      { PER_IP_LIMIT_PER_HOUR: "100", ...env },
+    );
+  const creationCount = (ip: string) => relaysUsed("wallet creation " + ipTag(ip, LOG_SALT));
+  let keyByte = 0;
+  const newWallet = async () => {
+    const body = await walletCreationBody({ keyId: Buffer.alloc(32, ++keyByte) });
+    return { body: { func: body.func, auth: body.auth }, created: body.created };
+  };
+
+  it("relays a creation under the default cap, counting it against the new wallet and the caller's IP tag, never the shared deployer or the raw IP", async () => {
+    const wallet = await newWallet();
+    const res = await send(wallet.body, creationContext());
+    expect(res).toMatchObject({ status: 200, body: { status: "pending" } });
+    expect(seen[0]!.body).toEqual({ params: { ...wallet.body, skipWait: true } });
+    expect(await relaysUsed(wallet.created)).toBe(1);
+    expect(await relaysUsed(PASSKEY_KIT_DEPLOYER)).toBe(0);
+    expect(await creationCount(IP)).toBe(1);
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CREATION_CHARGE);
+    const counted = await db.query<{ address: string }>("select address from address_day");
+    expect(counted.map((r) => r.address).join(" ")).not.toContain(IP);
+  });
+
+  it("refuses a fourth creation from one IP in a UTC day as rate_limited, while that IP's other relays, other IPs and the next day go on", async () => {
+    const ctx = creationContext();
+    for (let i = 0; i < 3; i++) expect((await send((await newWallet()).body, ctx)).status).toBe(200);
+    const fourth = await newWallet();
+    expect(await send(fourth.body, ctx)).toEqual({ status: 429, body: { error: "rate_limited" } });
+    expect(seen).toHaveLength(3);
+    expect(await creationCount(IP)).toBe(3);
+    expect(await relaysUsed(fourth.created)).toBe(0);
+    expect(await dailyFeeSpent(db, "2026-10-07")).toBe(CREATION_CHARGE * 3n);
+    // The hourly per-IP count is far from its limit, so the refusal above was the creation limit.
+    expect((await send(await mergeFuncAuth(), context({}, { PER_IP_LIMIT_PER_HOUR: "100" }))).status).toBe(200);
+    expect((await send(fourth.body, ctx, { "x-real-ip": "198.51.100.40" })).status).toBe(200);
+    expect(await relaysUsed(fourth.created)).toBe(1);
+    const nextDay = creationContext({}, { now: () => new Date("2026-10-08T00:00:01Z") });
+    expect((await send((await newWallet()).body, nextDay)).status).toBe(200);
+  });
+
+  it("follows WALLET_CREATIONS_PER_IP_PER_DAY when it is set", async () => {
+    const ctx = creationContext({ WALLET_CREATIONS_PER_IP_PER_DAY: "1" });
+    expect((await send((await newWallet()).body, ctx)).status).toBe(200);
+    expect(await send((await newWallet()).body, ctx)).toEqual({ status: 429, body: { error: "rate_limited" } });
+  });
+
+  it("gives the creation count back with the rest on a provable pre-submission refusal or a budget refusal, and keeps it when the outcome is unknown", async () => {
+    const counts = async (wallet: string) => [
+      await creationCount(IP),
+      await relaysUsed(ALL_CREATIONS),
+      await relaysUsed(wallet),
+      await dailyFeeSpent(db, DAY),
+      await creationFeeSpent(db, DAY),
+    ];
+    nextReply = () => ({ status: 400, body: { success: false, data: { code: "INVALID_PARAMS" }, error: "bad" } });
+    const refused = await newWallet();
+    expect(await send(refused.body, creationContext())).toEqual({ status: 502, body: { error: "relay_refused" } });
+    expect(await counts(refused.created)).toEqual([0, 0, 0, 0n, 0n]);
+
+    nextReply = okReply;
+    const spent = { DAILY_FEE_BUDGET_STROOPS: String(CREATION_CHARGE), FEE_CAP_CREATION_STROOPS: String(CREATION_CHARGE), CREATION_BUDGET_SHARE_PERCENT: "100" };
+    await reserveDailyFee(db, DAY, 1n, CREATION_CHARGE);
+    const broke = await newWallet();
+    expect(await send(broke.body, creationContext(spent))).toEqual({ status: 429, body: { error: "daily_budget_spent" } });
+    // The day's total refused, so the share was not reserved either.
+    expect(await counts(broke.created)).toEqual([0, 0, 0, 1n, 0n]);
+    await clearTables(db, ["day_budget"]);
+
+    nextReply = () => ({ status: 503, body: { success: false, data: { code: "PLUGIN_ERROR" }, error: "down" } });
+    const unknown = await newWallet();
+    expect(await send(unknown.body, creationContext())).toEqual({ status: 502, body: { error: "relay_refused" } });
+    expect(await counts(unknown.created)).toEqual([1, 1, 1, CREATION_CHARGE, CREATION_CHARGE]);
+  });
+
+  it("refuses a creation whose passkey was made on another site, before simulating, counting or reserving anything", async () => {
+    const keyId = Buffer.alloc(32, 0xe1);
+    const other = "https://another-passkey-app.example";
+    const proof = genesisProof({ clientDataJson: clientDataJson(other), authenticatorData: authenticatorData(new URL(other).hostname) });
+    const elsewhere = await walletCreationBody({ keyId, constructorArgs: [kitSigner(keyId), proof] });
+    const ctx = creationContext();
+    expect(await send({ func: elsewhere.func, auth: elsewhere.auth }, ctx)).toEqual({ status: 400, body: { error: "contract_creation" } });
+    expect(ctx.rpc.simulateTransaction).not.toHaveBeenCalled();
+    expect([await creationCount(IP), await relaysUsed(ALL_CREATIONS), await dailyFeeSpent(db, DAY)]).toEqual([0, 0, 0n]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("holds creations to their share of the day: the one that would reach 51 percent is refused as daily_budget_spent, and workers' calls still pass", async () => {
+    const budget = CREATION_CHARGE * 100n;
+    const env = { DAILY_FEE_BUDGET_STROOPS: String(budget) };
+    await reserveDailyFee(db, DAY, CREATION_CHARGE * 49n, budget, budget / 2n);
+    expect((await send((await newWallet()).body, creationContext(env))).status).toBe(200);
+    expect(await creationFeeSpent(db, DAY)).toBe(CREATION_CHARGE * 50n);
+
+    const past = await newWallet();
+    expect(await send(past.body, creationContext(env), { "x-real-ip": "198.51.100.60" })).toEqual({ status: 429, body: { error: "daily_budget_spent" } });
+    expect([await creationFeeSpent(db, DAY), await dailyFeeSpent(db, DAY)]).toEqual([CREATION_CHARGE * 50n, CREATION_CHARGE * 50n]);
+    expect([await relaysUsed(past.created), await creationCount("198.51.100.60"), await relaysUsed(ALL_CREATIONS)]).toEqual([0, 0, 1]);
+    expect(seen).toHaveLength(1);
+
+    expect((await send(await mergeFuncAuth(), context({}, env))).status).toBe(200);
+    expect([await creationFeeSpent(db, DAY), await dailyFeeSpent(db, DAY)]).toEqual([CREATION_CHARGE * 50n, CREATION_CHARGE * 50n + CHARGE]);
+  });
+
+  it("refuses the 61st creation of a UTC day across the whole service as rate_limited, from an IP that has made none", async () => {
+    await db.query("insert into address_day (address, day, count) values ($1, $2::date, 59)", [ALL_CREATIONS, DAY]);
+    expect((await send((await newWallet()).body, creationContext(), { "x-real-ip": "198.51.100.61" })).status).toBe(200);
+    const sixtyFirst = await newWallet();
+    expect(await send(sixtyFirst.body, creationContext(), { "x-real-ip": "198.51.100.62" })).toEqual({ status: 429, body: { error: "rate_limited" } });
+    expect([await relaysUsed(ALL_CREATIONS), await creationCount("198.51.100.62"), await relaysUsed(sixtyFirst.created)]).toEqual([60, 0, 0]);
+    expect(await creationFeeSpent(db, DAY)).toBe(CREATION_CHARGE);
+    expect(seen).toHaveLength(1);
+    expect((await send(await mergeFuncAuth(), context({}, { PER_IP_LIMIT_PER_HOUR: "100" }), { "x-real-ip": "198.51.100.62" })).status).toBe(200);
+    const nextDay = creationContext({}, { now: () => new Date("2026-10-08T00:00:01Z") });
+    expect((await send(sixtyFirst.body, nextDay, { "x-real-ip": "198.51.100.62" })).status).toBe(200);
+  });
+
+  it("counts creations per IPv6 /48, so two /64s in one /48 share one count, and another /48 has its own", async () => {
+    const ctx = creationContext({ WALLET_CREATIONS_PER_IP_PER_DAY: "1" });
+    expect((await send((await newWallet()).body, ctx, { "x-real-ip": "2001:db8:5:1::1" })).status).toBe(200);
+    for (const sameSite of ["2001:db8:5:2::1", "2001:DB8:5:FFFF:1::9"]) {
+      expect(await send((await newWallet()).body, ctx, { "x-real-ip": sameSite }), sameSite).toEqual({ status: 429, body: { error: "rate_limited" } });
+    }
+    expect(await relaysUsed("wallet creation " + ipTag("2001:db8:5::/48", LOG_SALT))).toBe(1);
+    expect((await send((await newWallet()).body, ctx, { "x-real-ip": "2001:db8:6:1::1" })).status).toBe(200);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("holds a call to the 1 XLM call cap and the creation to the 2.5 XLM creation cap: a 1.2 XLM call is refused and a 2 XLM creation is relayed", async () => {
+    const priced = (charge: bigint) =>
+      fakeSimulation({ footprintFor: creationFootprintOf, enforce: { minResourceFee: String(charge - INCLUSION_FEE_ALLOWANCE_STROOPS) } });
+    const env = { PER_IP_LIMIT_PER_HOUR: "100" };
+    expect(await send(await mergeFuncAuth(), context({ rpc: priced(12_000_000n) }, env))).toEqual({ status: 400, body: { error: "fee_over_cap" } });
+    // The envelope path, where the caller declares the fee and resources we would be charged.
+    for (const inflated of [{ fee: "11500000", resourceFee: 500_000 }, { fee: "100", resourceFee: 12_000_000 }]) {
+      const xdr = envelope({ ...inflated, footprint: defaultFootprint() });
+      expect(await send({ xdr }, context({}, env)), JSON.stringify(inflated)).toEqual({ status: 400, body: { error: "fee_over_cap" } });
+    }
+    expect(await dailyFeeSpent(db, DAY)).toBe(0n);
+    expect(await send((await newWallet()).body, context({ rpc: priced(20_000_000n) }, env))).toMatchObject({ status: 200 });
+    expect([await dailyFeeSpent(db, DAY), await creationFeeSpent(db, DAY)]).toEqual([20_000_000n, 20_000_000n]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("never counts a creation whose simulation was refused", async () => {
+    const failing: SimulateFn = async () => ({ ok: false, code: "simulation_failed" });
+    for (let i = 0; i < 4; i++) expect((await send((await newWallet()).body, creationContext({}, { simulate: failing }))).status).toBe(400);
+    expect(await creationCount(IP)).toBe(0);
+    expect((await send((await newWallet()).body, creationContext())).status).toBe(200);
+  });
+
+  const creations = () =>
+    db.query<{ address: string; transaction_id: string | null; tx_hash: string | null }>("select address, transaction_id, tx_hash from relayed_creations order by id");
+
+  it("writes a creation down before Channels sees it, fills its transaction id from the answer, and a status read fills its hash", async () => {
+    const wallet = await newWallet();
+    let atRelay: Promise<unknown[]> | undefined;
+    nextReply = (body) => {
+      atRelay = creations();
+      return { ...okReply(body), delayMs: 50 };
+    };
+    const res = await send(wallet.body, creationContext());
+    expect(res.status).toBe(200);
+    expect(await atRelay).toEqual([{ address: wallet.created, transaction_id: null, tx_hash: null }]);
+    expect(await creations()).toEqual([{ address: wallet.created, transaction_id: res.body.transactionId, tx_hash: null }]);
+    nextReply = okReply;
+    expect((await status("?id=" + String(res.body.transactionId), creationContext())).body).toEqual({ status: "confirmed", hash: HASH });
+    expect(await creations()).toEqual([{ address: wallet.created, transaction_id: res.body.transactionId, tx_hash: HASH }]);
+  });
+
+  it("drops the record when Channels provably refused before submitting, and keeps it, with no id, when the outcome is unknown", async () => {
+    nextReply = () => ({ status: 400, body: { success: false, data: { code: "INVALID_PARAMS" }, error: "bad" } });
+    expect((await send((await newWallet()).body, creationContext())).status).toBe(502);
+    expect(await creations()).toEqual([]);
+    nextReply = () => ({ status: 503, body: { success: false, data: { code: "PLUGIN_ERROR" }, error: "down" } });
+    const unknown = await newWallet();
+    expect((await send(unknown.body, creationContext())).status).toBe(502);
+    expect(await creations()).toEqual([{ address: unknown.created, transaction_id: null, tx_hash: null }]);
+  });
+
+  it("writes no record for a relay that is not a creation, and a status read for one changes none", async () => {
+    const ctx = context({}, { PER_IP_LIMIT_PER_HOUR: "100" });
+    const res = await send(await mergeFuncAuth(), ctx);
+    expect(res.status).toBe(200);
+    expect((await status("?id=" + String(res.body.transactionId), ctx)).status).toBe(200);
+    expect(await creations()).toEqual([]);
+  });
+
+  it("refuses 503 creation_not_recorded and gives everything back when the record cannot be written, sending nothing", async () => {
+    const query = (async (text: string, params?: readonly unknown[]) =>
+      text.startsWith("insert into relayed_creations") ? Promise.reject(new Error("disk full")) : db.query(text, params)) as Db["query"];
+    const wallet = await newWallet();
+    expect(await send(wallet.body, creationContext({}, { db: { ...db, query } }))).toEqual({ status: 503, body: { error: "creation_not_recorded" } });
+    expect(seen).toHaveLength(0);
+    expect([await creationCount(IP), await relaysUsed(ALL_CREATIONS), await relaysUsed(wallet.created), await dailyFeeSpent(db, DAY), await creationFeeSpent(db, DAY)]).toEqual([0, 0, 0, 0n, 0n]);
+    expect(logs.at(-1)).toContain('"code":"creation_not_recorded"');
+    expect((await send(wallet.body, creationContext())).status).toBe(200);
+  });
+});
+
+describe("testnet sponsor defaults", () => {
+  it("applies a 2.5 XLM creation cap, a 1 XLM call cap, a 200 XLM daily budget half open to creations, 3 creations per IP and 60 in all when the variables are unset or blank", () => {
+    const keys = [
+      "FEE_CAP_CREATION_STROOPS",
+      "FEE_CAP_CALL_STROOPS",
+      "DAILY_FEE_BUDGET_STROOPS",
+      "CREATION_BUDGET_SHARE_PERCENT",
+      "WALLET_CREATIONS_PER_IP_PER_DAY",
+      "WALLET_CREATIONS_PER_DAY",
+    ] as const;
+    for (const blank of [undefined, ""]) {
+      const cfg = testConfig(Object.fromEntries(keys.map((k) => [k, blank])));
+      expect(keys.map((k) => cfg[k])).toEqual([25_000_000n, 10_000_000n, 2_000_000_000n, 50, 3, 60]);
+    }
+  });
+
+  it("takes WALLET_CREATIONS_PER_IP_PER_DAY as a whole number from 1 to 99999 and refuses anything else at boot", () => {
+    expect(testConfig({ WALLET_CREATIONS_PER_IP_PER_DAY: "5" }).WALLET_CREATIONS_PER_IP_PER_DAY).toBe(5);
+    for (const bad of ["0", "-1", "2.5", "100000", " 3", "three"]) {
+      expect(() => testConfig({ WALLET_CREATIONS_PER_IP_PER_DAY: bad }), bad).toThrow(/WALLET_CREATIONS_PER_IP_PER_DAY: must be a whole number from 1 to 99999/);
+    }
+  });
+
+  it("holds relays to the default daily budget", async () => {
+    await reserveDailyFee(db, "2026-10-07", 2_000_000_000n - CHARGE, 2_000_000_000n);
+    expect((await send(await mergeFuncAuth(), context())).status).toBe(200);
+    expect(await send(await mergeFuncAuth(), context())).toEqual({ status: 429, body: { error: "daily_budget_spent" } });
+  });
+});
+
 describe("no secret in any response or log line (C23)", () => {
   it("found none of the API key, database URLs, cron secret or log salt across every request in this file", () => {
     expect(responses.length).toBeGreaterThan(30);
@@ -623,5 +865,15 @@ describe("clientBucket", () => {
     expect(clientBucket("2001:0db8:0001:0002:0000:0000:0000:0001")).toBe("2001:db8:1:2::/64");
     expect(clientBucket("::1")).toBe("0:0:0:0::/64");
     for (const bad of [null, "", "localhost", "1.2.3", "fe80::1%eth0", "1.2.3.4:80"]) expect(clientBucket(bad)).toBeNull();
+  });
+});
+
+describe("creationBucket", () => {
+  it("keeps IPv4 and IPv4-mapped IPv6 as clientBucket does, counts IPv6 by its /48, and refuses the same values", () => {
+    expect(creationBucket(" 203.0.113.7 ")).toBe("203.0.113.7");
+    expect(creationBucket("::ffff:203.0.113.7")).toBe("203.0.113.7");
+    expect(new Set(["2001:db8:1:2::1", "2001:0DB8:0001:ffff:0000:0000:0000:0001", "2001:db8:1::"].map(creationBucket))).toEqual(new Set(["2001:db8:1::/48"]));
+    expect(creationBucket("2001:db8:2:2::1")).toBe("2001:db8:2::/48");
+    for (const bad of [null, "", "localhost", "1.2.3", "fe80::1%eth0", "1.2.3.4:80"]) expect(creationBucket(bad)).toBeNull();
   });
 });

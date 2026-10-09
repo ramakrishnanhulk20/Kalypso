@@ -7,6 +7,9 @@ import { SCHEMA_SQL } from "./schema.ts";
  * every value travels as a bind parameter. Nothing is spliced into SQL text.
  * Lists travel as one JSON parameter and are unpacked in SQL, which keeps the
  * two drivers (PGlite in tests, postgres in production) behaving the same.
+ * That parameter is always cast `$n::text::jsonb`, never `$n::jsonb`: when the
+ * server describes a parameter as jsonb, postgres.js runs JSON.stringify on it
+ * again, and the list arrives as one JSON string. `npm run test:wire` proves it.
  */
 
 export interface Db {
@@ -47,15 +50,24 @@ export function postgresDb(sql: Sql): Db {
 }
 
 /**
- * Opens a production connection pool. `readOnly` makes every transaction on
- * the session read-only, on top of the read-only role the API URL should
- * use, so a mistaken grant still cannot let an API query write.
- * Every statement is cut off after 5 s.
+ * The driver settings every production pool uses. Exported so the wire test
+ * run connects with exactly these, and cannot drift from production.
+ * `readOnly` makes every transaction on the session read-only, on top of the
+ * read-only role the API URL should use, so a mistaken grant still cannot
+ * let an API query write. Every statement is cut off after 5 s.
  */
-export function connectPostgres(url: string, opts: { readOnly?: boolean } = {}): Db {
+export function postgresOptions(opts: { readOnly?: boolean } = {}): postgres.Options<{}> {
   const connection: Record<string, string> = { statement_timeout: "5000", application_name: "kalypso-server" };
   if (opts.readOnly) connection.default_transaction_read_only = "on";
-  return postgresDb(postgres(url, { max: 3, connect_timeout: 10, idle_timeout: 20, prepare: false, connection }));
+  // A server notice, such as applySchema's "already exists, skipping", carries
+  // nothing we act on, and the driver's default prints it with console.log,
+  // outside the scrubbing logger.
+  return { max: 3, connect_timeout: 10, idle_timeout: 20, prepare: false, connection, onnotice: () => undefined };
+}
+
+/** Opens a production connection pool with postgresOptions. */
+export function connectPostgres(url: string, opts: { readOnly?: boolean } = {}): Db {
+  return postgresDb(postgres(url, postgresOptions(opts)));
 }
 
 export function schemaSql(): string {
@@ -85,7 +97,7 @@ export async function countSponsorRequest(db: Db, bucket: string, hourStart: Dat
 
 const BUMP_ADDRESS_DAY =
   "insert into address_day (address, day, count) select t.address, $2::date, 1 " +
-  "from jsonb_array_elements_text($1::jsonb) as t(address) " +
+  "from jsonb_array_elements_text($1::text::jsonb) as t(address) " +
   "on conflict (address, day) do update set count = address_day.count + 1 " +
   "where address_day.count < $3 returning address";
 const PRUNE_ADDRESS_DAY = "delete from address_day where day < $1::date - 1";
@@ -118,7 +130,7 @@ export async function countAuthoriserRelays(db: Db, addresses: readonly string[]
 // One statement, so all or nothing. Both halves read the same snapshot, so a
 // row at 1 is deleted and never also decremented.
 const RELEASE_ADDRESS_DAY =
-  "with wanted as (select distinct t.address from jsonb_array_elements_text($1::jsonb) as t(address)), " +
+  "with wanted as (select distinct t.address from jsonb_array_elements_text($1::text::jsonb) as t(address)), " +
   "dropped as (delete from address_day where day = $2::date and count = 1 and address in (select address from wanted) returning address) " +
   "update address_day set count = address_day.count - 1 where day = $2::date and count > 1 and address in (select address from wanted)";
 
@@ -137,30 +149,67 @@ const RESERVE_DAY_BUDGET =
   "on conflict (day) do update set spent_stroops = day_budget.spent_stroops + excluded.spent_stroops " +
   "where day_budget.spent_stroops + excluded.spent_stroops <= $3::bigint returning spent_stroops::text as spent";
 
+const RESERVE_CREATION_BUDGET =
+  "insert into creation_budget (day, spent_stroops) values ($1::date, $2::bigint) " +
+  "on conflict (day) do update set spent_stroops = creation_budget.spent_stroops + excluded.spent_stroops " +
+  "where creation_budget.spent_stroops + excluded.spent_stroops <= $3::bigint returning spent_stroops::text as spent";
+
+class BudgetSpent extends Error {}
+
 /**
  * Reserves `stroops` of the day's fee budget before a relay, so concurrent
  * relays cannot overspend it. Returns false when the reservation would pass
- * `budget`. A reservation is kept whenever the relay's outcome is unknown
- * (a timeout, a 5xx, a garbled reply), because the fee may have been spent;
- * only releaseDailyFee gives one back.
+ * `budget`. For a wallet creation, `creationBudget` is the most creations may
+ * hold of that day: the same stroops are reserved from both, all or nothing,
+ * in one transaction that always takes day_budget's row first, so two
+ * creations can neither overspend the share nor deadlock. A reservation is
+ * kept whenever the relay's outcome is unknown (a timeout, a 5xx, a garbled
+ * reply), because the fee may have been spent; only releaseDailyFee gives
+ * one back.
  */
-export async function reserveDailyFee(db: Db, day: string, stroops: bigint, budget: bigint): Promise<boolean> {
+export async function reserveDailyFee(db: Db, day: string, stroops: bigint, budget: bigint, creationBudget: bigint | null = null): Promise<boolean> {
   if (stroops > budget || stroops < 0n) return false;
-  const rows = await db.query(RESERVE_DAY_BUDGET, [day, stroops.toString(), budget.toString()]);
-  return rows.length === 1;
+  if (creationBudget === null) {
+    const rows = await db.query(RESERVE_DAY_BUDGET, [day, stroops.toString(), budget.toString()]);
+    return rows.length === 1;
+  }
+  if (stroops > creationBudget) return false;
+  try {
+    await db.transaction(async (tx) => {
+      const total = await tx.query(RESERVE_DAY_BUDGET, [day, stroops.toString(), budget.toString()]);
+      const share = await tx.query(RESERVE_CREATION_BUDGET, [day, stroops.toString(), creationBudget.toString()]);
+      if (total.length !== 1 || share.length !== 1) throw new BudgetSpent();
+    });
+  } catch (err) {
+    if (!(err instanceof BudgetSpent)) throw err;
+    return false;
+  }
+  return true;
 }
 
 const RELEASE_DAY_BUDGET =
   "update day_budget set spent_stroops = greatest(day_budget.spent_stroops - $2::bigint, 0) where day = $1::date";
+// One statement, so a creation's two reservations always come back together.
+const RELEASE_DAY_AND_CREATION_BUDGET =
+  "with share as (update creation_budget set spent_stroops = greatest(creation_budget.spent_stroops - $2::bigint, 0) " +
+  "where day = $1::date returning day) " +
+  RELEASE_DAY_BUDGET;
 
 /**
  * Gives back a reservation made on `day` for a relay that provably never
- * reached the network (Channels refused it before submission). Floored at zero, so
- * no release can leave the day with more budget than it started with.
+ * reached the network (Channels refused it before submission), from the
+ * creation share too when `creation` is set. Floored at zero, so no release
+ * can leave the day with more budget than it started with.
  */
-export async function releaseDailyFee(db: Db, day: string, stroops: bigint): Promise<void> {
+export async function releaseDailyFee(db: Db, day: string, stroops: bigint, creation = false): Promise<void> {
   if (stroops <= 0n) return;
-  await db.query(RELEASE_DAY_BUDGET, [day, stroops.toString()]);
+  await db.query(creation ? RELEASE_DAY_AND_CREATION_BUDGET : RELEASE_DAY_BUDGET, [day, stroops.toString()]);
+}
+
+/** What wallet creations have reserved of `day`'s budget, in stroops. */
+export async function creationFeeSpent(db: Db, day: string): Promise<bigint> {
+  const rows = await db.query<{ spent: string }>("select spent_stroops::text as spent from creation_budget where day = $1::date", [day]);
+  return BigInt(rows[0]?.spent ?? "0");
 }
 
 const CLAIM_RELAY =
@@ -194,7 +243,7 @@ export async function claimRelay(db: Db, digest: string, now: Date, windowMs: nu
 const CLAIM_AUTH =
   "insert into relay_auth (address, nonce, digest, claimed_at, expiry_ledger) " +
   "select e.address, e.nonce, $2, $3::timestamptz, e.expiry_ledger " +
-  "from jsonb_to_recordset($1::jsonb) as e(address text, nonce text, expiry_ledger integer) " +
+  "from jsonb_to_recordset($1::text::jsonb) as e(address text, nonce text, expiry_ledger integer) " +
   "on conflict (address, nonce) do update set digest = excluded.digest, claimed_at = excluded.claimed_at, " +
   "expiry_ledger = excluded.expiry_ledger, held = false " +
   "where not relay_auth.held and relay_auth.claimed_at <= $4::timestamptz returning address";
@@ -288,6 +337,79 @@ export async function releaseRelay(db: Db, digest: string, claimedAt: Date): Pro
   await db.query(RELEASE_RELAY, [digest, claimedAt.toISOString()]);
 }
 
+const RECORD_WALLET_BIRTH =
+  "insert into wallet_births (address, tx_hash, ledger) values ($1, $2, $3) on conflict (address) do nothing returning address";
+
+/**
+ * Stores the transaction that created a wallet, once. The caller has already
+ * read it from RPC as a successful creation of this address; an address is
+ * created once, so a later row for it could only repeat this one and the
+ * first is kept. Returns true when this call wrote the row.
+ */
+export async function recordWalletBirth(db: Db, birth: { address: string; hash: string; ledger: number }): Promise<boolean> {
+  return (await db.query(RECORD_WALLET_BIRTH, [birth.address, birth.hash, birth.ledger])).length === 1;
+}
+
+/** The creation transaction hash stored for a wallet, or null. */
+export async function walletBirthOf(db: Db, address: string): Promise<string | null> {
+  const rows = await db.query<{ tx_hash: string }>("select tx_hash from wallet_births where address = $1", [address]);
+  return rows[0]?.tx_hash ?? null;
+}
+
+/**
+ * The most relayed creations one lookup returns, newest first, because the browser reads each from
+ * chain and this bounds that work. The newest rows are the ones that matter: a creation is recorded
+ * only after its simulation passes, and simulation refuses one for an address that already exists,
+ * so the creation that landed is followed only by relays simulated before it landed. The lookup
+ * says when older rows were left out, so a cut list is never read as every relay having failed.
+ */
+export const MAX_CREATION_RELAYS = 20;
+
+/**
+ * Records that a creation of `address` is about to be handed to Channels, and
+ * returns its row id. Written before the hand-off, so a creation that may land
+ * is never missing from the record. The id goes back as text: bigint arrives
+ * as a string over the wire anyway, and the cast keeps both drivers alike.
+ */
+export async function startCreationRelay(db: Db, address: string): Promise<string> {
+  const rows = await db.query<{ id: string }>("insert into relayed_creations (address) values ($1) returning id::text as id", [address]);
+  return rows[0]!.id;
+}
+
+/** Fills in what Channels answered for the creation started as `id`. */
+export async function finishCreationRelay(db: Db, id: string, transactionId: string, hash: string | null): Promise<void> {
+  await db.query("update relayed_creations set transaction_id = $2, tx_hash = $3 where id = $1::bigint", [id, transactionId, hash]);
+}
+
+/** Forgets a creation Channels provably refused before submitting it: it can never land. */
+export async function dropCreationRelay(db: Db, id: string): Promise<void> {
+  await db.query("delete from relayed_creations where id = $1::bigint", [id]);
+}
+
+/** Notes a relay's hash once a status read names it. Changes nothing for a relay that is not a creation, or one already noted. */
+export async function noteCreationHash(db: Db, transactionId: string, hash: string): Promise<void> {
+  await db.query("update relayed_creations set tx_hash = $2 where transaction_id = $1 and tx_hash is null", [transactionId, hash]);
+}
+
+/**
+ * The creations of `address` Kalypso handed to Channels, newest first, at most MAX_CREATION_RELAYS,
+ * and whether older ones were left out. One statement reads one past the cap, so the list and the
+ * flag come from the same snapshot.
+ */
+export async function creationRelaysOf(
+  db: Db,
+  address: string,
+): Promise<{ relayed: { transactionId: string | null; hash: string | null }[]; more: boolean }> {
+  const rows = await db.query<{ transaction_id: string | null; tx_hash: string | null }>(
+    "select transaction_id, tx_hash from relayed_creations where address = $1 order by id desc limit $2",
+    [address, MAX_CREATION_RELAYS + 1],
+  );
+  return {
+    relayed: rows.slice(0, MAX_CREATION_RELAYS).map((r) => ({ transactionId: r.transaction_id, hash: r.tx_hash })),
+    more: rows.length > MAX_CREATION_RELAYS,
+  };
+}
+
 /** One archived event: the verbatim XDR plus the decoded columns used to query it. */
 export interface EventRow {
   id: string;
@@ -312,7 +434,7 @@ const INSERT_EVENTS =
   "select r.id, r.ledger, r.tx_hash, r.tx_index, r.op_index, r.event_index, r.contract_id, r.event_name, " +
   "r.topic1_address, array(select jsonb_array_elements_text(r.accounts)), r.company_id, " +
   "array(select jsonb_array_elements_text(r.topics_xdr)), r.value_xdr, r.ledger_closed_at " +
-  "from jsonb_to_recordset($1::jsonb) as r(id text, ledger integer, tx_hash text, tx_index integer, " +
+  "from jsonb_to_recordset($1::text::jsonb) as r(id text, ledger integer, tx_hash text, tx_index integer, " +
   "op_index integer, event_index integer, contract_id text, event_name text, topic1_address text, " +
   "accounts jsonb, company_id text, topics_xdr jsonb, value_xdr text, ledger_closed_at timestamptz) " +
   "on conflict (id) do nothing returning id";
@@ -529,7 +651,7 @@ const positionParams = (p: Position | null) => {
 const ACCOUNT_EVENTS =
   EVENT_COLUMNS +
   "where contract_id = $1 and accounts @> array[$2::text] and ledger >= $3 and ledger <= $4 " +
-  "and ($5::jsonb is null or event_name in (select jsonb_array_elements_text($5::jsonb))) " +
+  "and ($5::text::jsonb is null or event_name in (select jsonb_array_elements_text($5::text::jsonb))) " +
   "and (ledger, tx_index, op_index, event_index) > ($6, $7, $8, $9) " +
   "order by ledger, tx_index, op_index, event_index limit $10";
 
@@ -593,7 +715,7 @@ export async function eventsForContract(
 const LATEST_CHECKPOINT =
   EVENT_COLUMNS +
   "where contract_id = $1 and topic1_address = $2 and ledger <= $3 " +
-  "and event_name in (select jsonb_array_elements_text($4::jsonb)) " +
+  "and event_name in (select jsonb_array_elements_text($4::text::jsonb)) " +
   "order by ledger desc, tx_index desc, op_index desc, event_index desc limit 1";
 
 export async function latestCheckpoint(

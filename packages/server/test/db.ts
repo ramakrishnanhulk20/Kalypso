@@ -1,11 +1,42 @@
 import { PGlite } from "@electric-sql/pglite";
-import { applySchema, pgliteDb, type Db } from "../src/archive/db.ts";
+import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
+import postgres from "postgres";
+import { afterAll } from "vitest";
+import { applySchema, pgliteDb, postgresDb, postgresOptions, type Db } from "../src/archive/db.ts";
+
+// KALYPSO_TEST_DB=wire sends every query over a real socket through postgres.js with production's
+// options, the way the deploy reaches Neon. PGlite called directly skips the driver's own parameter
+// typing and serialising, so a query can pass here and fail in production without this mode.
+const WIRE = process.env.KALYPSO_TEST_DB === "wire";
+
+const closers: Array<() => Promise<void>> = [];
+// Registered while the test file imports this module, so it runs once at the end of that file.
+if (WIRE) {
+  afterAll(async () => {
+    for (const close of closers.splice(0).reverse()) await close();
+  });
+}
 
 export async function freshDb(): Promise<{ pg: PGlite; db: Db }> {
   const pg = new PGlite();
-  const db = pgliteDb(pg);
+  const db = WIRE ? await wireDb(pg) : pgliteDb(pg);
   await applySchema(db);
   return { pg, db };
+}
+
+async function wireDb(pg: PGlite): Promise<Db> {
+  // One PGlite is one database session, so the pool is one connection: two would share a
+  // transaction. The server allows two so a reconnect after the driver's idle timeout is not
+  // refused while the old socket's close is still being processed.
+  const server = new PGLiteSocketServer({ db: pg, host: "127.0.0.1", port: 0, maxConnections: 2 });
+  await server.start();
+  closers.push(async () => {
+    await server.stop();
+    await pg.close();
+  });
+  const sql = postgres("postgres://postgres@" + server.getServerConn() + "/postgres", { ...postgresOptions(), max: 1 });
+  closers.push(() => sql.end({ timeout: 5 }));
+  return postgresDb(sql);
 }
 
 export async function clearTables(db: Db, tables: readonly string[]): Promise<void> {

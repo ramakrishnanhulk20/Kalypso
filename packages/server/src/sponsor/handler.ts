@@ -4,20 +4,24 @@ import {
   claimRelay,
   countAuthoriserRelays,
   countSponsorRequest,
+  dropCreationRelay,
+  finishCreationRelay,
   forgetExpiredRelays,
   holdRelay,
+  noteCreationHash,
   recordRelay,
   releaseAuthoriserRelays,
   releaseDailyFee,
   releaseRelay,
   reserveDailyFee,
+  startCreationRelay,
   type Db,
 } from "../archive/db.ts";
-import type { Config } from "../config.ts";
+import { creationBudgetOf, type Config } from "../config.ts";
 import { OutboundError, errorResponse, fetchWithTimeout, json, parseJsonBytes, readJsonBody } from "../http.ts";
 import type { Logger } from "../log.ts";
 import type { RpcClient } from "../rpc.ts";
-import { clientBucket, ipTag } from "./client-ip.ts";
+import { clientBucket, creationBucket, ipTag } from "./client-ip.ts";
 import { authExpiryLedger, requestDigest, signedEntryKeys, simulate, validateSponsorRequest, type SimulateFn } from "./validate.ts";
 
 export interface SponsorContext {
@@ -45,6 +49,8 @@ export const CLAIM_WINDOW_MS = 120_000;
 const MAX_RELAY_REPLY_BYTES = 64 * 1024;
 /** One format for Channels transaction ids, used both for what we accept and for what we pass on. */
 const TRANSACTION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+/** The service-wide creation count's key in the per-address daily counter; a key with a space can never be an address. */
+const ALL_CREATIONS_KEY = "wallet creations";
 
 // Channels' reply is input to us and, once relayed, to the browser. Only the
 // fields we return leave, each in its documented format.
@@ -65,9 +71,14 @@ const hourStartOf = (now: Date) => new Date(Math.floor(now.getTime() / 3_600_000
  *
  * Order: trusted client IP present, the per-IP hourly limit, JSON body under
  * 64 KiB, the structural sponsor rule, the duplicate check, simulation, the
- * per-address daily limit, the daily fee budget, then the relay. Every
- * parsing step, every signature check and every outbound call sits behind
- * the per-IP limit.
+ * per-address daily limit, for a wallet creation the per-IP (IPv6: per /48)
+ * and then the service-wide daily creation limits (both refused as
+ * rate_limited), the daily fee budget and, for a creation, its share of it
+ * (both refused as daily_budget_spent), for a creation its record in
+ * relayed_creations (refused 503 creation_not_recorded, everything released,
+ * when it cannot be written), then the relay. Every parsing step, every
+ * signature check, every outbound call and every write sits behind the
+ * per-IP limit.
  *
  * Channels is asked not to wait for the ledger (skipWait), so the reply is
  * `{ transactionId, status }` at once; the caller polls the status route. A
@@ -90,7 +101,8 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
   };
 
   if (req.method !== "POST") return refuse(405, "method_not_allowed", undefined, { allow: "POST" });
-  const ip = clientBucket(req.headers.get(cfg.TRUSTED_IP_HEADER));
+  const ipHeader = req.headers.get(cfg.TRUSTED_IP_HEADER);
+  const ip = clientBucket(ipHeader);
   if (ip === null) return refuse(400, "no_client_ip");
   const tag = ipTag(ip, cfg.LOG_SALT);
 
@@ -139,9 +151,30 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
       await releaseRelay(ctx.db, digest, claim.claimedAt);
       return refuse(429, "address_rate_limited", tag);
     }
-    if (!(await reserveDailyFee(ctx.db, day, verdict.chargeStroops, cfg.DAILY_FEE_BUDGET_STROOPS))) {
+    // Each creation is a new address, so the per-address count never stops
+    // anyone making wallets: these count them per caller and across the
+    // whole service instead. They share the per-address daily counter, the
+    // caller's keyed on the salted tag of its creation bucket so no raw IP is
+    // stored for a day; a key with a space can never be an address.
+    const isCreation = request.kind === "func" && request.creates !== null;
+    const callerCreations = isCreation ? ["wallet creation " + ipTag(creationBucket(ipHeader) ?? ip, cfg.LOG_SALT)] : [];
+    if (isCreation && !(await countAuthoriserRelays(ctx.db, callerCreations, day, cfg.WALLET_CREATIONS_PER_IP_PER_DAY))) {
       await releaseRelay(ctx.db, digest, claim.claimedAt);
       await releaseAuthoriserRelays(ctx.db, request.authorisers, day);
+      return refuse(429, "rate_limited", tag);
+    }
+    if (isCreation && !(await countAuthoriserRelays(ctx.db, [ALL_CREATIONS_KEY], day, cfg.WALLET_CREATIONS_PER_DAY))) {
+      await releaseRelay(ctx.db, digest, claim.claimedAt);
+      await releaseAuthoriserRelays(ctx.db, [...request.authorisers, ...callerCreations], day);
+      return refuse(429, "rate_limited", tag);
+    }
+    const dailyCounts = isCreation ? [...request.authorisers, ...callerCreations, ALL_CREATIONS_KEY] : request.authorisers;
+    // A creation is held to its share of the day too, so sign-ups alone can
+    // never spend what existing workers need for their own actions.
+    const creationBudget = isCreation ? creationBudgetOf(cfg) : null;
+    if (!(await reserveDailyFee(ctx.db, day, verdict.chargeStroops, cfg.DAILY_FEE_BUDGET_STROOPS, creationBudget))) {
+      await releaseRelay(ctx.db, digest, claim.claimedAt);
+      await releaseAuthoriserRelays(ctx.db, dailyCounts, day);
       return refuse(429, "daily_budget_spent", tag);
     }
     // Until its entries expire the body can still land, so a second copy
@@ -149,6 +182,28 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
     // there, with our fee.
     const lastUsableLedger = authExpiryLedger(request);
     if (lastUsableLedger !== null) await holdRelay(ctx.db, digest, claim.claimedAt, lastUsableLedger);
+    const releaseAll = async () => {
+      await releaseRelay(ctx.db, digest, claim.claimedAt);
+      await releaseDailyFee(ctx.db, day, verdict.chargeStroops, isCreation);
+      await releaseAuthoriserRelays(ctx.db, dailyCounts, day);
+    };
+
+    // A creation is written down last, after every check and reservation, and
+    // before Channels sees it: a creation that may land is then always on
+    // record, so a worker whose reply is lost can still find it, and an
+    // address with no record was never created through us (C51). When the
+    // record cannot be written, nothing is sent.
+    const creates = request.kind === "func" ? request.creates : null;
+    let creationId: string | null = null;
+    if (creates !== null) {
+      try {
+        creationId = await startCreationRelay(ctx.db, creates);
+      } catch (err) {
+        log.warn("sponsor_creation_unrecorded", { ipTag: tag, error: err instanceof Error ? err.name : "unknown" });
+        await releaseAll();
+        return refuse(503, "creation_not_recorded", tag);
+      }
+    }
 
     const params =
       request.kind === "func"
@@ -157,19 +212,26 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
     const relayed = await callChannels(ctx, { params }, { ipTag: tag, kind: request.kind });
     if (!relayed.ok) {
       // Only a documented pre-submission refusal proves nothing was sent, so
-      // only then do the claim, the reserved fee and the authorisers' daily
-      // counts come back. A timeout, a 5xx, a garbled reply or any other 4xx
+      // only then do the claim, the reserved fee, the daily counts and the
+      // creation record go. A timeout, a 5xx, a garbled reply or any other 4xx
       // (ONCHAIN_FAILED is a 400) might hide a submitted transaction, so all
-      // three stay.
+      // of them stay.
       if (relayed.notSubmitted) {
-        await releaseRelay(ctx.db, digest, claim.claimedAt);
-        await releaseDailyFee(ctx.db, day, verdict.chargeStroops);
-        await releaseAuthoriserRelays(ctx.db, request.authorisers, day);
+        await releaseAll();
+        if (creationId !== null) await dropCreationRelay(ctx.db, creationId);
       }
       return relayed.response;
     }
     const { transactionId, status, hash } = relayed.data;
     await recordRelay(ctx.db, digest, claim.claimedAt, transactionId, status);
+    if (creationId !== null) {
+      try {
+        await finishCreationRelay(ctx.db, creationId, transactionId, hash);
+      } catch (err) {
+        // The row stands without an id, which still says a creation may land; the relay itself went out.
+        log.warn("sponsor_creation_unfinished", { error: err instanceof Error ? err.name : "unknown" });
+      }
+    }
     log.info("sponsor_relayed", {
       transactionId,
       status,
@@ -192,7 +254,9 @@ export async function sponsorHandler(req: Request, ctx: SponsorContext): Promise
  * value inside the JSON body. Requests are limited per IP per hour at the
  * same rate as the POST, counted before the id is read and separately from
  * the POST, so polling cannot use up a worker's relays. Logged the same way as the POST: the salted IP tag on
- * refusals and failures, no IP-derived field next to the id and hash.
+ * refusals and failures, no IP-derived field next to the id and hash. A hash
+ * Channels names is noted on the relay's creation record, when it is one, so
+ * a later birth lookup carries it.
  */
 export async function sponsorStatusHandler(req: Request, ctx: SponsorStatusContext): Promise<Response> {
   const { cfg, log } = ctx;
@@ -225,6 +289,14 @@ export async function sponsorStatusHandler(req: Request, ctx: SponsorStatusConte
       return errorResponse(502, "relay_bad_reply");
     }
     log.info("sponsor_status", { transactionId: id, status: answer.data.status, hash: answer.data.hash });
+    if (answer.data.hash !== null) {
+      try {
+        await noteCreationHash(ctx.db, id, answer.data.hash);
+      } catch (err) {
+        // Only a later lookup's convenience is lost: it can still ask Channels by id. No IP tag here (C36).
+        log.warn("sponsor_creation_note_failed", { error: err instanceof Error ? err.name : "unknown" });
+      }
+    }
     return json({ status: answer.data.status, hash: answer.data.hash });
   } catch (err) {
     log.warn("sponsor_internal_error", { ipTag: tag, error: err instanceof Error ? err.name : "unknown" });

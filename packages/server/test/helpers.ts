@@ -16,10 +16,15 @@ export const DB_INGEST = "postgres://ingest:ingest-pass-7Hq2@db.internal:5432/ka
 export const DB_API = "postgres://reader:reader-pass-K9z4@db.internal:5432/kalypso";
 export const CRON_SECRET = "cron-secret-4bW9xQ2mZ7pL1vK8sD3fH6jN0tR5yE2u";
 export const LOG_SALT = "log-salt-9Tq3Lm7Xc2Vb8Nz1Kp4Rw6Yh0Gd5Fs3a";
+/** The origin the fixture passkeys sign on, and the host the test requests go to. */
+export const TEST_ORIGIN = "https://kalypso.test";
+/** The origin of the dev server the live wallet creation in test/sponsor/live-wallet-creation.json was made on. */
+export const LIVE_CREATION_ORIGIN = "http://localhost:47833";
 
 export function testEnv(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
   return {
     NETWORK: "testnet",
+    SPONSOR_ALLOWED_ORIGINS: TEST_ORIGIN + "," + LIVE_CREATION_ORIGIN,
     PAYROLL_CONTRACT_ID: PAYROLL,
     TOKEN_CONTRACT_ID: TOKEN,
     AUDITOR_CONTRACT_ID: AUDITOR,

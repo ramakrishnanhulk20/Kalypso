@@ -85,6 +85,25 @@ const ledgerEntriesSchema = z.object({
   latestLedger: ledgerNumber,
 });
 
+/** The network's largest transaction in base64 plus a fee bump, as core's transfer binding caps it. */
+export const MAX_ENVELOPE_CHARS = 180_000;
+const TX_HASH = /^[0-9a-f]{64}$/;
+
+// Only the three fields a caller reads leave this module; the result and meta XDR stay behind.
+const transactionSchema = z
+  .object({
+    status: z.enum(["SUCCESS", "FAILED", "NOT_FOUND"]),
+    envelopeXdr: z.string().min(1).max(MAX_ENVELOPE_CHARS).optional(),
+    ledger: ledgerNumber.optional(),
+  })
+  .refine((t) => t.status === "NOT_FOUND" || (t.envelopeXdr !== undefined && t.ledger !== undefined))
+  .transform((t): RpcTransaction =>
+    t.status === "NOT_FOUND" ? { status: "NOT_FOUND" } : { status: t.status, envelopeXdr: t.envelopeXdr!, ledger: t.ledger! },
+  );
+
+/** A transaction as RPC holds it (about the last 7 days), or NOT_FOUND. */
+export type RpcTransaction = { status: "NOT_FOUND" } | { status: "SUCCESS" | "FAILED"; envelopeXdr: string; ledger: number };
+
 const envelopeSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.number(),
@@ -125,10 +144,19 @@ export interface RpcClient {
   getLedgerEntries(keys: readonly string[], signal?: AbortSignal): Promise<RpcLedgerEntries>;
 }
 
+/** Transaction reads, apart from RpcClient so the archive's stand-ins need not grow a method they never use. */
+export interface RpcTransactionReader {
+  /**
+   * Reads one transaction by its 64-character lower-case hex hash: its status, base64 envelope and
+   * ledger. Throws RangeError for any other hash, before any network call.
+   */
+  getTransaction(hash: string, signal?: AbortSignal): Promise<RpcTransaction>;
+}
+
 /** RPC answers -32600 when a startLedger has fallen out of its retention window. */
 export const RPC_INVALID_REQUEST = -32600;
 
-export function createRpcClient(cfg: Pick<Config, "RPC_URL" | "CHANNELS_URL">, fetchImpl: typeof fetch = fetch): RpcClient {
+export function createRpcClient(cfg: Pick<Config, "RPC_URL" | "CHANNELS_URL">, fetchImpl: typeof fetch = fetch): RpcClient & RpcTransactionReader {
   let nextId = 1;
 
   async function call<T>(method: string, params: unknown, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
@@ -171,6 +199,10 @@ export function createRpcClient(cfg: Pick<Config, "RPC_URL" | "CHANNELS_URL">, f
     getLedgerEntries: async (keys, signal) => {
       if (keys.length === 0 || keys.length > MAX_LEDGER_KEYS) throw new RangeError("getLedgerEntries takes 1 to 200 keys");
       return call("getLedgerEntries", { keys: [...keys] }, ledgerEntriesSchema, signal);
+    },
+    getTransaction: async (hash, signal) => {
+      if (typeof hash !== "string" || !TX_HASH.test(hash)) throw new RangeError("getTransaction takes a 64-character lower-case hex hash");
+      return call("getTransaction", { hash }, transactionSchema, signal);
     },
   };
 }

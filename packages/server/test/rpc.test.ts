@@ -66,6 +66,20 @@ describe("createRpcClient", () => {
     await expect(tooMany.getLedgerEntries(["AAAABg=="])).rejects.toMatchObject({ code: "bad_reply" });
   });
 
+  it("reads a transaction by hash, keeps only its status, envelope and ledger, and refuses a bad hash before any call", async () => {
+    const hash = "ab".repeat(32);
+    const found = { status: "SUCCESS", txHash: hash, envelopeXdr: "AAAA", resultMetaXdr: "BBBB", ledger: 40, latestLedger: 50 };
+    const { rpc, fetchImpl } = rpcWith((req) => ok(req.params.hash === hash ? found : { status: "NOT_FOUND", latestLedger: 50 })(req));
+    expect(await rpc.getTransaction(hash)).toEqual({ status: "SUCCESS", envelopeXdr: "AAAA", ledger: 40 });
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]!.body))).toMatchObject({ method: "getTransaction", params: { hash } });
+    expect(await rpc.getTransaction("cd".repeat(32))).toEqual({ status: "NOT_FOUND" });
+    for (const bad of ["AB".repeat(32), "ab", 7 as unknown as string]) await expect(rpc.getTransaction(bad)).rejects.toBeInstanceOf(RangeError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    for (const reply of [{ status: "SUCCESS", ledger: 40 }, { status: "FAILED", envelopeXdr: "AAAA" }, { status: "PENDING" }, { status: "SUCCESS", envelopeXdr: "A".repeat(180_001), ledger: 40 }]) {
+      await expect(rpcWith(ok(reply)).rpc.getTransaction(hash)).rejects.toMatchObject({ code: "bad_reply" });
+    }
+  });
+
   it("turns every unexpected reply into an RpcError without upstream text in its message", async () => {
     const cases: Array<[(req: any) => { status?: number; body: unknown }, RpcError["code"]]> = [
       [(req) => ({ body: { jsonrpc: "2.0", id: req.id, error: { code: RPC_INVALID_REQUEST, message: "startLedger out of range" } } }), RPC_INVALID_REQUEST],

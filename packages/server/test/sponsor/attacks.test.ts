@@ -47,7 +47,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await clearTables(db, ["ip_hour", "address_day", "day_budget", "relay_dedupe", "relay_auth"]);
+  await clearTables(db, ["ip_hour", "address_day", "day_budget", "creation_budget", "relay_dedupe", "relay_auth"]);
 });
 
 /** Channels refusing with a 4xx, which proves nothing was submitted. */
@@ -89,7 +89,7 @@ async function send(body: unknown, ctx: SponsorContext, ip = "203.0.113.7") {
 
 describe("the daily budget on a relay Channels provably refused", () => {
   it("refuses to keep the fee of a relay Channels turned away with a 4xx, so refusals never drain the daily budget", async () => {
-    const env = { DAILY_FEE_BUDGET_STROOPS: String(CHARGE * 2n), FEE_CAP_STROOPS: String(CHARGE) };
+    const env = { DAILY_FEE_BUDGET_STROOPS: String(CHARGE * 2n), FEE_CAP_CALL_STROOPS: String(CHARGE), FEE_CAP_CREATION_STROOPS: String(CHARGE) };
     const good = await mergeFuncAuth();
     for (let i = 0; i < 3; i++) {
       expect(await send(good, context({}, env))).toEqual({ status: 502, body: { error: "relay_refused" } });

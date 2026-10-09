@@ -22,8 +22,12 @@ describe("loadConfig", () => {
     expect(cfg.RPC_URL).toBe("https://soroban-testnet.stellar.org");
     expect(cfg.USDC_SAC_ID).toBe("CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA");
     expect(cfg.CHANNELS_URL).toBe("https://channels.openzeppelin.com/testnet");
-    expect(cfg.FEE_CAP_STROOPS).toBe(2_000_000n);
-    expect(cfg.DAILY_FEE_BUDGET_STROOPS).toBe(200_000_000n);
+    expect(cfg.FEE_CAP_CREATION_STROOPS).toBe(25_000_000n);
+    expect(cfg.FEE_CAP_CALL_STROOPS).toBe(10_000_000n);
+    expect(cfg.DAILY_FEE_BUDGET_STROOPS).toBe(2_000_000_000n);
+    expect(cfg.CREATION_BUDGET_SHARE_PERCENT).toBe(50);
+    expect(cfg.WALLET_CREATIONS_PER_DAY).toBe(60);
+    expect(loadConfig(testEnv({ SPONSOR_ALLOWED_ORIGINS: undefined })).SPONSOR_ALLOWED_ORIGINS).toEqual([]);
     expect(cfg.PER_IP_LIMIT_PER_HOUR).toBe(60);
     expect(cfg.PER_ADDRESS_LIMIT_PER_DAY).toBe(20);
     expect(cfg.ARCHIVE_START_LEDGER).toBeUndefined();
@@ -115,12 +119,14 @@ describe("loadConfig", () => {
     expect(loadConfig(testEnv({ CHANNELS_URL: "http://127.0.0.1:4010" })).CHANNELS_URL).toBe("http://127.0.0.1:4010");
   });
 
-  it("refuses fee numbers that are not whole positive stroops, and a budget below the cap", () => {
+  it("refuses fee numbers that are not whole positive stroops, and a budget below the call cap", () => {
     for (const bad of ["0", "-5", "1.5", "1e6", " 100", "99999999999999999999"]) {
-      expect(problemsOf(testEnv({ FEE_CAP_STROOPS: bad }))[0]).toMatch(/^FEE_CAP_STROOPS: must be a whole number/);
+      for (const key of ["FEE_CAP_CREATION_STROOPS", "FEE_CAP_CALL_STROOPS"]) {
+        expect(problemsOf(testEnv({ [key]: bad }))[0], key + " " + bad).toMatch(new RegExp("^" + key + ": must be a whole number"));
+      }
     }
-    expect(problemsOf(testEnv({ FEE_CAP_STROOPS: "500", DAILY_FEE_BUDGET_STROOPS: "499" }))).toEqual([
-      "DAILY_FEE_BUDGET_STROOPS: must be at least FEE_CAP_STROOPS",
+    expect(problemsOf(testEnv({ FEE_CAP_CALL_STROOPS: "500", FEE_CAP_CREATION_STROOPS: "100", DAILY_FEE_BUDGET_STROOPS: "499" }))).toEqual([
+      "DAILY_FEE_BUDGET_STROOPS: must be at least FEE_CAP_CALL_STROOPS",
     ]);
     expect(problemsOf(testEnv({ PER_IP_LIMIT_PER_HOUR: "0" }))[0]).toMatch(/^PER_IP_LIMIT_PER_HOUR:/);
     for (const bad of ["0", "-1", "2.5", "100000"]) {
@@ -128,6 +134,72 @@ describe("loadConfig", () => {
     }
     expect(loadConfig(testEnv({ PER_ADDRESS_LIMIT_PER_DAY: "5" })).PER_ADDRESS_LIMIT_PER_DAY).toBe(5);
     expect(problemsOf(testEnv({ TRUSTED_IP_HEADER: "X Real IP" }))[0]).toMatch(/^TRUSTED_IP_HEADER:/);
+  });
+
+  it("fails boot while the retired FEE_CAP_STROOPS is still set, naming the two keys that replace it, and ignores it blank", () => {
+    const problems = problemsOf(testEnv({ FEE_CAP_STROOPS: "25000000" }));
+    expect(problems).toEqual(["FEE_CAP_STROOPS: no longer read; set FEE_CAP_CREATION_STROOPS and FEE_CAP_CALL_STROOPS instead, then remove it"]);
+    expect(JSON.stringify(problems)).not.toContain("25000000");
+    expect(problemsOf({ ...testEnv(), FEE_CAP_STROOPS: "1", NETWORK: undefined })).toEqual([
+      "FEE_CAP_STROOPS: no longer read; set FEE_CAP_CREATION_STROOPS and FEE_CAP_CALL_STROOPS instead, then remove it",
+      "NETWORK: missing",
+    ]);
+    expect(loadConfig(testEnv({ FEE_CAP_STROOPS: "" })).FEE_CAP_CALL_STROOPS).toBe(10_000_000n);
+  });
+
+  it("takes the creation share as a whole percent from 1 to 100, and needs it to cover one creation at the creation cap", () => {
+    expect(loadConfig(testEnv({ CREATION_BUDGET_SHARE_PERCENT: "100" })).CREATION_BUDGET_SHARE_PERCENT).toBe(100);
+    expect(loadConfig(testEnv({ CREATION_BUDGET_SHARE_PERCENT: "1", FEE_CAP_CREATION_STROOPS: "20000000" })).CREATION_BUDGET_SHARE_PERCENT).toBe(1);
+    for (const bad of ["0", "101", "-1", "50.5", "050", " 50", "half"]) {
+      expect(problemsOf(testEnv({ CREATION_BUDGET_SHARE_PERCENT: bad })), bad).toEqual(["CREATION_BUDGET_SHARE_PERCENT: must be a whole number from 1 to 100"]);
+    }
+    // 1 percent of the default 200 XLM is 2 XLM, under the default 2.5 XLM creation cap. The rule's own text is
+    // printed even though the cap and the budget were left to their defaults.
+    expect(problemsOf(testEnv({ CREATION_BUDGET_SHARE_PERCENT: "1", FEE_CAP_CREATION_STROOPS: "25000000" }))).toEqual([
+      "CREATION_BUDGET_SHARE_PERCENT: must give creations at least FEE_CAP_CREATION_STROOPS of DAILY_FEE_BUDGET_STROOPS",
+    ]);
+    expect(problemsOf(testEnv({ FEE_CAP_CREATION_STROOPS: "1000000001" }))).toEqual([
+      "CREATION_BUDGET_SHARE_PERCENT: must give creations at least FEE_CAP_CREATION_STROOPS of DAILY_FEE_BUDGET_STROOPS",
+    ]);
+    expect(loadConfig(testEnv({ FEE_CAP_CREATION_STROOPS: "1000000000" })).FEE_CAP_CREATION_STROOPS).toBe(1_000_000_000n);
+  });
+
+  it("takes WALLET_CREATIONS_PER_DAY as a whole number from 1 to 99999", () => {
+    expect(loadConfig(testEnv({ WALLET_CREATIONS_PER_DAY: "7" })).WALLET_CREATIONS_PER_DAY).toBe(7);
+    for (const bad of ["0", "-1", "2.5", "100000", "sixty"]) {
+      expect(problemsOf(testEnv({ WALLET_CREATIONS_PER_DAY: bad })), bad).toEqual(["WALLET_CREATIONS_PER_DAY: must be a whole number from 1 to 99999"]);
+    }
+  });
+
+  it("takes SPONSOR_ALLOWED_ORIGINS as comma-separated origins, spelled the way URL().origin spells them", () => {
+    const origins = (value: string, NODE_ENV?: string) => loadConfig({ ...testEnv({ SPONSOR_ALLOWED_ORIGINS: value }), NODE_ENV }).SPONSOR_ALLOWED_ORIGINS;
+    expect(origins("https://kalypso-payroll.vercel.app")).toEqual(["https://kalypso-payroll.vercel.app"]);
+    expect(origins("HTTPS://Kalypso-Payroll.Vercel.App/, https://kalypso-payroll.vercel.app:443,https://kalypso-payroll.vercel.app")).toEqual([
+      "https://kalypso-payroll.vercel.app",
+    ]);
+    expect(origins("http://localhost:3001,http://localhost:3002", "development")).toEqual(["http://localhost:3001", "http://localhost:3002"]);
+    expect(origins("https://kalypso-payroll.vercel.app", "production")).toEqual(["https://kalypso-payroll.vercel.app"]);
+  });
+
+  it("refuses an origin list with anything but https origins, and http://localhost in production", () => {
+    const rule = "SPONSOR_ALLOWED_ORIGINS: must be comma-separated https origins (or http://localhost:<port> outside production), each with no path, query or credentials";
+    for (const bad of [
+      "http://kalypso-payroll.vercel.app",
+      "http://127.0.0.1:3001",
+      "https://kalypso-payroll.vercel.app/app",
+      "https://kalypso-payroll.vercel.app/?x=1",
+      "https://kalypso-payroll.vercel.app/#top",
+      "https://user:pw@kalypso-payroll.vercel.app",
+      "https://kalypso-payroll.vercel.app,,https://kalypso.test",
+      "kalypso-payroll.vercel.app",
+      "ftp://kalypso.test",
+      "null",
+    ]) {
+      expect(problemsOf(testEnv({ SPONSOR_ALLOWED_ORIGINS: bad })), bad).toEqual([rule]);
+    }
+    expect(problemsOf({ ...testEnv({ SPONSOR_ALLOWED_ORIGINS: "https://kalypso-payroll.vercel.app,http://localhost:3001" }), NODE_ENV: "production" })).toEqual([
+      "SPONSOR_ALLOWED_ORIGINS: must be comma-separated https origins, each with no path, query or credentials",
+    ]);
   });
 
   it("never repeats a rejected value in the error", () => {

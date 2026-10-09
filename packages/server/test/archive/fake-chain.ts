@@ -186,6 +186,9 @@ export const payslipIssued = (contract: string, ledger: number, companyId: bigin
     value: xdr.ScVal.scvMap([]),
   });
 
+export const workerJoined = (contract: string, ledger: number, companyId: bigint, worker: string, tx = 1): RpcEvent =>
+  rpcEvent({ ledger, tx, contract, topics: [sym("worker_joined"), u64(companyId), addrVal(worker)], value: xdr.ScVal.scvMap([]) });
+
 export const companyCreated = (contract: string, ledger: number, companyId: bigint, admin: string, label: string, tx = 1): RpcEvent =>
   rpcEvent({
     ledger,

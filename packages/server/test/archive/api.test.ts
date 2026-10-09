@@ -9,7 +9,20 @@ import { recordGap, type Db } from "../../src/archive/db.ts";
 import { createLogger } from "../../src/log.ts";
 import { PAYROLL, STRANGER, TOKEN, contractFor, keypairFor, testConfig } from "../helpers.ts";
 import { freshDb, resetArchive } from "../db.ts";
-import { FakeChain, addrVal, deployTxEvent, depositEvent, mergeEvent, payslipIssued, rpcEvent, sym, transferEvent, txHashOf } from "./fake-chain.ts";
+import {
+  FakeChain,
+  addrVal,
+  companyCreated,
+  deployTxEvent,
+  depositEvent,
+  mergeEvent,
+  payslipIssued,
+  rpcEvent,
+  sym,
+  transferEvent,
+  txHashOf,
+  workerJoined,
+} from "./fake-chain.ts";
 
 const cfg = testConfig({ ARCHIVE_START_LEDGER: "100", TOKEN_DEPLOY_TX: txHashOf(100) });
 const alice = keypairFor("alice").publicKey();
@@ -64,6 +77,7 @@ async function get(path: string, ctx = context(), method = "GET") {
 }
 
 const tokenEvents = (account: string, query = "") => "/v1/tokens/" + TOKEN + "/accounts/" + account + "/events" + query;
+const payrollEvents = (account: string, query = "") => "/v1/payroll/" + PAYROLL + "/accounts/" + account + "/events" + query;
 const decodeName = (row: { topics_xdr: string[] }) => xdr.ScVal.fromXDR(row.topics_xdr[0]!, "base64").sym().toString();
 
 describe("GET /v1/health", () => {
@@ -231,6 +245,64 @@ describe("GET /v1/payroll/{contract}/companies/{companyId}/events", () => {
   });
 });
 
+describe("GET /v1/payroll/{contract}/accounts/{account}/events", () => {
+  beforeEach(() => {
+    chain.add(
+      companyCreated(PAYROLL, 105, 7n, alice, "Acme"),
+      workerJoined(PAYROLL, 115, 7n, bob),
+      workerJoined(PAYROLL, 116, 8n, alice),
+      workerJoined(PAYROLL, 117, 9n, carol),
+    );
+  });
+
+  it("returns only our payroll events that name the account, as stored XDR rows, with complete and ingested_through", async () => {
+    const res = await get(payrollEvents(bob, "?from_ledger=0"));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ cursor: null, complete: true, ingested_through: 500 });
+    // The token transfers that name bob and the company Alice created (her address is data, not a topic) stay out.
+    expect(res.body.events.map((r: any) => [r.ledger_seq, decodeName(r)])).toEqual([
+      [115, "worker_joined"],
+      [125, "payslip_issued"],
+      [165, "payslip_issued"],
+    ]);
+    const source = chain.events.find((e) => e.ledger === 115)!;
+    expect(res.body.events[0]).toEqual({
+      ledger_seq: 115,
+      tx_hash: source.txHash,
+      tx_application_order: 1,
+      operation_index: 0,
+      event_index: 0,
+      ledger_close_time: source.ledgerClosedAt.replace("Z", ".000Z"),
+      contract_id: PAYROLL,
+      topics_xdr: source.topic,
+      data_xdr: source.value,
+    });
+    expect((await get(payrollEvents(alice))).body.events.map((r: any) => r.ledger_seq)).toEqual([116, 126]);
+    expect((await get(payrollEvents(carol))).body.events.map((r: any) => r.ledger_seq)).toEqual([117]);
+    expect((await get(payrollEvents(keypairFor("dave").publicKey()))).body.events).toEqual([]);
+  });
+
+  it("pages with our cursor until it is null", async () => {
+    const first = await get(payrollEvents(bob, "?limit=1"));
+    expect(first.body.cursor).toBe("115-1-0-0");
+    const second = await get(payrollEvents(bob, "?limit=2&cursor=" + first.body.cursor));
+    expect([second.body.events.map((r: any) => r.ledger_seq), second.body.cursor]).toEqual([[125, 165], null]);
+    expect((await get(payrollEvents(bob, "?from_ledger=126"))).body.events.map((r: any) => r.ledger_seq)).toEqual([165]);
+  });
+
+  it("says complete: false for any range a gap touches", async () => {
+    await get("/v1/health");
+    await recordGap(db, 200, 210, NOW);
+    expect((await get(payrollEvents(bob, "?from_ledger=0"))).body.complete).toBe(false);
+    expect((await get(payrollEvents(bob, "?from_ledger=211"))).body.complete).toBe(true);
+  });
+
+  it("vouches for nothing before RPC's oldest ledger when the archive was not started at deployment", async () => {
+    const res = await get(payrollEvents(bob, "?from_ledger=0"), context({ cfg: testConfig(), archiveStartLedger: undefined }));
+    expect([res.body.complete, res.body.events.length]).toEqual([false, 3]);
+  });
+});
+
 describe("GET /contracts/{contract}/events (the SDK IndexerClient shape)", () => {
   it("serves the token's whole stream as decoded JSON rows with source-independent ids", async () => {
     const res = await get("/contracts/" + TOKEN + "/events?startLedger=101&endLedger=125&limit=200");
@@ -289,6 +361,14 @@ describe("bad inputs are refused with 400 before anything runs (C24)", () => {
     ["a company id with leading zero", "/v1/payroll/" + PAYROLL + "/companies/07/events", "bad_company"],
     ["a company id beyond u64", "/v1/payroll/" + PAYROLL + "/companies/18446744073709551616/events", "bad_company"],
     ["a token id on the payroll route", "/v1/payroll/" + TOKEN + "/companies/7/events", "unknown_contract"],
+    ["a token id on the payroll account route", "/v1/payroll/" + TOKEN + "/accounts/" + bob + "/events", "unknown_contract"],
+    ["an unknown contract on the payroll account route", "/v1/payroll/" + STRANGER + "/accounts/" + bob + "/events", "unknown_contract"],
+    ["SQL metacharacters in a payroll account", payrollEvents("G'%20OR%201=1--"), "bad_account"],
+    ["an M address on the payroll account route", payrollEvents(muxed), "bad_account"],
+    ["a lower-case payroll account", payrollEvents(bob.toLowerCase()), "bad_account"],
+    ["a payroll account cursor in the wrong format", payrollEvents(bob, "?cursor=0021775926572404736-0000000002"), "bad_cursor"],
+    ["a payroll account limit of 201", payrollEvents(bob, "?limit=201"), "bad_limit"],
+    ["a payroll account parameter given twice", payrollEvents(bob, "?from_ledger=5&from_ledger=6"), "duplicate_parameter"],
     ["a checkpoint ledger that is not a number", "/v1/tokens/" + TOKEN + "/accounts/" + bob + "/checkpoint?at_ledger=1;", "bad_at_ledger"],
     ["a stream limit of 1e9", "/contracts/" + TOKEN + "/events?limit=1e9", "bad_limit"],
   ];
@@ -330,6 +410,7 @@ describe("reads stay read-only and bounded", () => {
       tokenEvents(bob),
       "/v1/tokens/" + TOKEN + "/accounts/" + bob + "/checkpoint",
       "/v1/payroll/" + PAYROLL + "/companies/7/events",
+      payrollEvents(bob),
       "/contracts/" + TOKEN + "/events",
     ]) {
       expect((await get(path, ctx)).status).toBe(200);

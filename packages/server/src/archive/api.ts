@@ -27,6 +27,7 @@ import { scValToPlainJson } from "./scval-json.ts";
  *   GET /v1/tokens/{contract}/accounts/{account}/events      IndexerV1Client (INDEXER.md C2, C3)
  *   GET /v1/tokens/{contract}/accounts/{account}/checkpoint  IndexerV1Client (INDEXER.md C1)
  *   GET /v1/payroll/{contract}/companies/{companyId}/events  our payroll events
+ *   GET /v1/payroll/{contract}/accounts/{account}/events     our payroll events that name a worker
  *   GET /contracts/{contract}/events                         IndexerClient, the one hybridFetchEvents takes
  *
  * Every data reply carries `complete` and `ingested_through` (threat model
@@ -130,6 +131,10 @@ function matchRoute(pathname: string, basePath: string): Route | null {
   if (parts.length === 6 && parts[0] === "v1" && parts[1] === "payroll" && parts[3] === "companies" && parts[5] === "events") {
     const [contract, company] = [parts[2]!, parts[4]!];
     return (ctx, q) => companyEvents(ctx, q, contract, company);
+  }
+  if (parts.length === 6 && parts[0] === "v1" && parts[1] === "payroll" && parts[3] === "accounts" && parts[5] === "events") {
+    const [contract, account] = [parts[2]!, parts[4]!];
+    return (ctx, q) => payrollAccountEvents(ctx, q, contract, account);
   }
   if (parts.length === 3 && parts[0] === "contracts" && parts[2] === "events") {
     const contract = parts[1]!;
@@ -333,6 +338,29 @@ function companyEvents(ctx: ArchiveContext, q: Query, contractSeg: string, compa
   return async (c) => {
     const to = endOf(range, c);
     const rows = await eventsForCompany(ctx.db.api, { contractId, companyId, fromLedger: range.from, toLedger: to, after, limit: limit + 1 });
+    const { events, cursor } = page(rows, limit);
+    return {
+      status: 200,
+      body: { events: events.map(v1Row), cursor, complete: isComplete(c, range.from, to), ingested_through: ingestedThrough(c) },
+    };
+  };
+}
+
+/**
+ * Our payroll events with `account` among their topic addresses (ingest files
+ * every topic address under accounts): its invites, joins, removals and
+ * payslips, so a worker on a new device can find the companies they joined.
+ * The same parameters and reply as companyEvents.
+ */
+function payrollAccountEvents(ctx: ArchiveContext, q: Query, contractSeg: string, accountSeg: string): Answer {
+  const contractId = contractParam(contractSeg, ctx.cfg.PAYROLL_CONTRACT_ID);
+  const account = accountParam(accountSeg);
+  const after = cursorParam(q.get("cursor"));
+  const limit = limitParam(q.get("limit"));
+  const range = rangeParams(q, "from_ledger", null);
+  return async (c) => {
+    const to = endOf(range, c);
+    const rows = await eventsForAccount(ctx.db.api, { contractId, account, fromLedger: range.from, toLedger: to, types: null, after, limit: limit + 1 });
     const { events, cursor } = page(rows, limit);
     return {
       status: 200,

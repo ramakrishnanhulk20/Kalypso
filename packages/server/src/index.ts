@@ -1,6 +1,6 @@
 export { loadConfig, secretValues, ConfigError, type Config } from "./config.ts";
 export { createLogger, type Logger } from "./log.ts";
-export { createRpcClient, RpcError, type RpcClient } from "./rpc.ts";
+export { createRpcClient, RpcError, type RpcClient, type RpcTransaction, type RpcTransactionReader } from "./rpc.ts";
 export {
   sponsorHandler,
   sponsorStatusHandler,
@@ -8,6 +8,12 @@ export {
   type SponsorContext,
   type SponsorStatusContext,
 } from "./sponsor/handler.ts";
+export {
+  walletBirthLookupHandler,
+  walletBirthRecordHandler,
+  type WalletBirthLookupContext,
+  type WalletBirthRecordContext,
+} from "./sponsor/birth.ts";
 export {
   validateSponsorRequest,
   simulate,

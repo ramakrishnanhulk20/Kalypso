@@ -7,13 +7,15 @@ import {
   Networks,
   Operation,
   SorobanDataBuilder,
+  StrKey,
   TransactionBuilder,
+  authorizeEntry,
   authorizeInvocation,
   hash,
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
-import { AUDITOR, STRANGER, TOKEN, USDC, contractFor, keypairFor } from "../helpers.ts";
+import { AUDITOR, STRANGER, TEST_ORIGIN, TOKEN, USDC, contractFor, keypairFor } from "../helpers.ts";
 
 export const LATEST_LEDGER = 5_070_600;
 export const worker = keypairFor("worker");
@@ -241,3 +243,145 @@ export function createContractInvocation(): xdr.SorobanAuthorizedInvocation {
   root.subInvocations([create]);
   return root;
 }
+
+/** passkey-kit 0.19.1's shared deployer: an ed25519 seed of sha256("kalepail"), its DEFAULT_DEPLOYER_SEED. */
+export const kitDeployer = Keypair.fromRawEd25519Seed(hash(Buffer.from("kalepail")));
+
+const sym = (name: string) => xdr.ScVal.scvSymbol(name);
+const none = () => xdr.ScVal.scvVec([xdr.ScVal.scvVoid()]);
+
+/** An uncompressed P-256 public key's shape: 0x04 then x and y. Only the wallet's constructor checks the curve. */
+export const p256Key = (fill = 0x11): Buffer => Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, fill)]);
+
+/**
+ * The first signer passkey-kit's buildDeployTransaction gives a wallet, in its contract client's
+ * encoding as read back from the live deploy: Secp256r1(key id, public key, no expiry, no limits,
+ * persistent).
+ */
+export function kitSigner(keyId: Buffer, fields: Partial<Record<"variant" | "expiration" | "limits" | "storage", xdr.ScVal>> = {}): xdr.ScVal {
+  return xdr.ScVal.scvVec([
+    fields.variant ?? sym("Secp256r1"),
+    xdr.ScVal.scvBytes(keyId),
+    xdr.ScVal.scvBytes(p256Key()),
+    fields.expiration ?? none(),
+    fields.limits ?? none(),
+    fields.storage ?? xdr.ScVal.scvVec([sym("Persistent")]),
+  ]);
+}
+
+/** WebAuthn client data as a browser writes it for an assertion on `origin`. */
+export const clientDataJson = (origin = TEST_ORIGIN, type = "webauthn.get"): Buffer =>
+  Buffer.from(JSON.stringify({ type, challenge: "3x4_eMFvuRHKI9I-Amm5sxW-1G_Jq0SAtQwvY-hD880", origin, crossOrigin: false }));
+
+/** WebAuthn authenticator data for `rpId`: its sha256, the user-present and user-verified flags, a zero counter. */
+export const authenticatorData = (rpId = new URL(TEST_ORIGIN).hostname): Buffer =>
+  Buffer.concat([hash(Buffer.from(rpId)), Buffer.from([0x05, 0, 0, 0, 0])]);
+
+export interface ProofOptions {
+  authenticatorData?: Buffer;
+  clientDataJson?: Buffer;
+  signatureBytes?: number;
+  names?: string[];
+}
+
+/**
+ * The Genesis binding proof's shape, as made on TEST_ORIGIN unless a field is
+ * given. Its signature bytes are not a real assertion: only the wallet's own
+ * constructor checks those.
+ */
+export function genesisProof(opts: ProofOptions = {}): xdr.ScVal {
+  const names = opts.names ?? ["authenticator_data", "client_data_json", "signature"];
+  const values = [opts.authenticatorData ?? authenticatorData(), opts.clientDataJson ?? clientDataJson(), Buffer.alloc(opts.signatureBytes ?? 64, 3)];
+  return xdr.ScVal.scvMap(names.map((name, i) => new xdr.ScMapEntry({ key: sym(name), val: xdr.ScVal.scvBytes(values[i]!) })));
+}
+
+export interface CreationOptions {
+  keyId?: Buffer;
+  deployer?: string;
+  wasm?: string;
+  salt?: Buffer;
+  constructorArgs?: xdr.ScVal[];
+}
+
+/** A wallet creation as passkey-kit makes one, with any part swapped out. */
+export function walletCreation(opts: CreationOptions = {}): xdr.CreateContractArgsV2 {
+  const keyId = opts.keyId ?? Buffer.alloc(32, 0x5e);
+  return new xdr.CreateContractArgsV2({
+    contractIdPreimage: xdr.ContractIdPreimage.contractIdPreimageFromAddress(
+      new xdr.ContractIdPreimageFromAddress({ address: new Address(opts.deployer ?? kitDeployer.publicKey()).toScAddress(), salt: opts.salt ?? hash(keyId) }),
+    ),
+    executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(opts.wasm ?? PINNED_WALLET_WASM, "hex")),
+    constructorArgs: opts.constructorArgs ?? [kitSigner(keyId), genesisProof()],
+  });
+}
+
+/** The wallet address a creation makes, computed the way passkey-kit's deriveContractAddress does. */
+export function createdAddress(creation: xdr.CreateContractArgsV2, network = Networks.TESTNET): string {
+  const preimage = xdr.HashIdPreimage.envelopeTypeContractId(
+    new xdr.HashIdPreimageContractId({ networkId: hash(Buffer.from(network)), contractIdPreimage: creation.contractIdPreimage() }),
+  );
+  return StrKey.encodeContract(hash(preimage.toXDR()));
+}
+
+export const creationRoot = (creation: xdr.CreateContractArgsV2, sub: xdr.SorobanAuthorizedInvocation[] = []): xdr.SorobanAuthorizedInvocation =>
+  new xdr.SorobanAuthorizedInvocation({
+    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeCreateContractV2HostFn(creation),
+    subInvocations: sub,
+  });
+
+let deployerNonce = 1_000n;
+
+/** The deployer's signed entry for a creation, as lib/worker/passkey.ts deployerAuth builds it: a fresh nonce each time. */
+export async function deployerEntry(
+  root: xdr.SorobanAuthorizedInvocation,
+  opts: { signer?: Keypair; validUntil?: number; network?: string } = {},
+): Promise<xdr.SorobanAuthorizationEntry> {
+  const signer = opts.signer ?? kitDeployer;
+  const unsigned = new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+      new xdr.SorobanAddressCredentials({
+        address: new Address(signer.publicKey()).toScAddress(),
+        nonce: xdr.Int64.fromString((deployerNonce++).toString()),
+        signatureExpirationLedger: 0,
+        signature: xdr.ScVal.scvVoid(),
+      }),
+    ),
+    rootInvocation: root,
+  });
+  return authorizeEntry(unsigned, signer, opts.validUntil ?? LATEST_LEDGER + 60, opts.network ?? Networks.TESTNET);
+}
+
+export const creationFunc = (creation: xdr.CreateContractArgsV2): string => b64(xdr.HostFunction.hostFunctionTypeCreateContractV2(creation));
+
+/** A complete { func, auth } wallet creation body, signed by the kit's deployer. */
+export async function walletCreationBody(opts: CreationOptions = {}): Promise<{ func: string; auth: string[]; created: string }> {
+  const creation = walletCreation(opts);
+  return { func: creationFunc(creation), auth: [b64(await deployerEntry(creationRoot(creation)))], created: createdAddress(creation) };
+}
+
+const walletEntryKey = (owner: string, variant: string, keyId: Buffer, durability: xdr.ContractDataDurability): xdr.LedgerKey =>
+  dataKey(owner, xdr.ScVal.scvVec([sym(variant), xdr.ScVal.scvBytes(keyId)]), durability);
+
+/**
+ * The footprint of the live deploy dbd9ab22 (testnet ledger 5100757), for any created wallet: the
+ * deployer's account, the wallet's temporary signer lookup and its code read; the deployer's nonce
+ * and the wallet's persistent signer, binding record and instance written.
+ */
+export function creationFootprint(created: string, keyId: Buffer = Buffer.alloc(32, 0x5e)): Footprint {
+  return {
+    readOnly: [
+      accountKey(kitDeployer.publicKey()),
+      walletEntryKey(created, "Secp256r1", keyId, xdr.ContractDataDurability.temporary()),
+      codeKey(PINNED_WALLET_WASM),
+    ],
+    readWrite: [
+      nonceKey(kitDeployer.publicKey()),
+      walletEntryKey(created, "Secp256r1", keyId, xdr.ContractDataDurability.persistent()),
+      walletEntryKey(created, "Secp256r1Binding", keyId, xdr.ContractDataDurability.persistent()),
+      instanceKey(created),
+    ],
+  };
+}
+
+/** register_key(owner, point) on the auditor registry, as core's buildRegisterKey encodes it. */
+export const registerKeyArgs = (owner: string, point: Buffer = Buffer.alloc(64, 9)): xdr.ScVal[] => [addr(owner), xdr.ScVal.scvBytes(point)];

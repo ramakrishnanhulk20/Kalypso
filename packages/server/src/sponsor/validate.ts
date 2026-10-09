@@ -15,15 +15,20 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Config } from "../config.ts";
 import { RpcError, type RpcClient } from "../rpc.ts";
-import { canonicalContractId, contractIdOfScAddress, decodeCanonicalBase64 } from "../stellar.ts";
+import { addressOfScVal, canonicalAccountId, canonicalContractId, contractIdOfScAddress, decodeCanonicalBase64 } from "../stellar.ts";
 
 /*
  * The sponsor rule (threat model C20), decided on the exact bytes that will be
  * forwarded. It is one structural rule, not a list of function names:
  *
- * - the root call goes into our payroll or our token contract;
- * - no contract creation and no wasm upload, at the root or anywhere in any
- *   auth tree;
+ * - the root call goes into our payroll or our token contract, or is
+ *   register_key on our auditor registry authorised by the key's owner alone;
+ * - no wasm upload, and no contract creation at the root or anywhere in any
+ *   auth tree, except one: a func request that creates a passkey worker's
+ *   wallet exactly as passkey-kit 0.19.1 does with its shared deployer
+ *   (checkWalletCreation), for a passkey made on one of our own web origins,
+ *   whose footprint may touch only that new wallet's own storage, the pinned
+ *   wallet code and the deployer's account and nonce;
  * - every call in every auth tree goes into payroll, token, auditor or the
  *   USDC contract;
  * - every contract-account (C) signer, delegates included, is deployed with
@@ -39,7 +44,8 @@ import { canonicalContractId, contractIdOfScAddress, decodeCanonicalBase64 } fro
  *   minimum resource fee;
  * - signatures we can check offline verify for the testnet network id, and
  *   each classic-account signature is made by that account's own key;
- * - the declared and simulated fees stay under FEE_CAP_STROOPS;
+ * - the declared and simulated fees stay under FEE_CAP_CREATION_STROOPS for
+ *   that one creation and under FEE_CAP_CALL_STROOPS for everything else;
  * - auth entries expire within 1,000 ledgers;
  * - simulation in enforce mode succeeds;
  * - the call writes ledger state: a footprint with no read-write entry is a
@@ -71,6 +77,19 @@ export const MAX_AUTH_LIFETIME_LEDGERS = 1_000;
 export const INCLUSION_FEE_ALLOWANCE_STROOPS = 10_000n;
 
 const SIMULATION_SOURCE = StrKey.encodeEd25519PublicKey(Buffer.alloc(32));
+
+/**
+ * passkey-kit 0.19.1's shared deployer, derived the way the kit derives it
+ * (DEFAULT_DEPLOYER_SEED "kalepail", dist/kit/deploy-ops.js). Its secret is
+ * public, so its signature proves nothing about who asked for a wallet; it
+ * only fixes the address family every passkey-kit wallet is created in. The
+ * wallet's own constructor checks the passkey's Genesis binding proof.
+ */
+const KIT_DEPLOYER = Keypair.fromRawEd25519Seed(hash(Buffer.from("kalepail")));
+export const PASSKEY_KIT_DEPLOYER = KIT_DEPLOYER.publicKey();
+/** WebAuthn caps a credential id at 1,023 bytes (Web Authentication Level 3, section 5.1). */
+const MAX_CREDENTIAL_ID_BYTES = 1_023;
+const P256_UNCOMPRESSED_KEY_BYTES = 65;
 
 export type SponsorRefusalCode =
   | "bad_shape"
@@ -111,10 +130,14 @@ export interface Refusal {
 interface Validated {
   ok: true;
   authEntries: xdr.SorobanAuthorizationEntry[];
+  /** The contract the root call runs: for a wallet creation, the wallet it creates. */
   rootContract: string;
   /**
-   * Every address that authorises the request, once each, in the server's
-   * one address spelling: each entry's address, and an envelope's source.
+   * Who the request counts against for the per-address daily limit, once
+   * each, in the server's one address spelling: each entry's address and an
+   * envelope's source. A wallet creation counts against the wallet it
+   * creates instead, because its only signer is the deployer every
+   * passkey-kit wallet shares.
    */
   authorisers: string[];
 }
@@ -125,6 +148,12 @@ export interface FuncSponsorRequest extends Validated {
   func: string;
   auth: string[];
   hostFunction: xdr.HostFunction;
+  /**
+   * Set only for the one creation the sponsor pays for: the wallet address
+   * it creates, derived from the creation's own preimage, never read from a
+   * footprint.
+   */
+  creates: string | null;
 }
 
 /** A signed transaction envelope that Channels wraps in a fee bump. */
@@ -191,6 +220,12 @@ function validateFuncAuth(func: string, auth: string[], cfg: Config): FuncSponso
     if (parsed === null) return refuse("bad_encoding");
     authEntries.push(parsed);
   }
+  if (hostFunction.switch().name === "hostFunctionTypeCreateContractV2") {
+    const wallet = checkWalletCreation(hostFunction, authEntries, cfg);
+    if (!wallet.ok) return wallet;
+    const created = { rootContract: wallet.contract, authorisers: [wallet.contract], creates: wallet.contract };
+    return { ok: true, kind: "func", func, auth: [...auth], hostFunction, authEntries, ...created };
+  }
   const root = checkRootCall(hostFunction, cfg);
   if (!root.ok) return root;
   // Channels makes its own channel account the source on this path, so a
@@ -198,7 +233,9 @@ function validateFuncAuth(func: string, auth: string[], cfg: Config): FuncSponso
   const tree = checkAuthEntries(authEntries, cfg, false);
   if (tree !== null) return tree;
   const authorisers = authorisersOf(authEntries, null);
-  return { ok: true, kind: "func", func, auth: [...auth], hostFunction, authEntries, rootContract: root.contract, authorisers };
+  const registry = checkRegistryRoot(hostFunction, authorisers, cfg);
+  if (registry !== null) return registry;
+  return { ok: true, kind: "func", func, auth: [...auth], hostFunction, authEntries, rootContract: root.contract, authorisers, creates: null };
 }
 
 function validateEnvelope(base64: string, cfg: Config): XdrSponsorRequest | Refusal {
@@ -223,8 +260,11 @@ function validateEnvelope(base64: string, cfg: Config): XdrSponsorRequest | Refu
   if (ext.switch() !== 1) return refuse("missing_soroban_data");
   const declaredFee = BigInt(tx.fee());
   const declaredResourceFee = ext.sorobanData().resourceFee().toBigInt();
-  if (declaredFee > cfg.FEE_CAP_STROOPS || declaredResourceFee > cfg.FEE_CAP_STROOPS) return refuse("fee_over_cap");
+  // checkRootCall has refused every creation by now, so an envelope is always a call.
+  if (declaredFee > cfg.FEE_CAP_CALL_STROOPS || declaredResourceFee > cfg.FEE_CAP_CALL_STROOPS) return refuse("fee_over_cap");
   const authorisers = authorisersOf(authEntries, source);
+  const registry = checkRegistryRoot(op.hostFunction(), authorisers, cfg);
+  if (registry !== null) return registry;
   return { ok: true, kind: "xdr", xdr: base64, source, declaredFee, declaredResourceFee, authEntries, rootContract: root.contract, authorisers };
 }
 
@@ -256,7 +296,9 @@ function checkRootCall(fn: xdr.HostFunction, cfg: Config): { ok: true; contract:
   switch (fn.switch().name) {
     case "hostFunctionTypeInvokeContract": {
       const id = contractIdOfScAddress(fn.invokeContract().contractAddress());
-      if (id === null || (id !== cfg.PAYROLL_CONTRACT_ID && id !== cfg.TOKEN_CONTRACT_ID)) {
+      // The registry passes here only to be held to checkRegistryRoot once
+      // the request's authorisers are known.
+      if (id === null || (id !== cfg.PAYROLL_CONTRACT_ID && id !== cfg.TOKEN_CONTRACT_ID && id !== cfg.AUDITOR_CONTRACT_ID)) {
         return refuse("root_contract_not_allowed");
       }
       return { ok: true, contract: id };
@@ -269,6 +311,204 @@ function checkRootCall(fn: xdr.HostFunction, cfg: Config): { ok: true; contract:
     default:
       return refuse("bad_shape");
   }
+}
+
+/**
+ * The auditor registry is a root call only as register_key(owner, point)
+ * whose one authoriser is that owner: a worker making their own audit key.
+ * rotate_key, propose_owner, accept_owner, cancel_owner_proposal and every
+ * other function are refused, and so is a register_key that anyone else
+ * authorises too, an envelope source included.
+ *
+ * Both sides of the owner comparison come out of the SDK's one strkey
+ * encoder (addressOfScVal here, inspectAuthEntry and sourceOf for the
+ * authorisers), and canonicalAccountId admits only a G or C owner. Covers
+ * who authorises the new key. Does not cover the key itself: the registry
+ * refuses a point off the curve, and simulation must succeed.
+ */
+function checkRegistryRoot(fn: xdr.HostFunction, authorisers: readonly string[], cfg: Config): Refusal | null {
+  const call = fn.invokeContract();
+  if (contractIdOfScAddress(call.contractAddress()) !== cfg.AUDITOR_CONTRACT_ID) return null;
+  const args = call.args();
+  const owner = args.length === 2 ? canonicalAccountId(addressOfScVal(args[0]!)) : null;
+  const point = args.length === 2 ? bytesOf(args[1]) : null;
+  if (call.functionName().toString() !== "register_key" || owner === null || point === null || point.length !== 64) {
+    return refuse("root_contract_not_allowed");
+  }
+  return authorisers.length === 1 && authorisers[0] === owner ? null : refuse("root_contract_not_allowed");
+}
+
+/**
+ * The one contract creation the sponsor pays for: a passkey worker's wallet,
+ * created exactly the way passkey-kit 0.19.1 creates it with its shared
+ * deployer (dist/kit/deploy-ops.js buildDeployTransaction, and signDeploy in
+ * dist/managers/submission-manager.js). All of these must hold:
+ *
+ * - the creation is CreateContractV2 from an address preimage whose address
+ *   is the kit's deployer, running PASSKEY_WALLET_WASM_HASH;
+ * - the constructor arguments are the kit's: one Secp256r1 signer (credential
+ *   id, uncompressed P-256 key, no expiry, no limits, persistent storage) and
+ *   its Genesis binding proof;
+ * - the salt is sha256 of that signer's credential id, so the wallet address
+ *   is the one the credential derives to;
+ * - the binding proof was made on one of SPONSOR_ALLOWED_ORIGINS
+ *   (madeOnAllowedOrigin);
+ * - there is exactly one auth entry, an address credential of the deployer
+ *   signed for testnet, whose tree is this same creation with no sub-calls.
+ *
+ * Covers: which code the new contract runs, at which address, seeded with
+ * which signer, and that an honest passkey-kit app on another site cannot
+ * have its sign-ups paid for. Does not cover whether the binding proof is a
+ * real passkey's: anyone can make one with a software P-256 key, writing any
+ * origin into it, and only the wallet's own constructor checks its
+ * signature, during simulation. The per-IP and service-wide creation limits
+ * and the creation share of the daily budget bound how many such wallets
+ * get paid for.
+ */
+function checkWalletCreation(fn: xdr.HostFunction, entries: xdr.SorobanAuthorizationEntry[], cfg: Config): { ok: true; contract: string } | Refusal {
+  const creation = fn.createContractV2();
+  const preimage = creation.contractIdPreimage();
+  if (preimage.switch().name !== "contractIdPreimageFromAddress") return refuse("contract_creation");
+  const from = preimage.fromAddress();
+  if (!isKitDeployer(from.address())) return refuse("contract_creation");
+  const executable = creation.executable();
+  if (executable.switch().name !== "contractExecutableWasm" || executable.wasmHash().toString("hex") !== cfg.PASSKEY_WALLET_WASM_HASH) {
+    return refuse("contract_creation");
+  }
+  const args = kitConstructor(creation.constructorArgs());
+  if (args === null || !Buffer.from(from.salt()).equals(hash(args.keyId))) return refuse("contract_creation");
+  if (!madeOnAllowedOrigin(args.authenticatorData, args.clientDataJson, cfg.SPONSOR_ALLOWED_ORIGINS)) return refuse("contract_creation");
+
+  if (entries.length !== 1) return refuse("contract_creation");
+  const entry = entries[0]!;
+  const credentials = entry.credentials();
+  const kind = credentials.switch().name;
+  if (kind !== "sorobanCredentialsAddress" && kind !== "sorobanCredentialsAddressV2") return refuse("contract_creation");
+  const signer = kind === "sorobanCredentialsAddress" ? credentials.address() : credentials.addressV2();
+  if (!isKitDeployer(signer.address())) return refuse("contract_creation");
+  const root = entry.rootInvocation();
+  const authorised = root.function();
+  if (
+    authorised.switch().name !== "sorobanAuthorizedFunctionTypeCreateContractV2HostFn" ||
+    !authorised.createContractV2HostFn().toXDR().equals(creation.toXDR()) ||
+    root.subInvocations().length !== 0
+  ) {
+    return refuse("contract_creation");
+  }
+  const signature = checkEntrySignatures(entry, cfg.NETWORK_PASSPHRASE);
+  if (signature !== null) return signature;
+  return { ok: true, contract: createdContractId(preimage, cfg.NETWORK_PASSPHRASE) };
+}
+
+/** Compared as raw ed25519 key bytes, so no second address spelling can stand in for the deployer. */
+function isKitDeployer(address: xdr.ScAddress): boolean {
+  return address.switch().name === "scAddressTypeAccount" && address.accountId().ed25519().equals(KIT_DEPLOYER.rawPublicKey());
+}
+
+const isSymbol = (value: xdr.ScVal | undefined, name: string) => value?.switch().name === "scvSymbol" && value.sym().toString() === name;
+const bytesOf = (value: xdr.ScVal | undefined): Buffer | null => (value?.switch().name === "scvBytes" ? value.bytes() : null);
+const isVecOf = (value: xdr.ScVal | undefined, test: (inner: xdr.ScVal) => boolean) => {
+  const items = value?.switch().name === "scvVec" ? value.vec() : null;
+  return items !== null && items !== undefined && items.length === 1 && test(items[0]!);
+};
+
+interface KitConstructor {
+  keyId: Buffer;
+  authenticatorData: Buffer;
+  clientDataJson: Buffer;
+}
+
+/**
+ * The first signer's credential id and its Genesis proof's WebAuthn fields
+ * when the constructor arguments are exactly the two passkey-kit passes to
+ * the wallet's __constructor(signer, proof), in the encoding its contract
+ * client produces; null for any other shape. Signer::Secp256r1(key_id,
+ * public_key, SignerExpiration(None), SignerLimits(None),
+ * SignerStorage::Persistent) and Some(Secp256r1Signature {
+ * authenticator_data, client_data_json, signature }).
+ */
+function kitConstructor(args: readonly xdr.ScVal[]): KitConstructor | null {
+  if (args.length !== 2) return null;
+  const signer = args[0]!.switch().name === "scvVec" ? args[0]!.vec() : null;
+  if (!signer || signer.length !== 6) return null;
+  const [variant, keyIdVal, publicKeyVal, expiration, limits, storage] = signer;
+  const keyId = bytesOf(keyIdVal);
+  const publicKey = bytesOf(publicKeyVal);
+  const none = (v: xdr.ScVal) => v.switch().name === "scvVoid";
+  if (
+    !isSymbol(variant, "Secp256r1") ||
+    keyId === null ||
+    keyId.length === 0 ||
+    keyId.length > MAX_CREDENTIAL_ID_BYTES ||
+    publicKey === null ||
+    publicKey.length !== P256_UNCOMPRESSED_KEY_BYTES ||
+    publicKey[0] !== 0x04 ||
+    !isVecOf(expiration, none) ||
+    !isVecOf(limits, none) ||
+    !isVecOf(storage, (v) => isSymbol(v, "Persistent"))
+  ) {
+    return null;
+  }
+  const proof = args[1]!.switch().name === "scvMap" ? args[1]!.map() : null;
+  const fields = ["authenticator_data", "client_data_json", "signature"];
+  if (!proof || proof.length !== fields.length) return null;
+  if (!proof.every((entry, i) => isSymbol(entry.key(), fields[i]!) && bytesOf(entry.val()) !== null)) return null;
+  if (bytesOf(proof[2]!.val())!.length !== 64) return null;
+  return { keyId, authenticatorData: bytesOf(proof[0]!.val())!, clientDataJson: bytesOf(proof[1]!.val())! };
+}
+
+/** rpIdHash, flags and the signature counter (Web Authentication Level 3, section 6.1). */
+const MIN_AUTHENTICATOR_DATA_BYTES = 37;
+/** The wallet parses client data in a 1,024-byte buffer and refuses more (passkey-kit dist/contract-errors.js, ClientDataJsonTooLarge). */
+const MAX_CLIENT_DATA_BYTES = 1_024;
+const strictUtf8 = new TextDecoder("utf-8", { fatal: true });
+
+/**
+ * True when a Genesis proof says its passkey signed on one of our own web
+ * origins, by the checks passkey-kit's own verifyAssertion runs
+ * (dist/kit/webauthn-verify.js): client data that is a JSON object of type
+ * webauthn.get, the only type the kit and its wallet accept, whose origin is
+ * in `allowed`; and authenticator data that starts with sha256 of that
+ * origin's host, the relying party id our web app gives the browser
+ * (location.hostname). Both sides of the origin comparison come out of
+ * URL().origin. Anything that does not parse, and an empty list, is refused.
+ *
+ * Covers: an honest passkey-kit app on another site cannot have its sign-ups
+ * paid for, because the browser writes the page's real origin into client
+ * data and hashes the real relying party id into authenticator data. Does not
+ * cover a forger: both fields are plain bytes the passkey signs, and anyone
+ * with a software P-256 key can write our origin and our host's hash into
+ * them. The creation limits and the creation share of the daily budget bound
+ * that caller.
+ */
+function madeOnAllowedOrigin(authenticatorData: Buffer, clientDataJson: Buffer, allowed: readonly string[]): boolean {
+  if (allowed.length === 0 || clientDataJson.length > MAX_CLIENT_DATA_BYTES || authenticatorData.length < MIN_AUTHENTICATOR_DATA_BYTES) {
+    return false;
+  }
+  let clientData: unknown;
+  let url: URL;
+  try {
+    clientData = JSON.parse(strictUtf8.decode(clientDataJson));
+    if (typeof clientData !== "object" || clientData === null || Array.isArray(clientData)) return false;
+    const { type, origin } = clientData as Record<string, unknown>;
+    if (type !== "webauthn.get" || typeof origin !== "string") return false;
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  return allowed.includes(url.origin) && authenticatorData.subarray(0, 32).equals(hash(Buffer.from(url.hostname)));
+}
+
+/**
+ * The address a creation makes, by the network's own rule: sha256 of the
+ * contract-id preimage for this network, encoded the way the SDK's own
+ * Asset.contractId does it.
+ */
+function createdContractId(preimage: xdr.ContractIdPreimage, passphrase: string): string {
+  const id = xdr.HashIdPreimage.envelopeTypeContractId(
+    new xdr.HashIdPreimageContractId({ networkId: hash(Buffer.from(passphrase)), contractIdPreimage: preimage }),
+  );
+  return StrKey.encodeContract(hash(id.toXDR()));
 }
 
 function checkAuthEntries(entries: xdr.SorobanAuthorizationEntry[], cfg: Config, allowSourceAccount: boolean): Refusal | null {
@@ -452,7 +692,8 @@ export type SimulateFn = (
  * First, one getLedgerEntries call reads the instances of our payroll,
  * token, auditor and verifier and of every contract-account signer. Each
  * signer must run PASSKEY_WALLET_WASM_HASH, or the request is refused
- * before any simulation.
+ * before any simulation. A wallet creation skips that read, and its
+ * footprint is judged against creationScope instead.
  * Enforce mode, with the supplied auth entries: must succeed with no restore
  * needed, its footprint must hold at least one read-write entry, and that
  * footprint (and an envelope's declared one) must pass the footprint rule.
@@ -470,14 +711,21 @@ export type SimulateFn = (
  */
 export const simulate: SimulateFn = async (cfg, request, rpc) => {
   const signers = signersOf(request);
-  let code;
-  try {
-    code = await contractCodeOf(rpc, [...ourCodeOwners(cfg), ...signers.contracts]);
-  } catch {
-    return refuse("rpc_unavailable");
+  let scope: FootprintScope;
+  if (request.kind === "func" && request.creates !== null) {
+    // Its one signer is the deployer, a classic account, so there is no
+    // signing wallet whose code needs reading.
+    scope = creationScope(cfg, request.creates);
+  } else {
+    let code;
+    try {
+      code = await contractCodeOf(rpc, [...ourCodeOwners(cfg), ...signers.contracts]);
+    } catch {
+      return refuse("rpc_unavailable");
+    }
+    if (signers.contracts.some((id) => code.get(id) !== cfg.PASSKEY_WALLET_WASM_HASH)) return refuse("unknown_wallet_code");
+    scope = footprintScope(cfg, code, signers);
   }
-  if (signers.contracts.some((id) => code.get(id) !== cfg.PASSKEY_WALLET_WASM_HASH)) return refuse("unknown_wallet_code");
-  const scope = footprintScope(cfg, code, signers);
 
   let enforced;
   try {
@@ -527,7 +775,8 @@ export const simulate: SimulateFn = async (cfg, request, rpc) => {
   const minResourceFee = BigInt(enforced.minResourceFee);
   const expected = minResourceFee + INCLUSION_FEE_ALLOWANCE_STROOPS;
   const charge = request.kind === "xdr" && request.declaredFee > expected ? request.declaredFee : expected;
-  if (charge > cfg.FEE_CAP_STROOPS) return refuse("fee_over_cap");
+  const cap = request.kind === "func" && request.creates !== null ? cfg.FEE_CAP_CREATION_STROOPS : cfg.FEE_CAP_CALL_STROOPS;
+  if (charge > cap) return refuse("fee_over_cap");
   return { ok: true, chargeStroops: charge, minResourceFee, latestLedger: enforced.latestLedger };
 };
 
@@ -668,6 +917,8 @@ interface FootprintScope {
   contracts: Set<string>;
   code: Set<string>;
   nonceAccounts: Set<string>;
+  /** The classic accounts whose account entry may appear, with no trustlines; null lets any account and trustline through. */
+  accounts: Set<string> | null;
 }
 
 /**
@@ -683,6 +934,23 @@ function footprintScope(cfg: Config, code: Map<string, string | null>, signers: 
     contracts: new Set([...ourCodeOwners(cfg), cfg.USDC_SAC_ID, ...signers.contracts]),
     code: new Set(signers.contracts.length > 0 ? [...ourCode, cfg.PASSKEY_WALLET_WASM_HASH] : ourCode),
     nonceAccounts: new Set(signers.accounts),
+    accounts: null,
+  };
+}
+
+/**
+ * What a wallet creation may touch, and nothing else: contract data owned by
+ * the wallet it creates (its instance, and the signer and binding entries its
+ * constructor writes), the pinned wallet code, and the deployer's own account
+ * and nonce. `created` comes from the creation's preimage, so the footprint
+ * cannot name the contract it is judged against.
+ */
+function creationScope(cfg: Config, created: string): FootprintScope {
+  return {
+    contracts: new Set([created]),
+    code: new Set([cfg.PASSKEY_WALLET_WASM_HASH]),
+    nonceAccounts: new Set([PASSKEY_KIT_DEPLOYER]),
+    accounts: new Set([PASSKEY_KIT_DEPLOYER]),
   };
 }
 
@@ -693,16 +961,20 @@ function footprintScope(cfg: Config, code: Map<string, string | null>, signers: 
  * nested under them.
  *
  * Classic account and trustline entries pass: they hold the balances USDC
- * moves and run no code. Contract data owned by a classic account passes
- * only as that account's own nonce, which the host stores there when the
- * account signs an address credential in this request. Any other entry type
- * is refused.
+ * moves and run no code. A wallet creation moves no balance, so for it only
+ * the deployer's account entry passes and no trustline does. Contract data
+ * owned by a classic account passes only as that account's own nonce, which
+ * the host stores there when the account signs an address credential in this
+ * request. Any other entry type is refused.
  */
 function inScope(footprint: xdr.LedgerFootprint, scope: FootprintScope): boolean {
   for (const key of [...footprint.readOnly(), ...footprint.readWrite()]) {
     switch (key.switch().name) {
       case "account":
+        if (scope.accounts !== null && !scope.accounts.has(StrKey.encodeEd25519PublicKey(key.account().accountId().ed25519()))) return false;
+        break;
       case "trustline":
+        if (scope.accounts !== null) return false;
         break;
       case "contractCode":
         if (!scope.code.has(key.contractCode().hash().toString("hex"))) return false;

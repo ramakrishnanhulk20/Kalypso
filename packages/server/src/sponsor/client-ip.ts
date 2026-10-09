@@ -30,6 +30,26 @@ export function ipTag(bucket: string, salt: string): string {
  * many real IPv4 addresses or many /64s; the daily budget bounds that.
  */
 export function clientBucket(headerValue: string | null): string | null {
+  return bucketOf(headerValue, 4);
+}
+
+/**
+ * The key wallet creations are counted on per caller: the same as
+ * clientBucket, except that an IPv6 address counts by its /48. One site is
+ * commonly handed a /48, which holds 65,536 /64s, so counting creations per
+ * /64 would let one site make thousands of wallets on our fee. The hourly
+ * request limit stays per /64, because a /48 can be many honest households
+ * behind one provider.
+ *
+ * Covers: one /48 and every spelling of its addresses. Does not cover a
+ * caller with many /48s or many IPv4 addresses; WALLET_CREATIONS_PER_DAY and
+ * the creation share of the daily budget bound that.
+ */
+export function creationBucket(headerValue: string | null): string | null {
+  return bucketOf(headerValue, 3);
+}
+
+function bucketOf(headerValue: string | null, prefixGroups: 3 | 4): string | null {
   if (headerValue === null) return null;
   const ip = headerValue.trim();
   const family = isIP(ip);
@@ -40,7 +60,7 @@ export function clientBucket(headerValue: string | null): string | null {
   if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
     return [groups[6]! >> 8, groups[6]! & 0xff, groups[7]! >> 8, groups[7]! & 0xff].join(".");
   }
-  return groups.slice(0, 4).map((g) => g.toString(16)).join(":") + "::/64";
+  return groups.slice(0, prefixGroups).map((g) => g.toString(16)).join(":") + "::/" + prefixGroups * 16;
 }
 
 function ipv6Groups(ip: string): number[] | null {

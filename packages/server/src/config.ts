@@ -18,11 +18,25 @@ export interface Config {
   readonly CHANNELS_API_KEY: string;
   readonly DATABASE_URL_INGEST: string;
   readonly DATABASE_URL_API: string;
-  readonly FEE_CAP_STROOPS: bigint;
+  /** Most the sponsor pays for the one passkey wallet creation it accepts. */
+  readonly FEE_CAP_CREATION_STROOPS: bigint;
+  /** Most the sponsor pays for any other request. */
+  readonly FEE_CAP_CALL_STROOPS: bigint;
   readonly DAILY_FEE_BUDGET_STROOPS: bigint;
+  /** The share of each day's budget that wallet creations may use, from 1 to 100. */
+  readonly CREATION_BUDGET_SHARE_PERCENT: number;
   readonly PER_IP_LIMIT_PER_HOUR: number;
   /** Relays each authorising address may have per UTC day. */
   readonly PER_ADDRESS_LIMIT_PER_DAY: number;
+  /** Passkey wallet creations each client IP bucket (IPv6: per /48) may have paid for per UTC day. */
+  readonly WALLET_CREATIONS_PER_IP_PER_DAY: number;
+  /** Passkey wallet creations the whole service pays for per UTC day. */
+  readonly WALLET_CREATIONS_PER_DAY: number;
+  /**
+   * The web origins whose sign-ups the sponsor pays a wallet creation for,
+   * each as URL().origin spells it. Empty refuses every creation.
+   */
+  readonly SPONSOR_ALLOWED_ORIGINS: readonly string[];
   readonly TRUSTED_IP_HEADER: string;
   /** The bearer token the scheduler sends to the ingest route. */
   readonly CRON_SECRET: string;
@@ -113,6 +127,54 @@ const countUpTo99999 = z
   .refine((v) => /^[1-9]\d{0,4}$/.test(v), { error: "must be a whole number from 1 to 99999" })
   .transform(Number);
 
+const percent = z
+  .string()
+  .refine((v) => /^[1-9]\d{0,2}$/.test(v) && Number(v) <= 100, { error: "must be a whole number from 1 to 100" })
+  .transform(Number);
+
+/**
+ * One configured origin as URL().origin spells it, the same parser the
+ * sponsor runs on a passkey's client data, or null. https only, except
+ * http://localhost outside production, which is where a developer's own
+ * passkeys are made. A path, query, fragment or credential means it was not
+ * written as an origin, so it is refused rather than cut down to one.
+ */
+export function allowedOrigin(value: string, production: boolean): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.username || url.password || url.search || url.hash || url.pathname !== "/") return null;
+  if (url.protocol === "https:") return url.origin;
+  return url.protocol === "http:" && url.hostname === "localhost" && !production ? url.origin : null;
+}
+
+function originList(value: string, production: boolean): string[] | null {
+  const origins = value.split(",").map((item) => allowedOrigin(item.trim(), production));
+  return origins.every((o): o is string => o !== null) ? [...new Set(origins)] : null;
+}
+
+const allowedOrigins = (production: boolean) =>
+  z
+    .string()
+    .refine((v) => originList(v, production) !== null, {
+      error: production
+        ? "must be comma-separated https origins, each with no path, query or credentials"
+        : "must be comma-separated https origins (or http://localhost:<port> outside production), each with no path, query or credentials",
+    })
+    .transform((v) => originList(v, production)!)
+    .default([]);
+
+/**
+ * Keys that were removed. A deployment that still sets one would otherwise
+ * boot on the new defaults and look configured.
+ */
+const RETIRED_KEYS: Readonly<Record<string, string>> = {
+  FEE_CAP_STROOPS: "no longer read; set FEE_CAP_CREATION_STROOPS and FEE_CAP_CALL_STROOPS instead, then remove it",
+};
+
 // A shared secret that travels in a header: no whitespace or control
 // characters, and long enough that guessing it is hopeless.
 const sharedSecret = z
@@ -121,7 +183,9 @@ const sharedSecret = z
     error: "must be 32 to 256 characters from A-Z a-z 0-9 . _ ~ + / = -",
   });
 
-const schema = z
+// Built once per NODE_ENV answer, because the origin rule is the only one
+// that depends on it.
+const schemaFor = (production: boolean) => z
   .object({
     NETWORK: z.literal("testnet", { error: "must be testnet (the only network this server supports)" }),
     RPC_URL: outboundUrl.default("https://soroban-testnet.stellar.org"),
@@ -141,10 +205,22 @@ const schema = z
     CHANNELS_API_KEY: apiKey,
     DATABASE_URL_INGEST: postgresUrl,
     DATABASE_URL_API: postgresUrl,
-    FEE_CAP_STROOPS: stroops(10_000_000_000n).default(2_000_000n),
-    DAILY_FEE_BUDGET_STROOPS: stroops(1_000_000_000_000n).default(200_000_000n),
+    // Testnet defaults. A passkey wallet creation measured 1.79 XLM charged
+    // (2.06 XLM declared resource fee, scratchpad/worker/logs), so 2.5 XLM
+    // leaves it margin. Every other worker action is far cheaper (accept_invite
+    // 0.53 XLM charged, 0.61 reserved), so 1 XLM, and a call cannot declare
+    // inflated resources up to the creation's cap. Creations may use half of
+    // the 200 XLM day, about 48 joins at 2.06 XLM, and the other half stays
+    // for the workers already paid.
+    FEE_CAP_CREATION_STROOPS: stroops(10_000_000_000n).default(25_000_000n),
+    FEE_CAP_CALL_STROOPS: stroops(10_000_000_000n).default(10_000_000n),
+    DAILY_FEE_BUDGET_STROOPS: stroops(1_000_000_000_000n).default(2_000_000_000n),
+    CREATION_BUDGET_SHARE_PERCENT: percent.default(50),
     PER_IP_LIMIT_PER_HOUR: countUpTo99999.default(60),
     PER_ADDRESS_LIMIT_PER_DAY: countUpTo99999.default(20),
+    WALLET_CREATIONS_PER_IP_PER_DAY: countUpTo99999.default(3),
+    WALLET_CREATIONS_PER_DAY: countUpTo99999.default(60),
+    SPONSOR_ALLOWED_ORIGINS: allowedOrigins(production),
     TRUSTED_IP_HEADER: z
       .string()
       .refine((v) => /^[a-z0-9-]{1,64}$/.test(v), { error: "must be a lower-case HTTP header name" })
@@ -163,12 +239,26 @@ const schema = z
       .optional(),
   })
   .superRefine((cfg, ctx) => {
-    if (cfg.DAILY_FEE_BUDGET_STROOPS < cfg.FEE_CAP_STROOPS) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["DAILY_FEE_BUDGET_STROOPS"],
-        message: "must be at least FEE_CAP_STROOPS",
-      });
+    // A key that failed its own rule arrives here as its raw string, which
+    // BigInt arithmetic would throw on, so these rules wait for clean amounts.
+    const amounts = [cfg.DAILY_FEE_BUDGET_STROOPS, cfg.FEE_CAP_CALL_STROOPS, cfg.FEE_CAP_CREATION_STROOPS];
+    if (amounts.every((v) => typeof v === "bigint") && typeof cfg.CREATION_BUDGET_SHARE_PERCENT === "number") {
+      if (cfg.DAILY_FEE_BUDGET_STROOPS < cfg.FEE_CAP_CALL_STROOPS) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["DAILY_FEE_BUDGET_STROOPS"],
+          message: "must be at least FEE_CAP_CALL_STROOPS",
+        });
+      }
+      // Below this no creation could ever be paid for, which would look like
+      // a working sponsor that refuses every sign-up.
+      if (creationBudgetOf(cfg) < cfg.FEE_CAP_CREATION_STROOPS) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["CREATION_BUDGET_SHARE_PERCENT"],
+          message: "must give creations at least FEE_CAP_CREATION_STROOPS of DAILY_FEE_BUDGET_STROOPS",
+        });
+      }
     }
     if (cfg.TOKEN_DEPLOY_TX !== undefined && cfg.ARCHIVE_START_LEDGER === undefined) {
       ctx.addIssue({ code: "custom", path: ["TOKEN_DEPLOY_TX"], message: "needs ARCHIVE_START_LEDGER, the ledger of that transaction" });
@@ -188,15 +278,22 @@ const schema = z
     }
   });
 
-const KEYS = Object.keys(schema.shape) as Array<keyof typeof schema.shape>;
+const schemas = { production: schemaFor(true), other: schemaFor(false) };
+const KEYS = Object.keys(schemas.other.shape) as Array<keyof typeof schemas.other.shape>;
+
+/** The most wallet creations may reserve of one day's budget, rounded down to a whole stroop. */
+export function creationBudgetOf(cfg: Pick<Config, "DAILY_FEE_BUDGET_STROOPS" | "CREATION_BUDGET_SHARE_PERCENT">): bigint {
+  return (cfg.DAILY_FEE_BUDGET_STROOPS * BigInt(cfg.CREATION_BUDGET_SHARE_PERCENT)) / 100n;
+}
 
 /**
  * Validates the environment at boot and fails loudly.
  *
- * Throws ConfigError listing every missing or invalid key. The message names
- * keys and rules only, never a value, because the values include secrets.
- * An empty string counts as missing so a blank line in a .env file cannot
- * silently become a value.
+ * Throws ConfigError listing every missing or invalid key, and every retired
+ * key still set. The message names keys and rules only, never a value,
+ * because the values include secrets. An empty string counts as missing so a
+ * blank line in a .env file cannot silently become a value. NODE_ENV is read
+ * from `env` too: "production" refuses http://localhost origins.
  */
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const input: Record<string, string | undefined> = {};
@@ -204,14 +301,19 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     const raw = env[key];
     input[key] = raw === undefined || raw === "" ? undefined : raw;
   }
-  const parsed = schema.safeParse(input);
+  const problems = Object.entries(RETIRED_KEYS)
+    .filter(([key]) => env[key] !== undefined && env[key] !== "")
+    .map(([key, rule]) => key + ": " + rule);
+  const parsed = (env.NODE_ENV === "production" ? schemas.production : schemas.other).safeParse(input);
   if (!parsed.success) {
-    const problems = parsed.error.issues.map((issue) => {
+    for (const issue of parsed.error.issues) {
       const key = issue.path.length > 0 ? String(issue.path[0]) : "config";
-      return key + ": " + (input[key] === undefined ? "missing" : issue.message);
-    });
-    throw new ConfigError([...new Set(problems)]);
+      // A cross-key rule can fail on a key left to its default, and saying
+      // "missing" there would send the reader to the wrong line.
+      problems.push(key + ": " + (input[key] === undefined && issue.code !== "custom" ? "missing" : issue.message));
+    }
   }
+  if (!parsed.success || problems.length > 0) throw new ConfigError([...new Set(problems)]);
   return Object.freeze({ ...parsed.data, NETWORK_PASSPHRASE: Networks.TESTNET });
 }
 

@@ -1,15 +1,19 @@
 // Not covered here: a real enforce-mode simulation (RPC is faked; the
-// scratchpad/m5a live check runs one against testnet), whether a passkey
-// wallet's own signature is valid, which only its __check_auth can decide,
-// and a wallet or contract changing its state between our simulation and
-// Channels' own one.
+// scratchpad/m5a and scratchpad/sponsor-s3 live checks run them against
+// testnet), whether a passkey wallet's own signature or a new wallet's
+// Genesis binding proof is valid, which only the wallet's own code can
+// decide, a browser on a production origin writing the client data (the
+// fixtures write it the same way; the one live capture is from a dev
+// server), and a wallet or contract changing its state between our
+// simulation and Channels' own one.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Address, Networks, Transaction, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import { Address, Keypair, Networks, Operation, Transaction, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 import {
   INCLUSION_FEE_ALLOWANCE_STROOPS,
   MAX_AUTH_ENTRIES,
   MAX_AUTH_NODES,
+  PASSKEY_KIT_DEPLOYER,
   authExpiryLedger,
   requestDigest,
   simulate,
@@ -19,39 +23,53 @@ import {
 import { createRpcClient } from "../../src/rpc.ts";
 import { canonicalAccountId } from "../../src/stellar.ts";
 import { contractOfKey, defaultFootprint, fakeSimulation, instanceEntries, recordedAuthOf, transactionData } from "./fake-rpc.ts";
-import { AUDITOR, PAYROLL, STRANGER, TOKEN, USDC, VERIFIER, contractFor, testConfig } from "../helpers.ts";
+import { AUDITOR, PAYROLL, STRANGER, TEST_ORIGIN, TOKEN, USDC, VERIFIER, contractFor, keypairFor, testConfig } from "../helpers.ts";
 import {
   LATEST_LEDGER,
   PINNED_WALLET_WASM,
   accountKey,
+  authenticatorData,
+  clientDataJson,
   addr,
   b64,
   codeKey,
   contractAccountEntry,
   createContractInvocation,
   createContractOperation,
+  createdAddress,
+  creationFootprint,
+  creationFunc,
+  creationRoot,
+  deployerEntry,
   depositTree,
   employer,
   envelope,
   fakeCode,
+  genesisProof,
   hostCall,
   instanceKey,
   invocation,
+  kitDeployer,
+  kitSigner,
   mergeFuncAuth,
   mergeOperation,
   nonceKey,
   passkeyMergeFootprint,
   passkeyWallet,
   paymentOperation,
+  registerKeyArgs,
   signedEntry,
   sourceAccountEntry,
   storageKey,
   thirdPartyOperation,
   uploadOperation,
+  walletCreation,
+  walletCreationBody,
   worker,
   type Call,
   type Footprint,
   type Limits,
+  type ProofOptions,
 } from "./fixtures.ts";
 
 const cfg = testConfig();
@@ -223,9 +241,10 @@ describe("validateSponsorRequest: signed transaction envelope", () => {
   });
 
   it("refuses a declared fee or resource fee over the cap", () => {
-    expect(codeOf({ xdr: envelope({ fee: "1500001", resourceFee: 500_000 }) })).toBe("fee_over_cap");
-    expect(codeOf({ xdr: envelope({ fee: "100", resourceFee: 2_000_001 }) })).toBe("fee_over_cap");
-    expect(codeOf({ xdr: envelope({ fee: "100", resourceFee: 1_999_900 }) })).toBe("ok");
+    const cap = Number(cfg.FEE_CAP_CALL_STROOPS);
+    expect(codeOf({ xdr: envelope({ fee: String(cap - 500_000 + 1), resourceFee: 500_000 }) })).toBe("fee_over_cap");
+    expect(codeOf({ xdr: envelope({ fee: "100", resourceFee: cap + 1 }) })).toBe("fee_over_cap");
+    expect(codeOf({ xdr: envelope({ fee: "100", resourceFee: cap - 100 }) })).toBe("ok");
   });
 
   it("applies the auth-tree rule to the operation's own auth entries", async () => {
@@ -373,10 +392,18 @@ describe("simulate", () => {
     expect(await simulate(cfg, missing, fakeSimulation())).toMatchObject({ code: "unused_auth" });
   });
 
-  it("refuses a simulated fee over the cap", async () => {
-    expect(await simulate(cfg, await funcRequest(), fakeSimulation({ enforce: { minResourceFee: "1995000" } }))).toMatchObject({
-      code: "fee_over_cap",
-    });
+  it("holds a call to the call cap and the one creation to the creation cap", async () => {
+    const fee = (cap: bigint, extra: bigint) => ({ enforce: { minResourceFee: String(cap - INCLUSION_FEE_ALLOWANCE_STROOPS + extra) } });
+    const call = cfg.FEE_CAP_CALL_STROOPS;
+    expect(await simulate(cfg, await funcRequest(), fakeSimulation(fee(call, 1n)))).toMatchObject({ code: "fee_over_cap" });
+    expect(await simulate(cfg, await funcRequest(), fakeSimulation(fee(call, 0n)))).toMatchObject({ ok: true });
+
+    const body = await walletCreationBody();
+    const creation = validateSponsorRequest({ func: body.func, auth: body.auth }, cfg);
+    if (!creation.ok) throw new Error(creation.code);
+    const created = (extra: bigint) => fakeSimulation({ footprint: creationFootprint(body.created), ...fee(cfg.FEE_CAP_CREATION_STROOPS, extra) });
+    expect(await simulate(cfg, creation, created(1n))).toMatchObject({ code: "fee_over_cap" });
+    expect(await simulate(cfg, creation, created(0n))).toMatchObject({ ok: true, chargeStroops: cfg.FEE_CAP_CREATION_STROOPS });
   });
 
   it("refuses expired entries and entries that live more than 1,000 ledgers", async () => {
@@ -583,5 +610,317 @@ describe("requestDigest", () => {
     const xdrBody = { xdr: envelope() };
     expect(digestOf(xdrBody)).toBe(digestOf({ xdr: xdrBody.xdr }));
     expect(digestOf(xdrBody)).not.toBe(digestOf(good));
+  });
+});
+
+const liveCreation = JSON.parse(readFileSync(new URL("./live-wallet-creation.json", import.meta.url), "utf8"));
+const keysOf = (list: string[]) => list.map((k) => xdr.LedgerKey.fromXDR(k, "base64"));
+const liveCreationFootprint = (): Footprint => ({ readOnly: keysOf(liveCreation.footprint.readOnly), readWrite: keysOf(liveCreation.footprint.readWrite) });
+const signedCreation = async (creation: xdr.CreateContractArgsV2, signer?: Keypair) => ({
+  func: creationFunc(creation),
+  auth: [b64(await deployerEntry(creationRoot(creation), { signer }))],
+});
+
+describe("validateSponsorRequest: the one contract creation the sponsor pays for, a passkey worker's wallet (C20)", () => {
+  it("derives passkey-kit's shared deployer from its public seed", () => {
+    expect(PASSKEY_KIT_DEPLOYER).toBe("GC2C7AWLS2FMFTQAHW3IBUB4ZXVP4E37XNLEF2IK7IVXBB6CMEPCSXFO");
+    expect(kitDeployer.publicKey()).toBe(PASSKEY_KIT_DEPLOYER);
+  });
+
+  it("accepts the live passkey-kit creation and names the wallet the chain created, counting it against that wallet", () => {
+    expect(validateSponsorRequest({ func: liveCreation.func, auth: liveCreation.auth }, cfg)).toMatchObject({
+      ok: true,
+      kind: "func",
+      creates: liveCreation.created,
+      rootContract: liveCreation.created,
+      authorisers: [liveCreation.created],
+    });
+  });
+
+  it("accepts a creation built the kit's way, and never counts it against the shared deployer", async () => {
+    const body = await walletCreationBody();
+    const v = validateSponsorRequest({ func: body.func, auth: body.auth }, cfg);
+    expect(v).toMatchObject({ ok: true, creates: body.created, authorisers: [body.created] });
+    if (!v.ok) throw new Error(v.code);
+    expect(v.authorisers).not.toContain(PASSKEY_KIT_DEPLOYER);
+    expect(validateSponsorRequest(await mergeFuncAuth(), cfg)).toMatchObject({ ok: true, creates: null });
+  });
+
+  it("refuses another wasm, another deployer, a salt that is not the credential's, and every other creation path as contract_creation", async () => {
+    const other = keypairFor("another deployer");
+    const cases: Array<[string, xdr.CreateContractArgsV2, Keypair?]> = [
+      ["another wasm", walletCreation({ wasm: "ab".repeat(32) })],
+      ["the pinned wasm under another deployer", walletCreation({ deployer: other.publicKey() }), other],
+      ["a contract as the deployer", walletCreation({ deployer: STRANGER })],
+      ["a salt that is not sha256 of the credential id", walletCreation({ salt: Buffer.alloc(32, 1) })],
+    ];
+    for (const [label, creation, signer] of cases) {
+      expect(codeOf(await signedCreation(creation, signer)), label).toBe("contract_creation");
+    }
+    const fromAsset = walletCreation();
+    fromAsset.contractIdPreimage(xdr.ContractIdPreimage.contractIdPreimageFromAsset(xdr.Asset.assetTypeNative()));
+    expect(codeOf(await signedCreation(fromAsset))).toBe("contract_creation");
+    const v1 = xdr.HostFunction.hostFunctionTypeCreateContract(
+      new xdr.CreateContractArgs({ contractIdPreimage: walletCreation().contractIdPreimage(), executable: walletCreation().executable() }),
+    );
+    expect(codeOf({ func: b64(v1), auth: (await signedCreation(walletCreation())).auth })).toBe("contract_creation");
+  });
+
+  it("refuses any constructor that is not exactly passkey-kit's signer and Genesis proof", async () => {
+    const keyId = Buffer.alloc(32, 0x5e);
+    const wrongKey = kitSigner(keyId);
+    wrongKey.vec()![2] = xdr.ScVal.scvBytes(Buffer.alloc(65, 2));
+    const shortKey = kitSigner(keyId);
+    shortKey.vec()![2] = xdr.ScVal.scvBytes(Buffer.concat([Buffer.from([4]), Buffer.alloc(63, 1)]));
+    const shapes: Array<[string, xdr.ScVal[], Buffer?]> = [
+      ["no proof", [kitSigner(keyId)]],
+      ["proof left out as None", [kitSigner(keyId), xdr.ScVal.scvVoid()]],
+      ["a third argument", [kitSigner(keyId), genesisProof(), xdr.ScVal.scvVoid()]],
+      ["an Ed25519 signer", [kitSigner(keyId, { variant: xdr.ScVal.scvSymbol("Ed25519") }), genesisProof()]],
+      ["a signer with an expiry", [kitSigner(keyId, { expiration: xdr.ScVal.scvVec([xdr.ScVal.scvU64(xdr.Uint64.fromString("1"))]) }), genesisProof()]],
+      ["a limited signer", [kitSigner(keyId, { limits: xdr.ScVal.scvVec([xdr.ScVal.scvMap([])]) }), genesisProof()]],
+      ["a temporary signer", [kitSigner(keyId, { storage: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Temporary")]) }), genesisProof()]],
+      ["a public key that is not uncompressed P-256", [wrongKey, genesisProof()]],
+      ["a public key of 64 bytes", [shortKey, genesisProof()]],
+      ["a 63-byte proof signature", [kitSigner(keyId), genesisProof({ signatureBytes: 63 })]],
+      ["a renamed proof field", [kitSigner(keyId), genesisProof({ names: ["authenticator_data", "client_data", "signature"] })]],
+      ["an empty credential id", [kitSigner(Buffer.alloc(0)), genesisProof()], Buffer.alloc(0)],
+      ["a credential id over 1,023 bytes", [kitSigner(Buffer.alloc(1_024, 1)), genesisProof()], Buffer.alloc(1_024, 1)],
+      ["arguments in the other order", [genesisProof(), kitSigner(keyId)]],
+    ];
+    for (const [label, constructorArgs, id] of shapes) {
+      expect(codeOf(await signedCreation(walletCreation({ keyId: id ?? keyId, constructorArgs }))), label).toBe("contract_creation");
+    }
+    expect(codeOf(await signedCreation(walletCreation({ keyId: Buffer.alloc(1_023, 1) })))).toBe("ok");
+  });
+
+  it("refuses a second auth entry, a sub-call, another signer, or an entry for another call or creation", async () => {
+    const creation = walletCreation();
+    const func = creationFunc(creation);
+    const good = await deployerEntry(creationRoot(creation));
+    const other = keypairFor("not the deployer");
+    const cases: Array<[string, xdr.SorobanAuthorizationEntry[]]> = [
+      ["two deployer entries", [good, await deployerEntry(creationRoot(creation))]],
+      ["the creation with a token call under it", [await deployerEntry(creationRoot(creation, [invocation(merge)]))]],
+      ["the same creation signed by another account", [await deployerEntry(creationRoot(creation), { signer: other })]],
+      ["an entry for another wallet's creation", [await deployerEntry(creationRoot(walletCreation({ keyId: Buffer.alloc(32, 1) })))]],
+      ["an entry for a token call", [await signedEntry(merge, kitDeployer)]],
+      ["a passkey wallet's entry", [contractAccountEntry(merge)]],
+    ];
+    for (const [label, entries] of cases) expect(codeOf({ func, auth: entries.map(b64) }), label).toBe("contract_creation");
+    expect(codeOf({ func, auth: [b64(await deployerEntry(creationRoot(creation), { network: Networks.PUBLIC }))] })).toBe("not_signed_for_testnet");
+    expect(codeOf({ func, auth: [] })).toBe("no_auth");
+    expect(codeOf({ func, auth: [b64(good)] })).toBe("ok");
+  });
+
+  it("refuses any creation sent as a signed envelope, alone or beside another operation", async () => {
+    const creation = walletCreation();
+    const op = (auth: xdr.SorobanAuthorizationEntry[]) =>
+      Operation.invokeHostFunction({ func: xdr.HostFunction.hostFunctionTypeCreateContractV2(creation), auth });
+    const entry = await deployerEntry(creationRoot(creation));
+    expect(codeOf({ xdr: envelope({ operations: [op([entry])] }) })).toBe("contract_creation");
+    expect(codeOf({ xdr: envelope({ operations: [op([entry]), mergeOperation()] }) })).toBe("not_one_operation");
+  });
+});
+
+describe("validateSponsorRequest: a creation is paid for only when its passkey was made on one of our origins (C20)", () => {
+  const keyId = Buffer.alloc(32, 0x5e);
+  const creationWith = (proof: ProofOptions) => signedCreation(walletCreation({ keyId, constructorArgs: [kitSigner(keyId), genesisProof(proof)] }));
+  const madeOn = (origin: string, rpId = new URL(origin).hostname) => ({ clientDataJson: clientDataJson(origin), authenticatorData: authenticatorData(rpId) });
+
+  it("accepts a passkey made on a listed origin, both sides compared as URL().origin", async () => {
+    expect(codeOf(await creationWith({}))).toBe("ok");
+    expect(codeOf(await creationWith(madeOn("https://kalypso.test:443")))).toBe("ok");
+    const spelledLoosely = testConfig({ SPONSOR_ALLOWED_ORIGINS: " https://KALYPSO.test/ , https://kalypso-payroll.vercel.app" });
+    expect(spelledLoosely.SPONSOR_ALLOWED_ORIGINS).toEqual(["https://kalypso.test", "https://kalypso-payroll.vercel.app"]);
+    expect(validateSponsorRequest(await creationWith({}), spelledLoosely)).toMatchObject({ ok: true });
+  });
+
+  it("refuses an origin outside the list, its lookalikes, and a listed origin over another relying party", async () => {
+    for (const origin of ["https://evil.example", "https://kalypso.test.evil.example", "http://kalypso.test", "https://kalypso.test:8443", "https://sub.kalypso.test"]) {
+      expect(codeOf(await creationWith(madeOn(origin))), origin).toBe("contract_creation");
+    }
+    expect(codeOf(await creationWith(madeOn(TEST_ORIGIN, "evil.example"))), "rpId").toBe("contract_creation");
+    expect(codeOf(await creationWith(madeOn(TEST_ORIGIN, "test"))), "parent rpId").toBe("contract_creation");
+  });
+
+  it("refuses the live creation, made on a dev server, once that origin is not listed", () => {
+    const production = testConfig({ SPONSOR_ALLOWED_ORIGINS: "https://kalypso-payroll.vercel.app" });
+    expect(validateSponsorRequest({ func: liveCreation.func, auth: liveCreation.auth }, production)).toEqual({ ok: false, code: "contract_creation" });
+    expect(validateSponsorRequest({ func: liveCreation.func, auth: liveCreation.auth }, cfg)).toMatchObject({ ok: true });
+  });
+
+  it("refuses every creation when no origin is configured, and nothing else", async () => {
+    const none = testConfig({ SPONSOR_ALLOWED_ORIGINS: undefined });
+    expect(none.SPONSOR_ALLOWED_ORIGINS).toEqual([]);
+    expect(validateSponsorRequest(await creationWith({}), none)).toEqual({ ok: false, code: "contract_creation" });
+    expect(validateSponsorRequest(await mergeFuncAuth(), none)).toMatchObject({ ok: true });
+  });
+
+  it("refuses malformed client data and authenticator data", async () => {
+    const json = (value: unknown) => Buffer.from(JSON.stringify(value));
+    const good = JSON.parse(clientDataJson().toString("utf8"));
+    const padded = (bytes: number) => json({ ...good, padding: "x".repeat(bytes - json({ ...good, padding: "" }).length) });
+    const cases: Array<[string, ProofOptions]> = [
+      ["empty client data", { clientDataJson: Buffer.alloc(0) }],
+      ["client data that is not JSON", { clientDataJson: Buffer.from("type=webauthn.get&origin=" + TEST_ORIGIN) }],
+      ["client data that is not UTF-8", { clientDataJson: Buffer.concat([Buffer.from([0xff, 0xfe]), clientDataJson()]) }],
+      ["a JSON array", { clientDataJson: json([good]) }],
+      ["JSON null", { clientDataJson: json(null) }],
+      ["a JSON string", { clientDataJson: json(TEST_ORIGIN) }],
+      ["type webauthn.create", { clientDataJson: clientDataJson(TEST_ORIGIN, "webauthn.create") }],
+      ["no type", { clientDataJson: json({ ...good, type: undefined }) }],
+      ["no origin", { clientDataJson: json({ ...good, origin: undefined }) }],
+      ["an origin that is a number", { clientDataJson: json({ ...good, origin: 443 }) }],
+      ["an origin that is not a URL", { clientDataJson: json({ ...good, origin: "kalypso.test" }) }],
+      ["client data over the wallet's 1,024 bytes", { clientDataJson: padded(1_025) }],
+      ["authenticator data of 36 bytes", { authenticatorData: authenticatorData().subarray(0, 36) }],
+    ];
+    for (const [label, proof] of cases) expect(codeOf(await creationWith(proof)), label).toBe("contract_creation");
+    expect(codeOf(await creationWith({ clientDataJson: padded(1_024) })), "exactly 1,024 bytes").toBe("ok");
+  });
+});
+
+describe("simulate: a wallet creation touches only its own new wallet (C20, C31)", () => {
+  const request = (body: { func: string; auth: string[] }) => {
+    const v = validateSponsorRequest({ func: body.func, auth: body.auth }, cfg);
+    if (!v.ok) throw new Error(v.code);
+    return v;
+  };
+
+  it("accepts the live creation with the footprint the relayer declared, under the default cap, reading no contract code", async () => {
+    const rpc = fakeSimulation({
+      footprint: liveCreationFootprint(),
+      enforce: { latestLedger: liveCreation.ledger - 1, minResourceFee: liveCreation.declaredResourceFee },
+    });
+    expect(await simulate(cfg, request(liveCreation), rpc)).toEqual({
+      ok: true,
+      chargeStroops: BigInt(liveCreation.declaredResourceFee) + INCLUSION_FEE_ALLOWANCE_STROOPS,
+      minResourceFee: BigInt(liveCreation.declaredResourceFee),
+      latestLedger: liveCreation.ledger - 1,
+    });
+    expect(rpc.getLedgerEntries).not.toHaveBeenCalled();
+    expect(await simulate(testConfig({ FEE_CAP_CREATION_STROOPS: "2000000" }), request(liveCreation), rpc)).toEqual({ ok: false, code: "fee_over_cap" });
+  });
+
+  it("refuses every footprint entry outside the new wallet's storage, the pinned code and the deployer's account and nonce", async () => {
+    const body = await walletCreationBody();
+    const trustline = xdr.LedgerKey.trustline(
+      new xdr.LedgerKeyTrustLine({ accountId: worker.xdrAccountId(), asset: xdr.TrustLineAsset.assetTypeNative() }),
+    );
+    const extras: Array<[string, xdr.LedgerKey]> = [
+      ["our token's instance", instanceKey(TOKEN)],
+      ["our token's code", codeKey(fakeCode(TOKEN)!)],
+      ["an existing wallet's storage", storageKey(passkeyWallet)],
+      ["a third party's instance", instanceKey(STRANGER)],
+      ["other code", codeKey("cd".repeat(32))],
+      ["another account", accountKey(worker.publicKey())],
+      ["a trustline", trustline],
+      ["another account's nonce", nonceKey(worker.publicKey())],
+    ];
+    expect(await simulate(cfg, request(body), fakeSimulation({ footprint: creationFootprint(body.created) }))).toMatchObject({ ok: true });
+    for (const [label, key] of extras) {
+      for (const side of ["readOnly", "readWrite"] as const) {
+        const fp = creationFootprint(body.created);
+        fp[side].push(key);
+        expect(await simulate(cfg, request(body), fakeSimulation({ footprint: fp })), label + " " + side).toEqual({
+          ok: false,
+          code: "foreign_contract_in_footprint",
+        });
+      }
+    }
+  });
+
+  it("judges the footprint against the wallet the preimage creates, so a footprint for any other wallet is refused", async () => {
+    const body = await walletCreationBody();
+    const elsewhere = createdAddress(walletCreation({ keyId: Buffer.alloc(32, 7) }));
+    expect(await simulate(cfg, request(body), fakeSimulation({ footprint: creationFootprint(elsewhere) }))).toEqual({
+      ok: false,
+      code: "foreign_contract_in_footprint",
+    });
+  });
+
+  it("still needs record mode to ask for exactly the deployer's authorisation", async () => {
+    const body = await walletCreationBody();
+    const rpc = fakeSimulation({ footprint: creationFootprint(body.created), requiredAuth: () => [] });
+    expect(await simulate(cfg, request(body), rpc)).toEqual({ ok: false, code: "unused_auth" });
+  });
+});
+
+describe("the auditor registry as a root call: register_key by its owner and nobody else (C20)", () => {
+  const registerFunc = (owner: string, args = registerKeyArgs(owner), fn = "register_key") => b64(hostCall(AUDITOR, fn, args));
+  const registerCall = (owner: string, args = registerKeyArgs(owner), fn = "register_key"): Call => ({ contract: AUDITOR, fn, args });
+  const registerOp = (args: xdr.ScVal[], auth: xdr.SorobanAuthorizationEntry[]) =>
+    Operation.invokeHostFunction({ func: hostCall(AUDITOR, "register_key", args), auth });
+
+  it("accepts register_key authorised by its G owner, by its passkey wallet, and by the envelope source that owns it", async () => {
+    const g = validateSponsorRequest({ func: registerFunc(worker.publicKey()), auth: [b64(await signedEntry(registerCall(worker.publicKey())))] }, cfg);
+    expect(g).toMatchObject({ ok: true, kind: "func", rootContract: AUDITOR, authorisers: [worker.publicKey()] });
+    const c = validateSponsorRequest({ func: registerFunc(passkeyWallet), auth: [b64(contractAccountEntry(registerCall(passkeyWallet)))] }, cfg);
+    expect(c).toMatchObject({ ok: true, rootContract: AUDITOR, authorisers: [passkeyWallet] });
+    const source = registerOp(registerKeyArgs(worker.publicKey()), [sourceAccountEntry(registerCall(worker.publicKey()))]);
+    expect(validateSponsorRequest({ xdr: envelope({ operations: [source] }) }, cfg)).toMatchObject({ ok: true, kind: "xdr", rootContract: AUDITOR });
+  });
+
+  it("refuses register_key that anyone but its owner authorises, an envelope source included", async () => {
+    const owner = worker.publicKey();
+    const call = registerCall(owner);
+    expect(codeOf({ func: registerFunc(owner), auth: [b64(await signedEntry(call, employer))] })).toBe("root_contract_not_allowed");
+    expect(codeOf({ func: registerFunc(owner), auth: [b64(await signedEntry(call, worker)), b64(await signedEntry(call, employer))] })).toBe(
+      "root_contract_not_allowed",
+    );
+    const ownerEntryInStrangerEnvelope = registerOp(registerKeyArgs(owner), [await signedEntry(call, worker)]);
+    expect(codeOf({ xdr: envelope({ signer: employer, operations: [ownerEntryInStrangerEnvelope] }) })).toBe("root_contract_not_allowed");
+    const strangerSource = registerOp(registerKeyArgs(owner), [sourceAccountEntry(call)]);
+    expect(codeOf({ xdr: envelope({ signer: employer, operations: [strangerSource] }) })).toBe("root_contract_not_allowed");
+  });
+
+  it("refuses rotate_key, propose_owner and every other registry function, even when the owner signs", async () => {
+    const id = xdr.ScVal.scvU32(0);
+    const owner = worker.publicKey();
+    const calls: Array<[string, xdr.ScVal[]]> = [
+      ["rotate_key", [id, xdr.ScVal.scvBytes(Buffer.alloc(64, 9))]],
+      ["propose_owner", [id, addr(employer.publicKey()), xdr.ScVal.scvU32(LATEST_LEDGER + 100)]],
+      ["cancel_owner_proposal", [id]],
+      ["accept_owner", [id]],
+      ["get_key", [id]],
+      ["key_count", []],
+      ["rotate_key", registerKeyArgs(owner)],
+      ["register_key_for", registerKeyArgs(owner)],
+    ];
+    for (const [fn, args] of calls) {
+      const body = { func: registerFunc(owner, args, fn), auth: [b64(await signedEntry(registerCall(owner, args, fn)))] };
+      expect(codeOf(body), fn).toBe("root_contract_not_allowed");
+    }
+  });
+
+  it("refuses register_key with any other argument shape", async () => {
+    const owner = worker.publicKey();
+    const muxed = xdr.ScVal.scvAddress(
+      xdr.ScAddress.scAddressTypeMuxedAccount(new xdr.MuxedEd25519Account({ id: xdr.Uint64.fromString("7"), ed25519: worker.rawPublicKey() })),
+    );
+    const shapes: Array<[string, xdr.ScVal[]]> = [
+      ["a 63-byte point", registerKeyArgs(owner, Buffer.alloc(63, 9))],
+      ["a third argument", [...registerKeyArgs(owner), xdr.ScVal.scvU32(1)]],
+      ["no point", registerKeyArgs(owner).slice(0, 1)],
+      ["an owner that is not an address", [xdr.ScVal.scvU32(1), xdr.ScVal.scvBytes(Buffer.alloc(64, 9))]],
+      ["a muxed owner", [muxed, xdr.ScVal.scvBytes(Buffer.alloc(64, 9))]],
+    ];
+    for (const [label, args] of shapes) {
+      const body = { func: registerFunc(owner, args), auth: [b64(await signedEntry(registerCall(owner, args)))] };
+      expect(codeOf(body), label).toBe("root_contract_not_allowed");
+    }
+  });
+
+  it("simulates an owner's register_key against the registry's own storage, under the footprint rule", async () => {
+    const v = validateSponsorRequest({ func: registerFunc(worker.publicKey()), auth: [b64(await signedEntry(registerCall(worker.publicKey())))] }, cfg);
+    if (!v.ok) throw new Error(v.code);
+    const footprint = {
+      readOnly: [codeKey(fakeCode(AUDITOR)!)],
+      readWrite: [storageKey(AUDITOR, 0), storageKey(AUDITOR, 1), instanceKey(AUDITOR), nonceKey(worker.publicKey())],
+    };
+    expect(await simulate(cfg, v, fakeSimulation({ footprint }))).toMatchObject({ ok: true });
+    footprint.readOnly.push(instanceKey(STRANGER));
+    expect(await simulate(cfg, v, fakeSimulation({ footprint }))).toEqual({ ok: false, code: "foreign_contract_in_footprint" });
   });
 });

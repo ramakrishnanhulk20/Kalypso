@@ -70,7 +70,8 @@ insert into archive_state (id) values (1) on conflict (id) do nothing;
 --   grant select on events, ingested_ranges, gaps, archive_state to kalypso_api;
 --   alter role kalypso_api set default_transaction_read_only = on;
 -- The API role can read the archive and nothing else: no writes anywhere, and
--- no access to the sponsor tables below.
+-- no access to the sponsor counters, the wallet births or the relayed
+-- creations below.
 
 -- Sponsor counters. Each is bumped with one atomic statement, so
 -- concurrent requests on different server instances cannot overshoot.
@@ -95,6 +96,14 @@ create table if not exists address_day (
 create index if not exists address_day_by_day on address_day (day);
 
 create table if not exists day_budget (
+  day date primary key,
+  spent_stroops bigint not null check (spent_stroops >= 0)
+);
+
+-- The part of day_budget reserved for passkey wallet creations on the same
+-- day, reserved and given back together with it. Creations stop at their
+-- share, so new sign-ups can never use up the fees of workers already paid.
+create table if not exists creation_budget (
   day date primary key,
   spent_stroops bigint not null check (spent_stroops >= 0)
 );
@@ -129,3 +138,32 @@ create table if not exists relay_auth (
   primary key (address, nonce)
 );
 create index if not exists relay_auth_by_claim on relay_auth (digest, claimed_at);
+
+-- Which transaction created each passkey wallet, so a worker signing in on
+-- another device can find its birth. A row is written only once RPC showed
+-- that transaction succeeded and created the address, and an address is
+-- created once, so the first row is the only birth it can have and is never
+-- replaced. Public chain data only: the browser reads every hash back from
+-- chain and judges the birth itself.
+create table if not exists wallet_births (
+  address text primary key check (address ~ '^C[A-Z2-7]{55}$'),
+  tx_hash text not null check (tx_hash ~ '^[0-9a-f]{64}$'),
+  ledger integer not null check (ledger > 0),
+  recorded_at timestamptz not null default now()
+);
+
+-- Every wallet creation the sponsor handed to Channels, written just before
+-- the hand-off so a creation that may land is always on record, then filled
+-- with Channels' transaction id and, once a status read names it, the hash.
+-- A browser that lost the sponsor's reply finds its creation here, and an
+-- address with no row and no birth was never created through Kalypso.
+-- Pointers only: the browser reads each one back from chain.
+create table if not exists relayed_creations (
+  id bigserial primary key,
+  address text not null check (address ~ '^C[A-Z2-7]{55}$'),
+  transaction_id text check (transaction_id ~ '^[A-Za-z0-9_-]{1,128}$'),
+  tx_hash text check (tx_hash ~ '^[0-9a-f]{64}$'),
+  relayed_at timestamptz not null default now()
+);
+create index if not exists relayed_creations_by_address on relayed_creations (address, id);
+create index if not exists relayed_creations_by_transaction on relayed_creations (transaction_id);

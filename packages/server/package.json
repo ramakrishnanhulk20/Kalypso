@@ -14,6 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "test:wire": "vitest run --mode wire",
     "typecheck": "tsc -p tsconfig.json",
     "coverage": "vitest run --coverage"
   },
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
     "@types/node": "26.6.4",
     "@vitest/coverage-v8": "5.0.3",
     "typescript": "7.0.2",
