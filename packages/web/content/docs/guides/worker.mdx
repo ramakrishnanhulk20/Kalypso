@@ -1,0 +1,55 @@
+---
+title: Worker
+description: "Join from your invite link with Face ID or a wallet, read your sealed payslips, and cash out at Stellar's test anchor."
+---
+
+Your pay lives at [/worker](/worker). You need your employer's invite link, and either a phone or laptop with a passkey (Face ID, a fingerprint or the device PIN) or Freighter on Testnet. Kalypso's fee sponsor pays the fees for joining and moving your pay, so with Face ID there is nothing to fund. A Freighter account must already exist on testnet.
+
+## Sign in
+
+1. Open the invite link. A strip headed **Invitation** at the top says which company invited you: the company's name, then "invited you to receive your pay through Kalypso."
+2. The first time on this device, choose **New here? Create your pay key**. Your device asks you to confirm twice. Your pay key is made on the device from the new passkey, and Kalypso sets up your wallet, with the fee paid by the sponsor. The button reads "Waiting for your device, then setting up your wallet" while it works.
+3. When you come back, choose **Sign in with Face ID**. For a wallet, choose **Use a wallet instead**, then **Connect Freighter**, and sign the Kalypso key message twice.
+4. Under **Signed in** the page shows your address, with a copy button, once Kalypso has confirmed from the chain that the wallet is yours. Until then it reads "Wallet not set up yet". **Sign out** forgets the session in this tab, and your passkey stays on the device.
+
+## Join the company
+
+5. Choose the button that reads **Join** and your company's name. Its steps tick off one by one, from checking the invite to accepting it, in about a minute, and it costs you nothing. Your device or Freighter asks you to approve along the way.
+6. If you see "This company has not invited this account.", the card shows "Ask your employer to invite this address:" with your address and a copy button. Send the address to your employer. Once they invite it, choose the **Join** button again.
+
+## Read your pay
+
+7. **Your balance** shows your pay in USDC, with the line "Sealed on chain. Opened on this device with your key." Each payslip shows the month and the company, the amount in USDC, a **Paid in** line with the transaction that paid it, and a **Company** line.
+8. A "Publicly readable" chip on a payslip means the company uses the published demo accountant key, so anyone can read its amounts. A "Readers unknown" chip means Kalypso could not read the company's settings, so it cannot say whether anyone else can read that amount. Reload to check again.
+9. "History incomplete" means part of your history could not be checked against the chain yet. A line under it says what does not match, and every amount still shown has passed that check. With no payslip yet and a complete history, the page says "No payslips yet. They appear here after your employer runs payroll."
+
+## Back on a new device
+
+Kalypso finds your companies on the chain, not only in this browser's notes. After you sign in, it reads the payroll contract's own join events for your wallet and keeps only the companies the chain's roster confirms you joined. So on a new device your payslips show without opening your invite link again.
+
+Your address shows under **Signed in** once Kalypso confirms how your wallet was first set up, by reading the transaction that created it from the chain. Kalypso holds the address back until then on purpose: someone who learned your passkey's id could have made a wallet there first, from their own code, and an address shown too early could be theirs. Your payslips and cash-out work in the meantime.
+
+While it waits, a card headed **We could not confirm your wallet yet** says "Your wallet is on the network, but Kalypso has not confirmed how it was first set up, so its address stays hidden. Your payslips and cash-out below still work." Choose **Check again** in a minute. If Kalypso still cannot confirm it, the card also offers **Make a new pay key instead**. A new pay key is a new passkey with a new address, which your employer must invite, so use it only if you would rather not wait.
+
+If your wallet is not on the network yet, the card is headed **Your wallet is not set up yet** and its button reads **Finish setting up**.
+
+## Cash out
+
+10. Under **Move to your cash-out account**, type an amount in the **Amount** box or choose **Max**. The page repeats what it read ("You are moving 1,500.00 USDC.") and the button reads **Move 1,500.00 USDC**. A comma counts only as a thousands separator, so "1,5" is refused. Choose the button. Your pay leaves the sealed balance as plain USDC, and the page says "Moved." only after it has read the new balance from the chain. With Face ID, the cash-out account comes from the same passkey, and friendbot gives it test XLM the first time. With Freighter, it is your own wallet account. The amount you move is public.
+11. Under **Cash out at the anchor**, choose **Open the anchor**. Stellar's test anchor opens in a popup. Fill in its form, and its status shows under the button.
+12. When the anchor is ready, a box headed **The anchor asks for** shows the amount, then **To**, **Memo**, **Anchor fee** and **You receive**, all from the anchor's own record. Check the amount, then choose **Approve and send** within five minutes. The last status reads "Done. The anchor has paid out." On testnet no real money moves. Choose **Cash out again** to start another.
+
+## When something goes wrong
+
+- "This passkey cannot create a Kalypso private key." Your passkey provider lacks PRF, which Kalypso needs. Try Chrome or Safari on a recent phone or laptop, or use a wallet. PRF support differs between devices and providers, and Kalypso has not been checked on every one.
+- "Kalypso cannot find the wallet for this passkey. If you made it on another device, finish joining there first." The wallet is not on the network yet and this browser has no record of making it, so finish joining on the device where you made the passkey.
+- "This address was taken before your wallet was set up. Create a new pay key." or "This passkey is not the one that controls this wallet." Someone else's wallet sits at that address, so Kalypso will not use it. Choose **Create a new pay key**, then ask your employer to invite the new address.
+- The sponsor creates at most three Face ID wallets a day per internet connection. Past that, use Freighter or wait a day.
+- A message ending "Kalypso checks the chain before trying again." while joining: choose **Join** again, and it skips what is done.
+- "The fee sponsor cannot pay for this move right now" appears with **Pay the fee yourself**. That moves the same amount and takes the small network fee from your cash-out account's test XLM.
+- "The cash-out service changed its request after you saw it, so nothing was sent. Start the cash-out again." Choose **Start again**.
+- With Face ID, your wallet trusts only the passkey that made it. If that passkey is gone from every device, nobody, Kalypso included, can recover the pay.
+
+## What you see, and what you do not
+
+You see only your own payslips and balance, never a coworker's pay or the company's balance. Your employer and Kalypso never see your key. Anyone can see that the company paid your address and when, and the amount you move out. The anchor sees what you cash out. Kalypso also registers an audit key under an id you own and throws its secret away at once, so the auditor's copy of your pay opens for nobody.

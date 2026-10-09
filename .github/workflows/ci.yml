@@ -154,5 +154,38 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # The same suite through postgres.js over a socket, the driver production uses for Neon.
+      - run: npm run test:wire
       - run: npm run coverage
       - run: npm audit --audit-level=high
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # The app links @kalypso/core (served from its built dist) and @kalypso/server (served from
+      # source) by path, the same order vercel.json installs them in. npm ci stops with an error
+      # when a package-lock.json disagrees with its package.json, so lockfile drift in any of the
+      # three packages fails the job here.
+      - name: core install and build
+        working-directory: packages/core
+        run: npm ci && npm run build
+      - name: server install
+        working-directory: packages/server
+        run: npm ci
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --audit-level=high
+      - run: npm run build

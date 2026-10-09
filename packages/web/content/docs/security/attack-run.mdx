@@ -1,0 +1,84 @@
+---
+title: Attack run
+description: "The last full output of Kalypso's prove-it command, which attacks the live showcase company on testnet and prints what stopped each attack."
+---
+
+Anyone can run this. It needs Node.js 22.9 or later and a clone of the repo, and no Kalypso key: build the core library, then run `npm run prove:testnet` from `packages/contracts/scripts`, as shown under "Run it yourself" below. A stranger's run checks the amounts with the published demo accountant key and ends with 12 passed and 1 skipped. What follows is the record of the last full run, copied from [`docs/security/attack-run.md`](https://github.com/ramakrishnanhulk20/Kalypso/blob/main/docs/security/attack-run.md).
+
+Kalypso's prove-it command attacks the product's own promises against the live showcase company on Stellar testnet, then prints what each attack tried and what stopped it. It signs nothing with any showcase key: every attack on the showcase is a read or a simulation of current testnet state. Only P11 sends transactions, from throwaway friendbot accounts it makes and forgets, so anyone can run it without keys.
+
+- Date: 2026-10-08T15:33:07Z (ledger 5089999)
+- Commit: 03dea90 (tag v0.1.1; payroll v0.1.1 with the external audit fixes)
+- Network: Stellar testnet, RPC `https://soroban-testnet.stellar.org`
+- Verifier: `CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM`
+- Auditor registry (v0.1.0): `CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG`
+- Confidential USDC token: `CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ`
+- Payroll (v0.1.1): `CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ`
+- USDC contract: `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`
+- Showcase: "Andes Studio (demo)", company 0 on the v0.1.1 payroll, seeded by `npm run seed:testnet`; every id, address and transaction is in `packages/contracts/deployments/showcase-testnet.json`. The same treasury and workers were first paid through the earlier v0.1.0 payroll `CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA`; those 12 payments are the earlier ones P3 and P10 mention.
+
+## Run it yourself
+
+```sh
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci
+npm run prove:testnet
+```
+
+Add `-- --archive <url>` to read the showcase's history from a Kalypso event archive (https only); the archive URL goes in the README after deploy.
+
+This run had the seed's private file, so it also checked every decrypted amount against what the seed paid and opened a worker's own payslips. Without that file, the amounts come from the published demo accountant key and the worker half of P10 is skipped, so a stranger's run ends with 12 passed and 1 skipped.
+
+## What this run does not cover
+
+- Only amounts are private. Who pays whom, when, and who is on a roster are public by design (threat model, non-goals).
+- The history checks (P1, P2, P3, P9 and P10) read RPC's last 7 days unless `--archive` is given. This run read RPC only. Once the showcase's first ledger 5084191, or for P9 the token's first ledger 5083382, falls outside that window, they fail and say why; they never pass on missing history.
+- P1 looks for each salary in 15 encodings. It does not try to break the encryption itself; P3 shows that a wrong key reads nothing.
+- Every attack on the showcase is a simulation of what the network would do with each transaction, and none was submitted. P11's two transactions come from its own throwaway accounts, and each run leaves one more auditor id and one more token account behind.
+
+## Output
+
+```text
+Kalypso prove-it: attacking the showcase's promises on Stellar testnet
+  when       ledger 5089999, 2026-10-08T15:33:07Z
+  showcase   "Andes Studio (demo)", company 0, treasury GA774NZX5OQGBL222I4QO4IZXGRHGWFTONNH3VYGMYXF5VARMAIYSRZU, 6 workers, runs 202609 "September 2026" and 202610 "October 2026"
+  contracts  payroll CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ, token CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ, auditor registry CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG, verifier CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM
+  amounts    checked against the private seed file
+  history    RPC only, about the last 7 days (pass --archive <url> for older ledgers)
+  No showcase key signs anything. Every attack on the showcase is a read or a simulation of current testnet state;
+  only P11 sends transactions, from throwaway friendbot accounts it makes and forgets.
+
+PASS  P1   A stranger read all 72 showcase transactions from RPC (envelope, result, meta and events), 4.8 MB, and searched them for the 12 salaries in 15 encodings each, and found none, because a salary only ever travels as an encrypted transfer; the same search does find the treasury's public deposit in its deposit transaction (as decimal stroops, i128 big endian, u64 big endian), so it would have seen a salary in plain form.
+            Salaries a stranger can read: 0 of 12
+PASS  P2   The published demo accountant key opened Andes Studio's payroll through Kalypso's audit: all 12 payments decrypted, each run total adds up and every amount equals what the seed paid, and nothing is undecryptable, because the treasury's transfers are encrypted to this one accountant key.
+            Salaries the accountant can read: 12 of 12
+PASS  P3   A random auditor key tried to open the same payroll and read nothing: every amount it decrypts falls outside any possible balance, so Kalypso marks all 24 of the treasury's spends undecryptable (the 12 showcase salaries and 12 earlier ones) and counts none of them.
+            Salaries a random key can read: 0 of 12
+            Treasury spends in the history read: 24; marked undecryptable: 24
+PASS  P4   Paying worker GAGNT6...HD3U a second time in run 202610 "October 2026", simulated as the treasury itself, was refused by the payroll contract with Error(Contract, #14) AlreadyPaid, because the run's paid flag for that worker is already set (the run is open).
+PASS  P5   The admin of "Outsider Co (demo)" (company 1) tried to move Andes Studio's money three ways (paying into run 202610 unsigned, paying with a forged treasury signature, and calling the token's transfer out of the treasury directly), and the network refused all three, because only the treasury's own key can authorise its money.
+            pay into run 202610 with no treasury signature: Error(Auth, InvalidAction), no signature for GA774N...SRZU
+            pay with a treasury authorisation signed by another key: Error(Auth, InvalidAction), signature rejected for GA774N...SRZU
+            the token's confidential_transfer out of the treasury, called directly: Error(Auth, InvalidAction), no signature for GA774N...SRZU
+PASS  P6   Paying GDDKZG...BBXQ, an address that holds a token account but is not on Andes Studio's roster, simulated as the treasury itself, was refused by the payroll contract with Error(Contract, #8) NotActive, because pay checks the roster for every worker before any money moves.
+PASS  P7   Swapping the proof rules was tried as the account that deployed the verifier (update_verification_key on the transfer circuit) and refused with Error(Contract, #2000) Unauthorized, because the token's verifier has no admin and no manager left and its three keys still hash to the pinned circuits.
+PASS  P8   A stranger with a brand-new key tried to rotate the accountant's auditor key (id 5) to one of its own, unsigned and with a forged signature, and the registry refused both, because only the id's owner, the accountant's account, can change the key.
+            unsigned: Error(Auth, InvalidAction), no signature for GDDJCJ...QLLE
+            forged: Error(Auth, InvalidAction), signature rejected for GDDJCJ...QLLE
+PASS  P9   Checked that no USDC can go missing behind the encryption: the token's balance on the USDC contract equals every public deposit minus every public withdrawal since its first ledger 5083382 (10 deposits and 1 withdrawal, read from RPC events), so every confidential balance is backed.
+PASS  P10  An outsider sent GAGNT6...HD3U a direct confidential transfer and a public deposit; both reached the worker's verified balance, which also holds its pay from the earlier payroll contract, yet the worker sees only its 2 real payslips and the accountant's totals count neither, because a payslip needs Andes Studio's own payroll event and paid flag in the same transaction.
+PASS  P11  An attacker read the auditor registry's next id (17) and registered its own key under it first. The victim treasury's registration under that predicted id was refused before any transaction existed, because the registry says the attacker, not the accountant, owns it; and a treasury registered under it by hand still cannot found a company naming the accountant: create_company was refused with Error(Contract, #23) AuditorNotOwnedByAccountant (simulated, no fee), so no salary is ever encrypted to the attacker's key.
+            predicted id 17 (key_count), taken by attacker GAXW2O...TCGN in tx bc924f18015db42b18ce49638791a154a6b1b4e008aa8d3b68b36816f0ba84b6
+            checked registration of treasury GA5HUQ...VLI3 under id 17: AuditorBindingError OWNER_MISMATCH Someone else owns this auditor id. Register your own key and use the id it returns.
+            treasury registered by hand under id 17 in tx 0e18055f389ef1e6b2f4ea16c509d12b3d5d60c50a71c5fed51fa6afb07c85e1
+            create_company naming the victim accountant: HostError: Error(Contract, #23)
+            control, the same call naming the attacker: the simulation succeeded
+PASS  P12  A handover offer one ledger past the furthest ledger the network lets an entry live to (3110400 ledgers ahead) was refused by both contracts, simulated as the real admin and the real accountant: the payroll's propose_admin with Error(Contract, #19) and the registry's propose_owner with Error(Contract, #103), both InvalidLiveUntil, while an offer at the limit itself was accepted. So no handover can stay acceptable for longer than the offer itself can be stored.
+            payroll propose_admin: expiry 8200424 accepted; expiry 8200425: HostError: Error(Contract, #19)
+            auditor registry propose_owner: expiry 8200424 accepted; expiry 8200425: HostError: Error(Contract, #103)
+PASS  P13  Andes Studio's on-chain runs_opened is 2, exactly its 2 runs, and each of its 6 workers has memberships_of of at least 1, so a history reader that is served fewer runs or companies than the chain counts knows something was hidden.
+            runs_opened 2, showcase runs 2
+            memberships_of: GAGNT6...HD3U 1, GASKCO...OZOR 1, GB2B5T...KZO6 1, GASG6V...IL2G 1, GDN7XD...7RS4 1, GAGIT2...6OLJ 1
+
+13 passed, 0 failed of 13 checks. RESULT: PASS
+```

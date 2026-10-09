@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm ci --prefix ../core && npm run build --prefix ../core && npm ci --prefix ../server && npm ci",
+  "crons": [
+    {
+      "path": "/api/archive/ingest",
+      "schedule": "0 5 * * *"
+    }
+  ]
+}

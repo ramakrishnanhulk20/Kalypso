@@ -1,0 +1,198 @@
+/* The docs theme. It sits in its own file so docs styling stays apart from the landing tokens; overrides that restyle it to Kalypso come after the two imports. */
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/* Everything below is scoped to the docs layout, so the landing and the demo
+   cannot pick it up. The theme variables sit on the layout (.kalypso-docs) and
+   on <body> while it holds one, because the search dialog and the mobile
+   sidebar render in portals directly under <body>. */
+:is(.kalypso-docs, body:has(.kalypso-docs)) {
+  --color-fd-background: #15100f;
+  --color-fd-foreground: #f2ece6;
+  --color-fd-muted: #1d1716;
+  --color-fd-muted-foreground: #a79c94;
+  --color-fd-card: #1d1716;
+  --color-fd-card-foreground: #f2ece6;
+  --color-fd-popover: #1d1716;
+  --color-fd-popover-foreground: #f2ece6;
+  --color-fd-border: rgba(242, 236, 230, 0.1);
+  --color-fd-primary: #c9473a;
+  --color-fd-primary-foreground: #f2ece6;
+  --color-fd-secondary: #261e1c;
+  --color-fd-secondary-foreground: #f2ece6;
+  --color-fd-accent: #261e1c;
+  --color-fd-accent-foreground: #f2ece6;
+  --color-fd-ring: rgba(242, 236, 230, 0.4);
+}
+
+/* neutral.css re-greys these three inside the sidebar with a more specific
+   selector, so they are set again here. */
+.kalypso-docs #nd-sidebar {
+  --color-fd-muted: #1d1716;
+  --color-fd-secondary: #261e1c;
+  --color-fd-muted-foreground: #a79c94;
+}
+
+.kalypso-docs #nd-page > h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 4vw, 3.25rem);
+  font-weight: 500;
+  font-variation-settings: "opsz" 96;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.kalypso-docs .prose {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.kalypso-docs .prose > :is(p, ul, ol, blockquote, h2, h3, h4, hr) {
+  max-width: 70ch;
+}
+
+.kalypso-docs .prose h2 {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 500;
+  font-variation-settings: "opsz" 72;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.kalypso-docs .prose h3 {
+  font-family: var(--font-sans);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.kalypso-docs .prose a:not([data-card]) {
+  color: var(--color-seal-hi);
+  font-weight: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color 180ms ease-out;
+}
+
+.kalypso-docs .prose a:not([data-card]):hover {
+  color: var(--color-paper);
+}
+
+.kalypso-docs .prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 400;
+  background: var(--color-ink-3);
+  border: 0;
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+}
+
+.kalypso-docs .prose :not(pre) > code::before,
+.kalypso-docs .prose :not(pre) > code::after {
+  content: none;
+}
+
+.kalypso-docs figure.shiki {
+  background: #0f0b0a;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.kalypso-docs figure.shiki pre,
+.kalypso-docs figure.shiki code,
+.kalypso-docs figure.shiki > div {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.kalypso-docs .prose table {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: collapse;
+  background: transparent;
+  border: 1px solid var(--color-line);
+  border-radius: 0;
+  overflow: visible;
+}
+
+.kalypso-docs .prose :is(th, td) {
+  border: 1px solid var(--color-line);
+  padding: 0.625rem 0.875rem;
+  text-align: start;
+  vertical-align: top;
+}
+
+.kalypso-docs .prose th {
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-faint);
+}
+
+.kalypso-mermaid {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  overflow-x: auto;
+  background: var(--color-ink-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.kalypso-mermaid[data-state="drawing"] {
+  min-height: 8rem;
+}
+
+.kalypso-mermaid:focus-visible {
+  outline: 2px solid var(--color-paper);
+  outline-offset: 3px;
+}
+
+/* Mermaid sizes its svg to fit the column, which turns the labels of a wide
+   diagram into specks. The svg stops shrinking at 70% of its drawn width (and
+   never below 640px unless it was drawn narrower), and the box scrolls instead. */
+.kalypso-mermaid svg {
+  display: block;
+  margin: 0 auto;
+  width: 100%;
+  height: auto;
+  max-width: var(--diagram-w, 100%) !important;
+  min-width: min(var(--diagram-w, 100%), max(640px, calc(var(--diagram-w, 0px) * 0.7)));
+}
+
+.kalypso-mermaid-source {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-muted);
+  white-space: pre;
+}
+
+/* Fumadocs marks the open page with a tinted pill. The docs mark it with a
+   2px seal rule and paper text instead. */
+body:has(.kalypso-docs) :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"] {
+  background: transparent;
+  color: var(--color-paper);
+  border-radius: 0 8px 8px 0;
+  box-shadow: inset 2px 0 0 var(--color-seal);
+}
+
+body:has(.kalypso-docs) :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"]::before {
+  content: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.kalypso-docs, body:has(.kalypso-docs)),
+  :is(.kalypso-docs, body:has(.kalypso-docs)) * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,48 @@
+---
+title: Employer
+description: "Set up a company, fund its sealed treasury, invite the team and pay a month from a spreadsheet at /employer."
+---
+
+The employer console at [/employer](/employer) runs on Freighter set to Testnet. Your wallet's account becomes the company's treasury and pays every fee on this screen, so fund it with test XLM first: Freighter's Fund button asks friendbot. Get your accountant's id and address first: the [accountant guide](/docs/guides/accountant) shows where they find them.
+
+## Set up the company
+
+1. Choose **Connect Freighter**.
+2. Under **Your accountant**, type the **Accountant id** and the **Accountant address**, then choose **Check**. Kalypso reads the auditor registry and shows a **Confirmation code**: 16 characters in four groups.
+3. Ask your accountant to read the code on their own screen. Tick **The code matches** only if every character matches. A different code means someone else's key sits under that id.
+4. Type the **Name shown on payslips**, 1 to 64 bytes. Anyone can read it on chain.
+5. Choose **Create the company**. Freighter asks you to sign the Kalypso key message twice, which makes the treasury's private key, then to approve two transactions: the treasury's registration with the confidential token, proved in your browser, and the company itself. The dashboard opens with the company's id at the top.
+
+## Fund the treasury
+
+6. In **Treasury**, under **Add funds**, type an **Amount (USDC)** and choose **Add to treasury**. Freighter approves a USDC trustline the first time, then a deposit and a merge. The sealed balance then shows, opened in your browser with your key. The deposit amount is public, so it shows roughly what payroll costs.
+
+## Invite the team
+
+7. In **Team**, paste the **Worker addresses, one per line**, up to 50, and choose **Invite**. Each address is its own transaction, and each row ends invited, already invited, already joined, refused or not sent.
+8. Send every worker the **Invite link**. A worker who signs up with Face ID gets a new address on their screen: invite it, and they join from the same link. Only workers who have joined can be paid.
+
+## Pay a month
+
+9. In **Run payroll**, pick the **Month** and the **Year**.
+10. Drop the CSV on the box, or choose **Paste instead**. Each line holds an address, an amount and an optional name, up to 500 lines plus one header row. Problems are listed by line, and the preview shows every amount and the total.
+11. Choose **Approve and pay**. Freighter approves one transaction to open the run, one for every two workers, and one to close it. Your browser proves each payment first. Each row ends paid, already paid or failed, and "Run closed" appears once all are paid.
+
+## On another browser
+
+Your list of companies lives in this browser. On a new one, type the id into **Open a company by id** and choose **Open**. The treasury then asks you to choose **Rebuild from chain**, also kept under **Treasury tools**. Kalypso rebuilds the balance from the treasury's history and shows what this device expected beside it. If they differ, the treasury moved in a way this browser did not record: find out why before paying.
+
+## When something goes wrong
+
+The messages you are most likely to meet:
+
+- "This wallet's account does not exist on testnet yet." Fund it with friendbot.
+- "This accountant id belongs to a different address from the one entered." Check both with your accountant.
+- "This wallet is already registered with the confidential token under another accountant id, and that can never change." Use a fresh wallet.
+- "The file lists more workers than have joined the company." Wait until each one has joined.
+- "This device's treasury records do not match the chain." Choose **Rebuild from chain** in the note, check the result, then pay again.
+- A run that stops halfway: choose **Approve and pay** again with the same file. It picks up from the chain's paid flags, and nobody is paid twice.
+
+## What you see, and what you do not
+
+You see the treasury's sealed balance and the amounts in your own file, never a worker's balance. Your accountant's key opens every amount you pay and the treasury's balance after each payment, and it cannot move money. Strangers see that your treasury paid each worker and when, never how much. Kalypso never holds your keys.

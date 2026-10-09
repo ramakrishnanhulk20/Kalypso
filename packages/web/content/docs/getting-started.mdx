@@ -1,0 +1,129 @@
+---
+title: Getting started
+description: "Run a payroll in your browser with no wallet, read the live showcase, use the three real screens with your own wallet, then clone the repo and check every claim from your terminal."
+---
+
+There are four ways in: a sandbox that needs nothing installed, the live showcase on the home page, the three real screens, and the repo.
+
+## Try it with no wallet: the sandbox
+
+The sandbox at [/demo](/demo) builds a small company on Stellar testnet inside your browser and pays it through Kalypso with real zero-knowledge proofs. It needs no wallet and no sign-up, and it takes about 3 minutes on a laptop. Slower phones take longer. Type three salaries under "This month's payroll" and choose **Start the sandbox**. The page then works through ten steps. Every transaction they send is real, and each one opens on stellar.expert:
+
+1. Keys: your browser makes five throwaway testnet accounts, the employer (whose account is the treasury), the accountant and three workers.
+2. Test money: friendbot funds all five with test XLM.
+3. USDC: the treasury opens a USDC trustline, and the five accounts buy test USDC for it on the Stellar DEX: the three salaries plus 2 percent, so its public deposit is never the exact payroll total.
+4. Accountant: the accountant registers their own audit key in Kalypso's auditor registry and gets an id.
+5. Treasury: the treasury registers with the confidential token under that id, with a proof built in your browser. The id's owner and key are checked on chain before it signs.
+6. Company: the payroll contract creates the company, naming its accountant.
+7. Workers: each worker registers their own audit key, registers with the token, is invited and accepts.
+8. Funding: the treasury deposits the USDC into the confidential token and merges it into its spendable balance.
+9. Run: this month's run opens for three workers. Its id is the month, for example 202610 for October 2026.
+10. Payroll: your browser proves three confidential payments and sends them through the same run engine a real company uses.
+
+When it is done, the page says "Your payroll is on chain." and opens it with the accountant's key. Pick another key to see what each person sees:
+
+- **Worker 1**, **Worker 2** or **Worker 3**: that worker's own payslip and their verified balance.
+- **Accountant**: every payment, with its amount.
+- **Stranger**: a fresh key nobody holds, so every payment stays sealed.
+
+Every step is saved in your browser as it happens. Close the tab or reload, come back and choose **Resume**: each step reads the chain first and skips what is already there, and a transaction sent before the reload is found by its saved hash, never sent twice. If a step stops, the page names it and offers **Try again**. One sandbox runs per browser at a time. **Start over** makes this browser forget it, while its company stays on testnet. The keys are throwaway testnet keys that live only in this browser.
+
+## Read the showcase through the key lens
+
+The home page's "Try to read the salaries" section reads Andes Studio (demo), company 0 on the payroll v0.1.1 contract, straight from Stellar testnet: 6 workers, two runs (September 2026 and October 2026), and 12 sealed payments.
+
+- Pick the accountant's key and drag the lens over the ledger. The amounts open in your browser with the demo accountant key we published on purpose. That key reads only this demo company.
+- Pick a stranger's key and the same payments stay sealed.
+- "Open every amount" opens the whole ledger at once.
+
+Nothing leaves the page. Each row links to its transaction on Stellar Expert, where the same payment shows no amount.
+
+## Use the three real screens
+
+The sandbox plays every part for you. The real screens split the same payroll between three people, each holding their own key:
+
+- [Employer guide](/docs/guides/employer): set up a company at /employer, fund its treasury, invite the team and pay a month from a CSV.
+- [Worker guide](/docs/guides/worker): join from the invite link at /worker with Face ID or Freighter, read your payslips and cash out at the test anchor.
+- [Accountant guide](/docs/guides/accountant): register your key at /accountant, give the employer your id, then open and export the books.
+
+The employer and the accountant each need Freighter set to Testnet, with an account funded by friendbot. A worker who signs in with Face ID needs nothing funded.
+
+## Developer path
+
+You need Git, Node.js 24 (the server needs 24; the testnet scripts need 22.9 or later), a Rust toolchain for the contracts (CI uses Rust 1.99.0), and the [stellar CLI](https://github.com/stellar/stellar-cli) 28.1.0 for the build attestation check.
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/Kalypso.git
+cd Kalypso
+```
+
+Each command block below starts from the repo root.
+
+### Run the tests
+
+On 9 October the suites held 115 payroll and 43 auditor tests (`cargo test`), 555 core tests at 98.46% line coverage, 316 server tests at 97.99%, 392 web app tests and 11 tests for the testnet scripts, 1,432 in all. The server's 316 also run a second time through the production Postgres driver, with `npm run test:wire`.
+
+```bash
+cd packages/contracts && cargo test
+```
+
+```bash
+cd packages/core && npm install && npm test
+```
+
+```bash
+cd packages/server && npm install && npm test
+```
+
+```bash
+cd packages/server && npm run test:wire
+```
+
+```bash
+cd packages/web && npm install && npm test
+```
+
+```bash
+cd packages/contracts/scripts && npm ci && npm test
+```
+
+### Check that the live payroll came from this repo
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+It answers with `.github/workflows/release.yml` at tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, built on a GitHub-hosted runner.
+
+### Check the stack from chain state
+
+`check:testnet` reads chain state and runs 18 checks: nobody, including us, can change which proofs the verifier accepts; neither of our contracts has an admin or an upgrade path; the code on chain is the released code; and every contract has at least 14 days before it archives. It needs the payroll from release v0.1.1 and the auditor registry from release v0.1.0, each in its own folder:
+
+```bash
+mkdir -p release/v0.1.1 release/v0.1.0
+curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
+curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
+cd packages/contracts/scripts && npm ci
+npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
+```
+
+The same files are on the [Releases page](https://github.com/ramakrishnanhulk20/Kalypso/releases). A passing run ends with `18 of 18 checks passed. RESULT: PASS`.
+
+### Attack the showcase
+
+`prove:testnet` attacks the showcase company's promises on testnet and prints what stopped each attack. It runs 13 checks and needs no keys.
+
+```bash
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci && npm run prove:testnet
+```
+
+Without the seed's private file, the amounts are checked with the published demo accountant key and the worker half of P10 is skipped, so a stranger's run ends with 12 passed and 1 skipped. The history checks read RPC, which keeps about the last 7 days. Add `-- --archive <url>` to read older ledgers from Kalypso's event archive; its URL goes in the README after the archive is deployed. The last full run is on [Attack run](/docs/security/attack-run).
+
+### Keep the stack alive
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
+```
+
+This extends the storage life of all four contracts and their code, 60 days by default (`-- --days <n>` to change it), so none archives while it is being judged. Anyone may pay for an extension and it changes nothing else. It pays from the stellar CLI identity named by `DEPLOYER` (default `kalypso-deployer`) in `packages/contracts/.stellar`, which must exist and hold testnet XLM. `check:testnet` fails once any contract has fewer than 14 days left.

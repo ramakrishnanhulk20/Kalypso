@@ -1,0 +1,51 @@
+---
+title: Overview
+description: "What Kalypso is, who it is for, and what stays private and what does not."
+---
+
+Kalypso takes its name from the Greek Kalypso (Καλυψώ), "she who conceals".
+
+Kalypso is payroll on Stellar where nobody can read the salaries except the people who should. A company pays its team in USDC. The public ledger shows that each payment happened, never how much. Each worker reads only their own pay, and the company's accountant holds a key that reads every amount the company paid.
+
+It is built on OpenZeppelin's confidential token for Stellar, which the Stellar Development Foundation lists for payroll. Kalypso adds a payroll contract, an auditor key registry, and a client library that proves every payment in the browser. Three screens put it to work: the employer pays from a spreadsheet, each worker joins with Face ID or a wallet and cashes out at an anchor, and the accountant opens and exports the books. It runs on Stellar testnet today.
+
+## Who it is for
+
+Any company that pays a remote team in USDC. A plain USDC payment on a public chain shows its amount to anyone with a block explorer, so every salary paid that way is public. Kalypso keeps the payment on chain and the amount sealed, and the accountant can still read the books.
+
+## The three keys
+
+| Key | Held by | What it opens |
+|---|---|---|
+| Treasury key | The employer | Moves the company's money and reads the treasury's own balance. The payroll contract pays each worker at most once per run, and only with this key's signature. |
+| Worker key | Each worker, alone | That worker's own payslips and balance. Nothing else on the payroll. |
+| Accountant key | The company's accountant | Every amount the company paid, and the treasury's balance after each payment. It cannot move money. |
+
+The accountant registers their own key in Kalypso's auditor registry, and only they can change it. No key held by Kalypso can read a real company's salaries or move its money.
+
+## What stays private, and what does not
+
+Private: every salary amount and every balance.
+
+Public, by design:
+
+- Who pays whom, and when. Each company's roster is on chain, so the number of workers is public too.
+- Deposit and withdraw amounts. The deposit that funds the treasury shows about how much the payroll costs, and a worker who withdraws exactly their pay reveals it.
+- The accountant sees every amount the company pays. That is what their key is for.
+
+Not defended:
+
+- A leaked key opens everything ever encrypted to it. Rotating the key protects only future payments.
+- The contract cannot know whether a hidden amount is the right salary. After each payment, Kalypso's run engine checks that exactly the approved amounts left the treasury, so a wrong amount is caught after the fact, not prevented.
+- A compromised wallet extension or computer, a user who signs Kalypso's key message on a phishing site, and the USDC issuer freezing the pooled funds.
+- Flaws in OpenZeppelin's confidential token, its circuits or its verifier, which are new and unaudited.
+
+Kalypso is testnet only and has not been audited by a security firm. The [security pages](/docs/security/overview) say how it was checked and how to check it yourself.
+
+## Where to go next
+
+- [Getting started](/docs/getting-started): run a payroll in your browser with no wallet.
+- Guides for the [employer](/docs/guides/employer), the [worker](/docs/guides/worker) and the [accountant](/docs/guides/accountant): each screen, step by step.
+- [How it works](/docs/how-it-works)
+- [Contracts and addresses](/docs/contracts)
+- [FAQ](/docs/faq)

@@ -1,0 +1,426 @@
+@import "tailwindcss";
+@import "./fumadocs.css";
+
+@theme {
+  --color-ink: #15100f;
+  --color-ink-2: #1d1716;
+  --color-ink-3: #261e1c;
+  --color-line: rgba(242, 236, 230, 0.1);
+  --color-paper: #f2ece6;
+  --color-muted: #a79c94;
+  --color-faint: #6e645e;
+  --color-seal: #c9473a;
+  --color-seal-hi: #d85a4c;
+  --color-seal-deep: #8e2e25;
+  --color-ok: #7fb8a4;
+  --color-wait: #8e9db3;
+  --color-fail: #a89be8;
+
+  --radius-button: 8px;
+  --radius-card: 12px;
+}
+
+/* next/font sets these variables on <html>. Inline mode points Tailwind at
+   them without declaring them a second time. The Geist package fixes its own
+   variable names, so sans and mono are bridged here. */
+@theme inline {
+  --font-display: var(--font-display);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  body {
+    background: var(--color-ink);
+    color: var(--color-paper);
+    font-family: var(--font-sans);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: var(--color-seal);
+    color: var(--color-paper);
+  }
+}
+
+@utility t-poster {
+  font-family: var(--font-display);
+  font-size: clamp(5rem, 17vw, 17rem);
+  font-weight: 600;
+  font-variation-settings:
+    "opsz" 144,
+    "SOFT" 0,
+    "WONK" 1;
+  letter-spacing: -0.045em;
+  line-height: 0.82;
+}
+
+@utility t-h2 {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, 5.5rem);
+  font-weight: 500;
+  font-variation-settings: "opsz" 96;
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+}
+
+@utility t-lead {
+  font-family: var(--font-sans);
+  font-size: clamp(1.125rem, 1.6vw, 1.375rem);
+  line-height: 1.5;
+  color: var(--color-muted);
+  max-width: 38rem;
+}
+
+@utility t-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-faint);
+}
+
+@layer components {
+  .btn-seal,
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-button);
+    padding: 0.75rem 1.25rem;
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.6;
+    color: var(--color-paper);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color 180ms ease-out,
+      border-color 180ms ease-out,
+      transform 180ms ease-out;
+  }
+
+  .btn-seal {
+    background-color: var(--color-seal);
+    /* Matches .btn-ghost's 1px border so the two sit at the same height side by side. */
+    border: 1px solid transparent;
+  }
+
+  .btn-seal:hover {
+    background-color: var(--color-seal-hi);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    border: 1px solid var(--color-line);
+  }
+
+  .btn-ghost:hover {
+    border-color: rgba(242, 236, 230, 0.28);
+    transform: translateY(-1px);
+  }
+
+  .btn-seal:focus-visible,
+  .btn-ghost:focus-visible {
+    outline: 2px solid var(--color-paper);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn-seal,
+    .btn-ghost {
+      transition: none;
+    }
+
+    .btn-seal:hover,
+    .btn-ghost:hover {
+      transform: none;
+    }
+  }
+}
+
+@keyframes scroll-cue {
+  from {
+    transform: translateY(-14px);
+  }
+  to {
+    transform: translateY(44px);
+  }
+}
+
+@keyframes shimmer-bar {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@layer components {
+  .link-draw {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-sans);
+    color: var(--color-muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 180ms ease-out;
+  }
+
+  .link-draw::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -3px;
+    height: 1px;
+    background: var(--color-paper);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .link-draw:hover,
+  .link-draw:focus-visible {
+    color: var(--color-paper);
+  }
+
+  .link-draw:hover::after,
+  .link-draw:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  .link-draw:focus-visible,
+  a:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--color-paper);
+    outline-offset: 3px;
+  }
+
+  .logo-link svg {
+    transition: transform 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .logo-link:hover svg,
+  .logo-link:focus-visible svg {
+    transform: rotate(-12deg);
+  }
+
+  .scroll-cue-segment {
+    animation: scroll-cue 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  .skeleton-bar {
+    height: 8px;
+    border-radius: 8px;
+    background-color: rgba(242, 236, 230, 0.06);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(242, 236, 230, 0.09) 50%,
+      transparent 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 250% 100%;
+    animation: shimmer-bar 1.6s linear infinite;
+  }
+
+  .progress-sweep {
+    width: 30%;
+    animation: progress-sweep 1.2s ease-in-out infinite;
+  }
+
+  .dot-pulse {
+    animation: dot-pulse 1.2s ease-in-out infinite;
+  }
+
+  .load-line {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .load-line[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+
+  .load-line > div {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .ledger-card {
+    --ring: 128px;
+    --lens-r: 55px;
+    --lx: -999px;
+    --ly: -999px;
+  }
+
+  .lens-ring-pos {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 20;
+    pointer-events: none;
+    touch-action: none;
+    transform: translate3d(
+      calc(var(--lx) - var(--ring) / 2),
+      calc(var(--ly) - var(--ring) / 2),
+      0
+    );
+    will-change: transform;
+  }
+
+  .lens-ring-pos[data-hidden="true"] {
+    visibility: hidden;
+  }
+
+  .lens-tint {
+    background:
+      linear-gradient(rgba(201, 71, 58, 0.06), rgba(201, 71, 58, 0.06)),
+      var(--color-ink-2);
+  }
+
+  .lens-tint-subtotal {
+    background:
+      linear-gradient(rgba(201, 71, 58, 0.06), rgba(201, 71, 58, 0.06)),
+      linear-gradient(rgba(242, 236, 230, 0.02), rgba(242, 236, 230, 0.02)),
+      var(--color-ink-2);
+  }
+
+  @media (min-width: 768px) {
+    .ledger-card {
+      --ring: 176px;
+      --lens-r: 77px;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .lens-ring-pos {
+      pointer-events: auto;
+    }
+  }
+
+  @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+    .ledger-card[data-open-all="false"],
+    .ledger-card[data-open-all="false"] * {
+      cursor: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .link-draw,
+    .link-draw::after,
+    .load-line,
+    .logo-link svg {
+      transition: none;
+    }
+
+    .logo-link:hover svg,
+    .logo-link:focus-visible svg {
+      transform: none;
+    }
+
+    .scroll-cue-segment,
+    .skeleton-bar,
+    .progress-sweep,
+    .dot-pulse {
+      animation: none;
+    }
+  }
+}
+
+/* Scroll-in sections start hidden from inline styles. Without motion they
+   show their end state at once. */
+@media (prefers-reduced-motion: reduce) {
+  [data-rise] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+@layer components {
+  .btn-seal:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-seal:disabled:hover {
+    background-color: var(--color-seal);
+    transform: none;
+  }
+}
+
+/* The app pages: a button that is working, its spinner, and the ghost button's disabled look. */
+@keyframes spin-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  .spinner {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border-radius: 9999px;
+    border: 1.5px solid rgba(242, 236, 230, 0.28);
+    border-top-color: var(--spinner-top, var(--color-seal));
+    animation: spin-ring 0.8s linear infinite;
+  }
+
+  /* A seal-coloured segment cannot be seen on a seal-coloured button, so paper stands in there. */
+  .btn-seal .spinner {
+    --spinner-top: var(--color-paper);
+  }
+
+  .btn-ghost:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-ghost:disabled:hover {
+    border-color: var(--color-line);
+    transform: none;
+  }
+
+  .btn-seal[aria-busy="true"]:disabled,
+  .btn-ghost[aria-busy="true"]:disabled {
+    opacity: 0.8;
+    cursor: progress;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
+  }
+}

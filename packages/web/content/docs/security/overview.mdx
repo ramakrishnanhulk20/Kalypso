@@ -1,0 +1,58 @@
+---
+title: Security overview
+description: "What an attacker would want from Kalypso, what stops each attempt, and how to check each claim yourself."
+---
+
+Kalypso holds other people's salaries and moves real money on their behalf, so its security story starts from the attacker. The [threat model](/docs/security/threat-model) was written before any contract code. It names the attackers (an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys), what each one wants, and 55 invariants the code must uphold. This page is the short version.
+
+## What an attacker would want, and what stops them
+
+| Attacker goal | What stops it | Check it |
+|---|---|---|
+| Drain the pooled USDC with forged withdraw proofs | The verifier has no admin and no manager, so nobody can swap the proof rules, and its keys hash to the published circuits. The token has no setter for its verifier and cannot replace its own code. | `check:testnet`; prove P7 |
+| Leave the pool short | The token's USDC balance must equal every public deposit minus every public withdrawal. | prove P9 |
+| Read salaries from the public ledger | A salary only ever travels as an encrypted transfer. A stranger searching all 72 showcase transactions in 15 encodings per salary finds none. | prove P1 |
+| Read salaries with the wrong key | A random auditor key decrypts only impossible numbers, and Kalypso marks every one of them undecryptable instead of showing it. | prove P3 |
+| Swap the accountant's key for one the attacker holds | Only the owner of an auditor id can rotate its key. Kalypso's registry has no admin. | prove P8 |
+| Take the accountant's id before the company registers under it | The client never predicts an id and checks the owner on chain, and the payroll contract refuses a company whose accountant does not own its id (error 23). | prove P11 |
+| Move a company's money without its key | Only the treasury's own signature can authorise its money, through the payroll contract or the token directly. | prove P5 |
+| Get paid twice | The contract keeps a paid flag per company, run and worker. A second pay, or the same worker twice in one call, reverts the whole call. | prove P4; `cargo test` |
+| Pay someone who is not on the roster | Pay checks the roster for every worker before any money moves. | prove P6 |
+| Fake a payslip with a direct transfer | A payslip needs the company's own payroll event, a treasury transfer in the same transaction, and the on-chain paid flag. | prove P10 |
+| Hide a run, a company or a payslip from a reader | The contract counts runs opened, admin changes and companies joined. A view served fewer than the chain counts is marked incomplete. | prove P13; core tests |
+| Leave a handover offer open forever | Every handover offer expires within the network's longest entry lifetime, in both contracts. | prove P12 |
+| Use our fee sponsor as a free relay | It pays only when every contract the call can run is Kalypso's, USDC's, the verifier or the pinned passkey wallet, under a fixed fee cap, with limits per IP, per address and per day. The only contract it pays to create is a passkey wallet built the way Kalypso builds one, at most three a day per IP. | server tests |
+| Lock a company's treasury | A pay the chain may have applied is never forgotten, and the treasury's opening can be rebuilt from chain history. | core tests |
+
+"prove P1" means check P1 in `npm run prove:testnet`. Its last full output, all 13 checks passing, is on [Attack run](/docs/security/attack-run). The commands are in [Getting started](/docs/getting-started#developer-path).
+
+## Check it yourself
+
+You do not need to trust any of this. Three commands check the live system, and none of them needs a Kalypso key:
+
+- `stellar contract info build --id <payroll id> --network testnet` shows which GitHub Actions run, at which tag and commit, built the code running on chain.
+- `npm run check:testnet` reads chain state and runs 18 checks: the verifier's locked keys, no admin or upgrade path on our contracts, the released code on chain, and storage life.
+- `npm run prove:testnet` attacks the showcase company's promises on testnet and prints what stopped each attack.
+
+The test suites back the rest: 115 payroll and 43 auditor tests, 555 core tests at 98.46% line coverage, 316 server tests at 97.99% (run again through the production Postgres driver), 392 web app tests and 11 for the testnet scripts, 1,432 in all as of 9 October. [Audits](/docs/security/audits) lists every review the code went through.
+
+## What Kalypso does not defend
+
+Naming these is part of the security story, so nobody assumes otherwise.
+
+- Only amounts are private. Who pays whom, when, how many workers there are, and who is on a roster are public. Deposit and withdraw amounts are public, so the funding deposit reveals the payroll total, and a worker who withdraws exactly their pay reveals it.
+- The company's accountant sees every amount the company pays and the treasury's balance after each payment, by design.
+- Rotating an auditor key protects only future payments. A leaked auditor or worker key opens everything encrypted to it, forever.
+- The payroll contract cannot know whether a hidden amount is the right salary, and the admin's wallet cannot show it either, so a compromised frontend can misdirect amounts within what the admin signs. Kalypso detects a wrong amount after each payment; it does not prevent one.
+- A compromised wallet extension or operating system, a user who signs the key message on a phishing site, the USDC issuer freezing or clawing back the pool, the anchor's KYC and its view of cash-out amounts, and flaws in OpenZeppelin's unaudited circuits, verifier backend or token wasm.
+- The relayer refusing service. Employers and accountants pay their own fees from their wallets, and a worker withdrawing can pay their own fee, but creating a Face ID wallet and joining a company need the fee sponsor.
+- The key message protects the key only as far as the wallet shows it. A wallet interface that signs a raw 32-byte hash with the same key reproduces the key without showing the text. Kalypso uses only interfaces that show the message, and a user who signs opaque blobs elsewhere with that key is not defended.
+- The hosting platform's request logs record the caller's IP next to the archive path, which names the account or company asked about. Kalypso's own logs never join the two.
+- Browser storage has no atomic compare-and-delete, so two tabs racing can remove each other's in-flight record or drop an entry from the list of saved openings. Recovery goes through that list when it holds the right entry, and otherwise through rebuilding the treasury from chain history.
+- The sponsor's per-IP counter holds raw IPs for up to two hours, never logged, so it can enforce the limit.
+- The sponsor's creation limits are per IP (IPv6 per /48 site), so an office behind one address can create at most three Face ID wallets a day, and the whole service sixty. More workers there can join with a wallet, or the next day.
+- Someone who learns a passkey's credential id before its wallet exists can create a wallet at that address first, from code of their own, and switch it to ours later. Kalypso shows an address only once the wallet's creation, read from chain, ran our code with this passkey's signer alone, so a taken address is never handed to an employer and the worker makes a new pay key. What the squatter gains is an address nobody pays.
+- A wallet's creation is found through this browser's record or the sponsor's records. If none holds it and the relayer no longer knows the relay, the address stays hidden on every device, though its pay can still be read and withdrawn, and the worker can make a new pay key. If the sponsor's database is lost, every wallet with no birth saved in this browser reads the same way: addresses hide and workers are told to make a new pay key, while pay already received can still be read and withdrawn.
+- Testnet only.
+
+The full list, with the reasoning for each, is in the [threat model's non-goals](/docs/security/threat-model#general-standards).

@@ -17,19 +17,21 @@ Testnet stack (from `packages/contracts/deployments/testnet.json`; the payroll r
 ```mermaid
 flowchart LR
   subgraph Browser["Browser (the app)"]
-    EC[Employer console]
-    WP[Worker portal]
-    AV[Accountant view]
-    PP[Public proof page]
+    KL["Home page key lens<br/>/"]
+    SB["Sandbox<br/>/demo"]
+    EC["Employer console<br/>/employer"]
+    WP["Worker portal<br/>/worker"]
+    AV["Accountant view<br/>/accountant"]
     CORE["@kalypso/core<br/>CSV parser, keys, run engine,<br/>payslips, audit, proofs"]
   end
   subgraph Wallets
     FR[Freighter]
     PK[Passkey smart wallet]
+    TW[Throwaway keys, sandbox only]
   end
-  subgraph Server["Kalypso server"]
-    SP[Fee sponsor]
-    AR[(Event archive)]
+  subgraph Server["Kalypso server, the /api routes of the same app"]
+    SP["Fee sponsor<br/>/api/sponsor"]
+    AR[("Event archive<br/>/api/archive")]
   end
   subgraph Stellar["Stellar testnet"]
     PAY[Payroll contract]
@@ -41,12 +43,14 @@ flowchart LR
   CH[OpenZeppelin Channels]
   ANC[SDF test anchor<br/>SEP-10 and SEP-24]
 
+  KL --> CORE
+  SB --> CORE
   EC --> CORE
   WP --> CORE
   AV --> CORE
-  PP --> CORE
   CORE -- sign --> FR
   CORE -- sign --> PK
+  CORE -- sign --> TW
   CORE -- read and submit --> Stellar
   WP -- worker transactions --> SP
   SP --> CH --> Stellar
@@ -60,6 +64,8 @@ flowchart LR
 ```
 
 Amounts exist in plain form only in the employer's browser (the CSV they upload), the worker's browser (their own payslips) and the accountant's browser (with their key). The server sees transaction bytes, where amounts are ciphertexts, and public events.
+
+Each box in the browser is a route of the Next.js app in `packages/web`. The home page's key lens reads the showcase company with a key the visitor picks, and the sandbox runs a whole payroll with throwaway keys that live only in that browser. The employer console and the accountant view sign with Freighter and pay their own fees. The worker portal signs with a passkey smart wallet or with Freighter, sends every contract call through the fee sponsor, and cashes out at the SDF test anchor. The fee sponsor and the archive are routes of the same app. Every screen reads the archive from its own site, over https only, and falls back to RPC's 7-day window when the archive does not answer.
 
 ## 2. One payroll run, end to end
 
@@ -107,6 +113,7 @@ flowchart TB
     AUDC["kalypso-auditor<br/>soroban-sdk 27.0.5<br/>uses OpenZeppelin key validation"]
     CORE["@kalypso/core"]
     SRV["@kalypso/server"]
+    WEB["@kalypso/web<br/>Next.js 16.4.0"]
     SCR["deploy and check scripts"]
   end
   subgraph OZ["OpenZeppelin stellar-contracts, commit 98090b3"]
@@ -124,7 +131,9 @@ flowchart TB
   CORE --> STL
   CORE -- builds calls for --> PAYC
   CORE -- builds calls for --> TOKC
-  CORE -- passkey workers --> PKK
+  WEB --> CORE
+  WEB -- serves the routes of --> SRV
+  WEB -- passkey workers --> PKK
   SRV --> STL
   SCR -- deploys and locks --> VERC
   SCR -- deploys --> TOKC
@@ -156,7 +165,7 @@ Auditor registry: `register_key(owner, point) -> u32`, `rotate_key(auditor_id, n
 
 Confidential USDC (OpenZeppelin): `register(account, auditor_id, data)`, `deposit(from, to, amount)`, `merge(account)`, `confidential_transfer(from, to, data)`, `withdraw(from, to, amount, data)`, `confidential_balance(account)`. Deposit and withdraw amounts are public; transfer amounts and balances are not.
 
-Server: `POST /api/sponsor` and `GET /api/sponsor/status` (fees for workers' own transactions, never an open relay), and the archive's `/v1/...` endpoints, compatible with the confidential SDK's indexer clients.
+Server, served as routes of the same Next.js app: `POST /api/sponsor` and `GET /api/sponsor/status` pay the fee for a worker's own transactions and are never an open relay. The sponsor decodes the exact bytes it will forward and pays only for one host function whose root is a call into our payroll or token, `register_key` on our registry with the owner as its only authoriser, or one passkey-kit wallet creation that runs the pinned wallet code with exactly one passkey signer and touches only its own new address. Every contract the simulation can run must be ours, USDC's, the verifier or a wallet running the pinned code, and the fee must be under 2.5 XLM for a wallet creation and 1 XLM for any other call on testnet. Limits: per IP per hour, per authorising address per day, at most three wallet creations per IP per day, and a daily budget of 200 XLM on testnet (threat model C20, C31, C50). `POST /api/sponsor/birth` stores the transaction that created a passkey wallet, once the server has read it from RPC as a successful creation of that address, and `POST /api/sponsor/birth/lookup` hands it back, so a worker's other devices can find how their wallet was born. Both are pointers only: the browser reads the creation from chain and judges it itself (C51). The archive serves `/api/archive/v1/...`, compatible with the confidential SDK's indexer clients, with its health at `/api/archive/v1/health`, which answers 503 on a gap or a stale ingest. It also serves our payroll events, for one company at `/api/archive/v1/payroll/{contract}/companies/{companyId}/events` and for one account at `/api/archive/v1/payroll/{contract}/accounts/{account}/events`. The account route returns the invites, joins, removals and payslips that name a worker, so a worker on a new device can find the companies they joined. A scheduler holding the cron secret runs its ingest at `/api/archive/ingest`, so it keeps reading the chain whether or not anyone visits (C17, C35, C49).
 
 Costs on testnet, the median per transaction from the v0.1.1 seed, network fee included: pay 2 workers 0.51 XLM, create company 0.68 XLM, invite 0.30 XLM, accept 0.42 XLM, open run 0.40 XLM, token register 0.051 XLM, register an auditor key 0.071 XLM on a registry that already holds keys (the first key on a fresh registry cost about 13 XLM). Most of the one-off figures are storage rent prepaid for about 180 days.
 

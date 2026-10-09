@@ -1,0 +1,37 @@
+---
+title: Accountant
+description: "Register your accountant key, give the employer your id, address and code, then open and export a company's books at /accountant."
+---
+
+The accountant view at [/accountant](/accountant) runs on Freighter set to Testnet. Your key is made in this browser from two signatures by your wallet, so it never leaves the browser and the same wallet always rebuilds it. You pay one small fee in test XLM, about 0.07, once, to register it, so fund the account with friendbot first.
+
+## Register your key
+
+1. Open the page and choose **Connect Freighter**.
+2. Under **Your key**, choose **Derive my key**. Freighter asks you to sign the same message twice, which proves your wallet rebuilds the same key every time. Your **Confirmation code** appears: 16 characters in four groups. Nothing is sent.
+3. Choose **Register my key** and approve one transaction. Kalypso's auditor registry stores your key and hands back a new id. Only you, as its owner, can change the key under that id.
+4. The box headed **Give these to the employer** shows your **Accountant id** and your **Address**, each with a copy button. Send both to the employer.
+5. When the employer checks them, their screen shows a confirmation code. Read yours to them and make sure every character matches. A different code means the id they typed holds someone else's key, and they must stop.
+
+## Open the books
+
+6. Under **Open a company's books**, type the **Company id** the employer gives you and choose **Open the books**. Freighter asks for the two key signatures if you have not given them on this page yet. Kalypso first checks with the registry that your key holds the id this company's pay is sealed to.
+7. The card fills in as your browser reads the payroll history and opens each payment with your key. Each row shows the run, the worker, the transaction and the amount, with a subtotal per run and a total when there are two or more runs. The chip reads "Verified complete" only when every run and payment the chain counts was found and checked. Otherwise it reads "History incomplete".
+8. Choose **Export CSV**. A file named after the company id and today's date saves to your computer, with one row per payment: run id, period, worker, amount in USDC and transaction hash. Kalypso refuses to export books that are not complete, so a file never looks like the whole payroll when it is not. A cell a spreadsheet would run as a formula is made harmless first.
+
+Want to try it before a real company names you? The demo company's key is public on the [home page](/#lens), where the key lens opens its books.
+
+## When something goes wrong
+
+- "This company's books are sealed to an accountant id this wallet's key does not hold, so they cannot be opened with it." Connect the wallet you registered with. If it already is that wallet, the company was set up under another accountant's id.
+- "No company exists under this id on the payroll contract." Check the id with the employer.
+- "This wallet's account does not exist on testnet yet." Fund it with friendbot, then register.
+- "The books are incomplete, so nothing was exported" and the reason after it. Try again in a minute, because the newest ledgers may not be read yet.
+- "Freighter did not sign, so nothing was sent." You declined a prompt. Choose the button again.
+- "Switch Freighter to Testnet, then try again." Kalypso runs on Stellar testnet only.
+
+## What you see, and what you do not
+
+You see every amount paid by every company whose pay is sealed to your id. By design your key also opens the treasury's balance after each payment, though this screen lists only the payments. Your key only reads: it cannot move any money. You cannot read a worker's own balance, because each worker registers an audit key of their own. Who can read a company's pay is read from the registry's current owner of its id, never from the accountant recorded when the company was made.
+
+If your key leaks, whoever holds it can read everything ever sealed to it. The registry lets only you replace it, through its `rotate_key` call, and this screen does not offer that. A new key protects only later payments.

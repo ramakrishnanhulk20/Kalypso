@@ -1,0 +1,147 @@
+---
+title: Contracts and addresses
+description: "Every live Kalypso contract on Stellar testnet, how to check where its code came from, the public interface, and what each action costs."
+---
+
+Every address and hash on this page comes from [`packages/contracts/deployments/testnet.json`](https://github.com/ramakrishnanhulk20/Kalypso/blob/main/packages/contracts/deployments/testnet.json), the record the deploy script writes. The network is Stellar testnet, passphrase `Test SDF Network ; September 2015`.
+
+## Live on Stellar testnet
+
+| Contract | Version | Address |
+|---|---|---|
+| Payroll | v0.1.1 | [`CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ`](https://stellar.expert/explorer/testnet/contract/CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ) |
+| Auditor registry | v0.1.0 | [`CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG`](https://stellar.expert/explorer/testnet/contract/CBG6BCHMPMKQGXAVIU475Q7TGFROD6BGZ5BQFEFBXWTOGSGF542AUZYG) |
+| Confidential USDC (OpenZeppelin confidential token) | OpenZeppelin 98090b3 | [`CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ`](https://stellar.expert/explorer/testnet/contract/CASNAZGPARZ46BT7IWDDHNZKCHMUWQ35FY4YR4S6YLE45CAJQUPSTTBZ) |
+| Verifier (OpenZeppelin UltraHonk verifier, locked) | OpenZeppelin 98090b3 | [`CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM`](https://stellar.expert/explorer/testnet/contract/CDPF25R2OEACPIOPWSUMZUQHOPW2OYSRTAOHUU27AGNF5CFLFALWDPYM) |
+| USDC (Circle's testnet USDC token contract) | | [`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) |
+
+How they connect: the token wraps the USDC contract and reads every proof's answer from the verifier and every auditor key from the registry. The payroll contract calls the token and reads the same registry. Each link is set in a constructor and cannot change.
+
+| Contract | Code (wasm sha256) | Deployed at ledger | Deploy transaction |
+|---|---|---|---|
+| Payroll | `41fa76aba28b0f22675d8cd5e68b5215da17e45336dbe2881d1fad0483b755f6` | 5089917 | [`24978aac...`](https://stellar.expert/explorer/testnet/tx/24978aac23b0daa5a8e2433424a30616fbccc6d3b6ab2a1b2ce9064d8eafbd0c) |
+| Auditor registry | `90127a7d9dc6957a2bb2191f275346816850700bcd43c7a1af7d7cdd9107e55f` | 5083380 | [`39a6e909...`](https://stellar.expert/explorer/testnet/tx/39a6e909f2e4946c6ca2b8dc2968f614046b49f0731718a925d4ee1394386786) |
+| Confidential USDC | `c77ac818ab3af1a2b9cdbc54964d68070f106fb72c9172ba4fff186995704cfd` | 5083382 | [`348da699...`](https://stellar.expert/explorer/testnet/tx/348da699d0e3494a0496a45a1fe33b558d100d2f63c5ef202f93aa19056299b9) |
+| Verifier | `93db2afdcfa45ad0ced0dcd90dd2fc2743227b786e89b2dd4c74fe6cf184957f` | 5083365 | [`855f7e94...`](https://stellar.expert/explorer/testnet/tx/855f7e94dcbbbb09946036ce1b6dd1684e2f8f2e2aaad8c3679e2c70c1810891) |
+
+### The earlier payroll, v0.1.0
+
+[`CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA`](https://stellar.expert/explorer/testnet/contract/CAC3P6WOEHUH2ZXCJ44TO5Q6RH6ALELP4GWDXUVCFJZ2MTYMZJYNIPWA) (code `6f815c99d9ad5a05727d70e5973de94f624f3f4a532a6ec75503bf96933784b6`, deployed at ledger 5083384) is kept on chain and no longer used by the showcase. It predates the accountant check, the handover bound and the three counters, and its constructor takes only the token. The showcase's treasury and workers were first paid through it: those are the 12 earlier payments the attack run's P3 and P10 mention.
+
+## Where the code came from
+
+Both of our contracts were built by GitHub Actions from a release tag, and each wasm carries a build attestation. The payroll comes from tag `v0.1.1`. The auditor registry was deployed from `v0.1.0` and kept, because its wasm (`90127a7d...`) is byte-identical in both releases.
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+It answers with `.github/workflows/release.yml` at tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, built on a GitHub-hosted runner. The question it answers: which GitHub Actions run, in which repository, at which tag and commit, built the exact code running at this address. It does not judge the source itself, which is public at that commit.
+
+The same command with the registry's id looks up the attestation by the registry's code hash. Run on 9 October 2026, it named tag `v0.1.1`, because release v0.1.1 built the same bytes as v0.1.0.
+
+## The verifier lock
+
+OpenZeppelin's verifier example starts with an admin and a manager, and the manager can replace any verification key with no delay. A swapped key would let forged withdraw proofs drain every company's pooled USDC. Kalypso deployed its own verifier with the deployer [`GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC`](https://stellar.expert/explorer/testnet/account/GAPVU4DU7TFWBBKZHIA6EYKBMTCO5PFFJD242WOWNJR5SYC7LCJQ3FFC) as both, registered the three keys, then gave both roles up for good.
+
+| Step | Ledger | Transaction |
+|---|---|---|
+| Deploy the verifier | 5083365 | [`855f7e94...`](https://stellar.expert/explorer/testnet/tx/855f7e94dcbbbb09946036ce1b6dd1684e2f8f2e2aaad8c3679e2c70c1810891) |
+| Register the register-circuit key | 5083367 | [`afb16754...`](https://stellar.expert/explorer/testnet/tx/afb16754121fa33f1e1795a9447a70c2aacf8169eb769a0f6d8829c763358d83) |
+| Register the withdraw-circuit key | 5083369 | [`e6d29e30...`](https://stellar.expert/explorer/testnet/tx/e6d29e30dd9591c1633b89158f6ac500c4e5aa3f1538726b15d92a8b148d0bbc) |
+| Register the transfer-circuit key | 5083371 | [`06993b45...`](https://stellar.expert/explorer/testnet/tx/06993b45133020475568f9dfdcf0736438e37a73a7d0f004059e1b4c30e5161b) |
+| Renounce the manager role | 5083374 | [`5bada668...`](https://stellar.expert/explorer/testnet/tx/5bada668c52c6b06c90c61412eef3386c045260171d2616f86d921aa2fd2f357) |
+| Renounce the admin | 5083376 | [`50faedce...`](https://stellar.expert/explorer/testnet/tx/50faedcee7878a53a23a36eea7e3e336ad586b72b36143106b7271ea047bdae5) |
+
+After the last step the verifier holds no admin, no manager and no role at all. Its three keys hash to the pins taken from `stellar-confidential-token-sdk` 0.1.9 (`circuits/vks/*.vk.bin`, 1,760 bytes each):
+
+| Circuit | sha256 of the verification key |
+|---|---|
+| register (0) | `e01ba8729578e9ec4ea982801e2d806028246eeafe1a2e551e1f9cdef69a7268` |
+| withdraw (1) | `d800122c23d7216ead4f3d7c70c84fd39db37d4f7743659b7d6bf05674ce5c09` |
+| transfer (2) | `b9c6d437368efc5343d33be20b3455840b0b66ae7ad430bebc75c93a172b173c` |
+
+`npm run check:testnet` reads all of this from ledger entries, not from events, and simulates the deployer trying to register or update a key: both fail with `Error(Contract, #2000)`. It also reads the token's code on chain and confirms it has no setter for its verifier, registry or asset and cannot replace itself, and that neither of our contracts has an admin or upgrade function. The command is in [Getting started](/docs/getting-started#check-the-stack-from-chain-state).
+
+## Public interface
+
+The exact signatures, errors and doc comments are in [`packages/contracts/payroll/src/contract.rs`](https://github.com/ramakrishnanhulk20/Kalypso/blob/main/packages/contracts/payroll/src/contract.rs).
+
+### Payroll (v0.1.1)
+
+| Call | Who signs | What it does |
+|---|---|---|
+| `create_company(admin, accountant, auditor_id, label)` | admin (the accountant does not sign) | New company; admin must already be registered with the token under `auditor_id`, and the auditor registry must say `accountant` owns `auditor_id`, else error 23 `AuditorNotOwnedByAccountant`. Error 24 `TokenUnavailable` when the token cannot be read for any reason other than an unregistered admin |
+| `propose_admin` / `cancel_admin_proposal` / `accept_admin` | current admin, then the incoming admin | Two-step handover; the offer must expire by the network's furthest storage ledger (`max_live_until_ledger`); the incoming admin must be registered under the company's auditor id |
+| `invite_worker(company_id, worker)` / `revoke_invite` | admin | Invite, or withdraw an unaccepted invite |
+| `accept_invite(company_id, worker)` | worker | Joins the roster; the worker must already be registered with the token |
+| `remove_worker(company_id, worker)` | admin | Leaves pay history in place |
+| `open_run(company_id, run_id, period_label, expected_count)` | admin | A run id opens once per company, ever |
+| `pay(company_id, run_id, items)` | admin | 1 or 2 `(worker, proof data)` items; each worker at most once per run |
+| `close_run(company_id, run_id)` | admin | No more pay in this run |
+| `get_company`, `get_run`, `is_paid`, `worker_status`, `get_roster`, `memberships_of(worker)`, `pending_admin`, `token`, `auditor_registry`, `company_count` | none | Reads |
+
+`get_company` returns `Company { admin, accountant, auditor_id, label, created_ledger, active_workers, roster_len, runs_opened, admin_changes }`. `accountant` is the registry's owner of `auditor_id` when the company was created and is not updated afterwards. `runs_opened` and `admin_changes` count every run opened and every completed handover, and `memberships_of(worker)` counts the companies a worker ever joined, so a history reader can tell when events are missing. The constructor is `__constructor(token, auditor_registry)`: both are fixed for the contract's life.
+
+Events carry no amounts: `CompanyCreated`, `AdminProposed`, `AdminProposalCancelled`, `AdminChanged`, `WorkerInvited`, `InviteRevoked`, `WorkerJoined`, `WorkerRemoved`, `RunOpened`, `PayslipIssued`, `RunClosed`. The first topic after the name is always `company_id`.
+
+### Payroll errors
+
+A failed call shows up as `Error(Contract, #n)`. Any failure undoes the whole call: no flag, no transfer, no event.
+
+| Code | Name | Meaning |
+|---|---|---|
+| 1 | `CompanyNotFound` | No company with this id |
+| 2 | `NotRegisteredWithToken` | The token has no confidential account for this address |
+| 3 | `AuditorMismatch` | The account is registered with the token under a different auditor id than the company's |
+| 4 | `LabelInvalid` | A label is empty or too long: 64 bytes for a company, 32 for a pay period |
+| 5 | `WorkerIsAdmin` | The address is the company's admin, or would become admin while it is a member, so the treasury can never pay itself |
+| 6 | `AlreadyMember` | The worker is already invited to or active in this company |
+| 7 | `InviteNotFound` | No open invite for this worker |
+| 8 | `NotActive` | The worker is not active in this company right now |
+| 9 | `RunExists` | This company already used this run id, open or closed |
+| 10 | `RunNotFound` | No run with this id in this company |
+| 11 | `RunNotOpen` | The run is closed |
+| 12 | `NoItems` | A pay with no workers |
+| 13 | `TooManyItems` | A pay with more than 2 workers |
+| 14 | `AlreadyPaid` | The worker was already paid in this run, including earlier in the same call |
+| 15 | `ExpectedCountExceeded` | The run would pay more workers than it expected |
+| 16 | `ExpectedCountInvalid` | The expected count is not between 1 and the number of active workers |
+| 17 | `NoPendingAdmin` | No handover is pending |
+| 18 | `AdminTransferExpired` | The handover offer has expired |
+| 19 | `InvalidLiveUntil` | A handover offer that ends now, in the past, or past the furthest ledger the network lets an entry live to |
+| 20 | `LimitInvalid` | A roster page size outside 1 to 50 |
+| 21 | `CounterOverflow` | A counter would wrap, so the call is refused |
+| 22 | `MissingRecord` | A record the contract always writes first is missing; it fails closed |
+| 23 | `AuditorNotOwnedByAccountant` | The registry does not say the named accountant owns the auditor id, or could not be read |
+| 24 | `TokenUnavailable` | The token could not be read for a reason other than an unregistered account |
+
+### Auditor registry (v0.1.0)
+
+`register_key(owner, point) -> u32`, `rotate_key(auditor_id, new_point)`, `propose_owner`, `cancel_owner_proposal`, `accept_owner`, `get_key(auditor_id)`, `owner_of`, `pending_owner`, `key_count`. No admin. Its own errors are 100 `UnknownAuditor`, 101 `NoPendingOwner`, 102 `OwnerTransferExpired`, 103 `InvalidLiveUntil`, 104 `SameOwner` and 105 `CounterOverflow`.
+
+### Confidential USDC (OpenZeppelin)
+
+`register(account, auditor_id, data)`, `deposit(from, to, amount)`, `merge(account)`, `confidential_transfer(from, to, data)`, `withdraw(from, to, amount, data)`, `confidential_balance(account)`. Deposit and withdraw amounts are public; transfer amounts and balances are not.
+
+### Server
+
+`POST /api/sponsor` and `GET /api/sponsor/status` (fees for workers' own transactions, never an open relay), `POST /api/sponsor/birth` and `POST /api/sponsor/birth/lookup` (where a passkey wallet's creation transaction can be found; the browser checks it on chain itself), and the archive under `/api/archive`: its health check at `/api/archive/v1/health` and its `/v1/...` endpoints, compatible with the confidential SDK's indexer clients. Two of them serve the payroll contract's events: `GET /api/archive/v1/payroll/{contract}/companies/{companyId}/events` for one company, and `GET /api/archive/v1/payroll/{contract}/accounts/{account}/events` for the events that name one worker, which is how a worker on a new device finds the companies they joined. Both run as routes of the same Next.js app as the screens.
+
+## What each action costs
+
+Costs on testnet, the median per transaction from the v0.1.1 seed, network fee included:
+
+| Action | Cost |
+|---|---|
+| Pay 2 workers (one `pay` transaction) | 0.51 XLM |
+| Create a company | 0.68 XLM |
+| Invite a worker | 0.30 XLM |
+| Accept an invite | 0.42 XLM |
+| Open a run | 0.40 XLM |
+| Register with the token | 0.051 XLM |
+| Register an auditor key, on a registry that already holds keys | 0.071 XLM |
+
+The first key on a fresh registry cost about 13 XLM. Most of the one-off figures are storage rent prepaid for about 180 days.
+
+Keeping the stack alive is paid separately, in testnet XLM: extending the payroll and the auditor registry to 180 days cost 147.78 and 88.52 XLM, and extending the token and the verifier to 60 days cost 227.55 XLM together.

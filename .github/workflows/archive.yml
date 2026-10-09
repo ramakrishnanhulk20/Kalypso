@@ -1,0 +1,75 @@
+name: Archive
+
+# The archive must keep reading the chain whether or not anyone visits, or
+# RPC's 7-day window closes over ledgers it never read (C35). Vercel's Hobby
+# plan allows its own cron once a day only, so that one is a backstop and this
+# job runs the hourly pass. It then reads the health route, which answers 503
+# while the archive is stale or has a gap: the failed run is how a person
+# hears about it, because GitHub emails the owner of a failed scheduled run.
+#
+# Needs the repository variable KALYPSO_SITE_URL (the deployed site, https)
+# and the repository secret CRON_SECRET (the same value as in Vercel).
+# No third-party action runs here, and no checkout: two curl calls are enough.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SITE_URL: ${{ vars.KALYPSO_SITE_URL }}
+    steps:
+      - name: Check the site is deployed
+        id: site
+        run: |
+          set -euo pipefail
+          if [ -z "$SITE_URL" ]; then
+            echo "::notice::KALYPSO_SITE_URL is not set, so the site is not deployed yet and there is nothing to ingest."
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The ingest call carries the cron secret, so it never goes anywhere but https.
+          case "$SITE_URL" in
+            https://*) ;;
+            *) echo "::error::KALYPSO_SITE_URL must start with https://"; exit 1 ;;
+          esac
+          echo "deployed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run one ingest pass
+        if: steps.site.outputs.deployed == 'true'
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --proto '=https' --max-time 90 \
+            --request POST \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            --output "$RUNNER_TEMP/ingest.json" --write-out '%{http_code}' \
+            "${SITE_URL%/}/api/archive/ingest")
+          echo "POST /api/archive/ingest answered HTTP $status"
+          cat "$RUNNER_TEMP/ingest.json"; echo
+          case "$status" in
+            2??) ;;
+            *) echo "::error::The ingest pass failed with HTTP $status (401: CRON_SECRET differs from Vercel's; 503: see the reply above)."; exit 1 ;;
+          esac
+
+      # Runs even when the pass failed, so the run shows why the archive is unhealthy.
+      - name: Check archive health
+        if: ${{ !cancelled() && steps.site.outputs.deployed == 'true' }}
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --proto '=https' --max-time 60 \
+            --output "$RUNNER_TEMP/health.json" --write-out '%{http_code}' \
+            "${SITE_URL%/}/api/archive/v1/health")
+          echo "GET /api/archive/v1/health answered HTTP $status"
+          cat "$RUNNER_TEMP/health.json"; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::The archive is unhealthy (HTTP $status). alarm_reasons above says whether it is stale or has a gap."
+            exit 1
+          fi

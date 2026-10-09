@@ -1,0 +1,69 @@
+---
+title: Audits
+description: "Kalypso has not been audited by a security firm, so this page lists every review it did go through, with numbers, and what none of them covers."
+---
+
+Kalypso has not been audited by a security firm. It is self-audited. Everything below is public in the repo, and each item says where.
+
+## What was done
+
+### A threat model before the code
+
+The [threat model](/docs/security/threat-model) was written at the architecture gate on 7 October 2026, before any contract code. Its section C is the definition of done: a piece of the system is finished only when every invariant in C that applies to it is upheld and a test shows it. It started with 28 invariants (C1 to C28). Three later reviews added 27 more, so it now holds 55 (C1 to C55).
+
+### Attack tests for every claim
+
+Every claim in the threat model has a test that tries to break it. Thirteen of them run against the live showcase company on testnet in one command, `npm run prove:testnet`. The last full run, on 8 October 2026 at ledger 5089999 and commit 03dea90, passed 13 of 13. Its output is on [Attack run](/docs/security/attack-run).
+
+The test suites on 9 October, every one passing, 1,432 tests in all:
+
+| Suite | Tests | Line coverage |
+|---|---|---|
+| Payroll contract (`cargo test`) | 115 | |
+| Auditor registry (`cargo test`) | 43 | |
+| Core library | 555 | 98.46% |
+| Server | 316 | 97.99% |
+| Server, production driver (`npm run test:wire`) | the same 316 again | |
+| Web app | 392 | |
+| Testnet scripts | 11 | |
+
+### Static analysis
+
+From [`docs/security/static-analysis.md`](https://github.com/ramakrishnanhulk20/Kalypso/blob/main/docs/security/static-analysis.md):
+
+- Scout 0.3.17, the Soroban-specific analyser, runs in CI. It reported 33 findings on commit `3323445`. 9 were fixed in code, each with a test that forces the failure. 24 were justified with a one-line reason checked against the code at that line. 15 of the 24 are one detector that counts only `env.events()` calls as events and misses the `#[contractevent]` structs both contracts publish through; a unit test compares every one of those events.
+- Scout ran again on commit `03dea90`, the code released as v0.1.1. It reported the same 24 findings at new line numbers. No new kind appeared and nothing fixed came back.
+- cargo audit 0.22.2: 0 vulnerabilities and 1 warning, `paste` 1.0.15 being unmaintained. It reaches us only through the native test host and is absent from both contracts' wasm dependency graphs, so it never ships.
+- clippy with `-D warnings` runs on both contracts in CI, so every warning fails the build.
+- The release profile keeps overflow checks on, so any arithmetic that would wrap stops the call instead.
+
+### The backend review
+
+On 8 October 2026 a review at the backend gate attacked section C against the code as built and named what the standard missed. Its findings became invariants C29 to C37.
+
+### The three-pass external review
+
+A second review ran as three independent passes: the contracts, the client money path, and the payslips, sponsor and archive. It attacked the code at commit `fb9f2b5` and the threat model itself. It found 20 issues: 1 High, 3 Medium, 8 Low and 8 Info. Every one was fixed or named as a limit in the threat model, and the fixes were reviewed again. They added invariants C38 to C50, and the review's attack tests stay in the suites as refusing tests. The contract fixes shipped as payroll v0.1.1. This review was not done by a security firm.
+
+### The finishing review and the production walk
+
+On 9 October 2026 a last review attacked the built screens, the server and the threat model's standard, and the app was then walked as a production build. Its findings became invariants C51 to C55. It was not done by a security firm. In plain words, it found and fixed these:
+
+- **A wallet set up first by someone else.** A wallet created first by someone else, from their own code and with a hidden second key, then switched to Kalypso's code, passed the old check of the wallet's current state. Now an address is shown only after its creation transaction is read from chain and proves it ran Kalypso's wallet code with only this passkey's key (C51). On testnet the attack (transaction `df348c5f`) passed the old check and is refused by the new one.
+- **A script policy that was too loose.** The page's script policy let code the page itself inserted load scripts from any site (`'strict-dynamic'`). That setting is removed, and an inserted script from outside is now blocked before any request leaves the browser.
+- **Lists encoded twice.** Server queries sent lists to the database encoded twice when they went through the production driver, which the in-process test database never showed. Every server test now also runs through the production driver.
+- **No payslips on a new device.** A worker on a new device saw no payslips, because their companies came from the browser's notes. They now come from the payroll contract's own join events, and only companies the chain's roster confirms are kept.
+- **Smaller fixes.** A payslip whose company could not be read shows "Readers unknown". Totals are withheld over incomplete history (C53). One strict parser reads typed amounts, so "1,5" is refused (C54). Success messages come only from chain reads (C55).
+- **The production walk.** A production build behind local https, with a real Postgres-protocol database, ran the sandbox, Face ID sign-up, joining, payslips, cash-out at the anchor, a sign-in after cleared storage, and the employer and accountant pages. It raised no policy violations except one refused `eval` probe from bb.js, the proving library.
+
+### Attested release builds
+
+Both contracts are built by GitHub Actions from a release tag, and each wasm carries a build attestation. `stellar contract info build` shows that the payroll running on testnet came from `.github/workflows/release.yml` at tag `v0.1.1`. The workflow that writes attestations pins every third-party action by commit, not by tag. `npm run check:testnet` then confirms from chain state that the released code is what runs, that the verifier is locked, and that neither of our contracts has an admin or upgrade path. The commands are on [Contracts and addresses](/docs/contracts#where-the-code-came-from).
+
+## What is not covered
+
+- OpenZeppelin's confidential token, its circuits and its UltraHonk verifier are upstream code (OpenZeppelin/stellar-contracts, commit 98090b3). Kalypso runs them unchanged and checks that the deployed code matches their published hashes, but we have not audited them, and the threat model treats them as unaudited.
+- The client SDK that builds proofs and decrypts amounts, `stellar-confidential-token-sdk` 0.1.9, and the passkey library, passkey-kit 0.19.1, are third-party and were not audited by us.
+- Wallet extensions, the user's operating system, the USDC issuer, the anchor and the relayer are outside Kalypso. The threat model's non-goals say what each one could do.
+- None of this is formal verification.
+- The app's screens (the employer console, the worker portal with passkey sign-in and anchor cash-out, and the accountant view) were built after the backend review and the three-pass review, and so was the fee sponsor's rule for paying to create a passkey wallet. Only the finishing review looked at them.
