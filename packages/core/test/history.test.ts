@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AddressError } from '../src/addresses.js';
 import { DecodeError } from '../src/chain/scval.js';
 import { decodeContractEvent } from '../src/history/decode.js';
-import { fetchAccountHistory, fetchCompanyHistory } from '../src/history/events.js';
+import { fetchAccountHistory, fetchCompanyHistory, fetchWorkerPayrollHistory } from '../src/history/events.js';
 import { createRpcEventsPort, parseRpcEventId, type EventsPort } from '../src/history/rpc-events.js';
 import { FakeLedger, rpcId, sym, type ArchiveOptions } from './fake-ledger.js';
 import { pointBytes, raw } from './independent-xdr.js';
@@ -178,6 +178,42 @@ describe('fetchCompanyHistory', () => {
       s.workers.map((worker) => ({ type: 'payslip_issued', companyId: COMPANY, runId: RUN, worker })),
     );
     expect(payslips.map((e) => e.txHash)).toEqual([s.payTx, s.payTx]);
+  });
+});
+
+describe('fetchWorkerPayrollHistory', () => {
+  it("reads the payroll events that name the worker, the same from the archive's account route and the RPC", async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    s.ledger.tx((emit) => emit('payroll', [sym('run_closed'), raw.u64(COMPANY), raw.u64(RUN)], { paid_count: raw.u32(2) }));
+    const served = withArchive(s.ledger);
+    const fromArchive = await fetchWorkerPayrollHistory({ port: s.ledger.rpc(), archive, contracts: CONTRACTS, worker, fromLedger: s.fromLedger });
+    const fromRpc = await fetchWorkerPayrollHistory({ port: s.ledger.rpc(), contracts: CONTRACTS, worker, fromLedger: s.fromLedger });
+    expect(served.urls[0]).toBe(`${archive.baseUrl}v1/payroll/${CONTRACTS.payroll}/accounts/${worker}/events?from_ledger=${s.fromLedger}&limit=200`);
+    expect([fromArchive.source, fromArchive.complete, fromRpc.source, fromRpc.complete]).toEqual(['archive', true, 'rpc', true]);
+    expect(fromArchive.events.map((e) => e.id)).toEqual(fromRpc.events.map((e) => e.id));
+    expect(kinds(fromRpc.events)).toEqual(['ignored', 'payslip_issued']);
+  });
+
+  it('says incomplete for a payroll event of ours that names the worker, or might, but cannot be read', async () => {
+    const s = scenario();
+    const worker = s.workers[0] as string;
+    const read = () => fetchWorkerPayrollHistory({ port: s.ledger.rpc(), contracts: CONTRACTS, worker, fromLedger: s.fromLedger });
+    s.ledger.tx((emit) => emit('payroll', [sym('payslip_issued'), raw.u64(COMPANY), raw.address(s.outsider)], {}));
+    expect((await read()).complete).toBe(true);
+    s.ledger.tx((emit) => emit('payroll', [sym('payslip_issued'), raw.u64(COMPANY), raw.address(worker)], {}));
+    expect((await read()).complete).toBe(false);
+
+    const t = scenario();
+    t.ledger.tx((emit) => emit('payroll', [sym('worker_joined'), raw.u32(1)], {}));
+    expect((await fetchWorkerPayrollHistory({ port: t.ledger.rpc(), contracts: CONTRACTS, worker, fromLedger: t.fromLedger })).complete).toBe(false);
+  });
+
+  it('refuses a bad worker before reading anything', async () => {
+    const s = scenario();
+    const rpc = s.ledger.rpc();
+    await expect(fetchWorkerPayrollHistory({ port: rpc, contracts: CONTRACTS, worker: 'MAAAA', fromLedger: 1 })).rejects.toBeInstanceOf(AddressError);
+    expect(rpc.calls).toBe(0);
   });
 });
 

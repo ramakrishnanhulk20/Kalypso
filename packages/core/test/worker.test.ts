@@ -43,7 +43,7 @@ describe('loadWorkerView: payslips (C18)', () => {
   it('shows each worker exactly their own payslip and a verified balance', async () => {
     const s = scenario();
     for (const [i, worker] of s.workers.entries()) {
-      expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[i], payslips: [payslipOf(s, i)], gaps: [] });
+      expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[i], payslips: [payslipOf(s, i)], gaps: [], confirmedCompanyIds: [COMPANY] });
     }
     s.ledger.merge(s.workers[0] as string);
     expect(await view(s, s.workers[0] as string)).toMatchObject({ complete: true, spendable: PAY[0], receiving: 0n });
@@ -108,7 +108,7 @@ describe('loadWorkerView: payslips (C18)', () => {
     s.ledger.pay(8n, RUN, [{ worker, amount: 7_000_007n }]);
     const result = await view(s, worker, { companyIds: [COMPANY, 8n, 8n, 99n] });
     expect(result.payslips).toEqual([payslipOf(s, 0)]);
-    expect(result).toMatchObject({ complete: true, gaps: [] });
+    expect(result).toMatchObject({ complete: true, gaps: [], confirmedCompanyIds: [COMPANY] });
   });
 
   it('counts a company as joined only from its roster, so an invite from a stranger cannot stand in for a hidden company (C48)', async () => {
@@ -118,12 +118,14 @@ describe('loadWorkerView: payslips (C18)', () => {
     s.ledger.members.set(`9/${worker}`, 'Invited');
     s.ledger.createCompany(10n, s.outsider, 13, 'Revoked Co');
     s.ledger.members.set(`10/${worker}`, 'Removed');
-    expect(await view(s, worker, { companyIds: [COMPANY, 9n, 10n] })).toMatchObject({ complete: true, payslips: [payslipOf(s, 0)], gaps: [] });
+    expect(await view(s, worker, { companyIds: [COMPANY, 9n, 10n] })).toMatchObject({ complete: true, payslips: [payslipOf(s, 0)], gaps: [], confirmedCompanyIds: [COMPANY] });
 
     // The worker also joined company 8, which the list leaves out; a pending invite must not make up the count.
     s.ledger.createCompany(8n, s.outsider, 13, 'Joined Co');
     s.ledger.join(8n, worker);
     expect(await view(s, worker, { companyIds: [COMPANY, 9n] })).toMatchObject({ complete: false, gaps: [{ reason: 'company_count_mismatch', expected: 2, found: 1 }] });
+    // confirmedCompanyIds keeps the order given, so a caller that passes ledger order gets it back.
+    expect(await view(s, worker, { companyIds: [8n, 9n, COMPANY] })).toMatchObject({ complete: true, gaps: [], confirmedCompanyIds: [8n, COMPANY] });
   });
 
   it('finds the worker on a roster longer than one page', async () => {
@@ -131,7 +133,7 @@ describe('loadWorkerView: payslips (C18)', () => {
     const worker = s.workers[1] as string;
     const roster = s.ledger.companies.get(COMPANY)?.roster as string[];
     roster.unshift(...Array.from({ length: 120 }, (_, i) => testAccount(`roster filler ${i}`).publicKey()));
-    expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[1], payslips: [payslipOf(s, 1)], gaps: [] });
+    expect(await view(s, worker)).toEqual({ complete: true, spendable: 0n, receiving: PAY[1], payslips: [payslipOf(s, 1)], gaps: [], confirmedCompanyIds: [COMPANY] });
   });
 
   it('attributes each payslip to the treasury of its time across an admin handover', async () => {
@@ -168,7 +170,7 @@ describe('loadWorkerView: payslips (C18)', () => {
     const forged = s.ledger.pay(COMPANY, 2n, [{ worker, amount: 6_000_006n, tamper: (f) => void (f.v_tilde = raw.bytes(new Uint8Array(32).fill(0x0f))) }]);
     const result = await view(s, worker);
     expect(result.payslips.some((p) => p.txHash === forged)).toBe(false);
-    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: 2n }] });
+    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: 2n }], confirmedCompanyIds: [COMPANY] });
   });
 });
 
@@ -255,7 +257,7 @@ describe('loadWorkerView: balances only when history is complete and opens the c
   it('gives no balance when the archive says its history is incomplete', async () => {
     const s = scenario();
     const result = await view(s, s.workers[0] as string, { archive: { gap: [s.fromLedger, s.fromLedger] } });
-    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
+    expect(result).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [], confirmedCompanyIds: [COMPANY] });
     expect('spendable' in result || 'receiving' in result).toBe(false);
   });
 
@@ -269,7 +271,7 @@ describe('loadWorkerView: balances only when history is complete and opens the c
     const balance = await loadWorkerBalance({ port: s.ledger, history: { archive, rpc: s.ledger.rpc(), fromLedger: s.fromLedger }, contracts: CONTRACTS, worker, keys: keysFor(worker) });
     expect(balance.history).toMatchObject({ source: 'archive', complete: true });
     expect([balance.complete, balance.spendable, balance.receiving]).toEqual([false, undefined, undefined]);
-    expect(await view(s, worker, { archive: { drop } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
+    expect(await view(s, worker, { archive: { drop } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [], confirmedCompanyIds: [COMPANY] });
   });
 
   it('gives no balance, and says incomplete, when the archive ends more than 12 ledgers behind the chain', async () => {
@@ -277,13 +279,13 @@ describe('loadWorkerView: balances only when history is complete and opens the c
     const worker = s.workers[0] as string;
     s.ledger.ledger += 20;
     expect(await view(s, worker, { archive: { lag: 12 } })).toMatchObject({ complete: true, spendable: 0n, receiving: PAY[0] });
-    expect(await view(s, worker, { archive: { lag: 13 } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
+    expect(await view(s, worker, { archive: { lag: 13 } })).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [], confirmedCompanyIds: [COMPANY] });
   });
 
   it('gives no balance when the RPC window starts after the worker registered', async () => {
     const s = scenario();
     s.ledger.oldestLedger = s.fromLedger + 3;
-    expect(await view(s, s.workers[0] as string)).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [] });
+    expect(await view(s, s.workers[0] as string)).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [], confirmedCompanyIds: [COMPANY] });
   });
 });
 

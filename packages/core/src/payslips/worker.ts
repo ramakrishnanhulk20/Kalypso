@@ -49,6 +49,12 @@ export interface WorkerView {
   payslips: Payslip[];
   /** Each place the chain's own counts disagree with history (C48), such as a run the chain paid with no payslip shown. */
   gaps: HistoryGap[];
+  /**
+   * The companies the view counted as joined: those among companyIds that exist and have this
+   * worker on their roster on chain, in the order given. Read from the chain, never from history,
+   * so a caller may keep exactly these as the worker's companies.
+   */
+  confirmedCompanyIds: bigint[];
 }
 
 /** The worker's balance, rebuilt from history. Openings are only present when complete. */
@@ -195,9 +201,10 @@ export async function loadWorkerBalance(input: BalanceInput): Promise<WorkerBala
  * ends more than INGEST_TOLERANCE_LEDGERS before the RPC's newest ledger, read after every chain
  * read, makes the view incomplete too (C17).
  *
- * @param companyIds the companies whose invites the worker accepted, as the app recorded them.
- *   Each is checked against the company's roster on chain; one the worker never joined, or that
- *   does not exist, is ignored. One the list leaves out shows as a company_count_mismatch.
+ * @param companyIds the companies to look in, as the app recorded or discovered them. Each is
+ *   checked against the company's roster on chain; one the worker never joined, or that does not
+ *   exist, is ignored and left out of confirmedCompanyIds. One the list leaves out shows as a
+ *   company_count_mismatch.
  * @param txSource where each payslip's transaction envelope is read from (createTxSourcePort).
  * @throws WorkerViewError, or the port's or history's own errors.
  */
@@ -285,11 +292,12 @@ export async function loadWorkerView(input: BalanceInput & { companyIds: bigint[
   });
   const joined = joinedCompanies.length;
   if (joined !== memberships) gaps.push({ reason: 'company_count_mismatch', expected: memberships, found: joined });
+  const confirmedCompanyIds = joinedCompanies.map(({ companyId }) => companyId);
 
   const { latestLedger } = await history.rpc.ledgerWindow();
   if (!companyHistoryEnds.every((through) => reachesLedger(through, latestLedger))) complete = false;
   if (gaps.length > 0) complete = false;
   payslips.sort((a, b) => a.ledger - b.ledger);
-  if (!balance.complete || balance.spendable === undefined || balance.receiving === undefined) return { complete: false, payslips, gaps };
-  return { complete, spendable: balance.spendable.v, receiving: balance.receiving.v, payslips, gaps };
+  if (!balance.complete || balance.spendable === undefined || balance.receiving === undefined) return { complete: false, payslips, gaps, confirmedCompanyIds };
+  return { complete, spendable: balance.spendable.v, receiving: balance.receiving.v, payslips, gaps, confirmedCompanyIds };
 }

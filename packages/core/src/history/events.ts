@@ -297,6 +297,44 @@ export async function fetchAccountHistory(input: FetchInput & { account: string 
 }
 
 /**
+ * Who one of our payroll events names in its topics, the way the archive files it under an
+ * account. A decoded event's shape is known in full; an ignored one parsed every topic, and our
+ * contract's address topics are always G or C, so its readable parties are all of them. null for
+ * an event whose bytes did not read and could name anyone.
+ */
+function payrollParties(event: Exclude<HistoryEvent, { kind: 'token' }>): string[] | null {
+  if (event.kind === 'payroll') return event.event.type === 'payslip_issued' ? [event.event.worker] : [];
+  if (event.kind === 'ignored') return event.parties;
+  return event.parties.length > 0 ? event.parties : null;
+}
+
+/**
+ * Every event of our payroll contract that names `worker` in its topics (invited, joined,
+ * removed, paid), from fromLedger to the newest ledger the source holds. Same source rules as
+ * fetchAccountHistory, over the archive's /v1/payroll/{payroll}/accounts/{worker}/events route.
+ * A payroll event that names the worker but whose bytes did not read, or that might name them
+ * and cannot be read, makes the result incomplete.
+ *
+ * @throws RangeError for a bad fromLedger, TypeError for a bad archive URL, AddressError for a
+ *   bad worker or contract id, or the RPC's own error when the fallback cannot be read either.
+ */
+export async function fetchWorkerPayrollHistory(input: FetchInput & { worker: string }): Promise<HistoryResult> {
+  const worker = requireAccount(input.worker, ['G', 'C']);
+  const payroll = requireAccount(input.contracts.payroll, ['C']);
+  return fetchHistory(input, {
+    contractId: payroll,
+    archivePath: `v1/payroll/${payroll}/accounts/${worker}/events`,
+    attribute(event) {
+      if (event.kind === 'token') return 'other';
+      const parties = payrollParties(event);
+      if (parties === null) return 'unknown';
+      if (!parties.includes(worker)) return 'other';
+      return event.kind === 'undecodable' ? 'unknown' : 'mine';
+    },
+  });
+}
+
+/**
  * Every event of our payroll contract for one company (created, admin changes, runs opened,
  * payslips issued and the rest), from fromLedger to the newest ledger the source holds. Same
  * source rules as fetchAccountHistory, over the archive's /v1/payroll/{payroll}/companies/{id}/events route.

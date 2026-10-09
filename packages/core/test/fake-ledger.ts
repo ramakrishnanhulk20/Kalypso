@@ -269,6 +269,16 @@ export class FakeLedger implements ChainPort {
     });
   }
 
+  /** remove_worker: the worker is no longer active, and keeps their roster entry, as the contract does. */
+  remove(id: bigint, worker: string): string {
+    this.members.set(`${id}/${worker}`, 'Removed');
+    return this.tx((emit) => emit('payroll', [sym('worker_removed'), raw.u64(id), raw.address(worker)], {}), {
+      contract: 'payroll',
+      method: 'remove_worker',
+      args: [raw.u64(id), raw.address(worker)],
+    });
+  }
+
   openRun(id: bigint, runId: bigint, label: string, expected: number): string {
     this.runs.set(`${id}/${runId}`, { label, expected });
     const call = { contract: 'payroll', method: 'open_run', args: [raw.u64(id), raw.u64(runId), raw.str(label), raw.u32(expected)] };
@@ -475,7 +485,8 @@ export class FakeLedger implements ChainPort {
       const cursor = u.searchParams.get('cursor');
       const through = this.ledger - (opts.lag ?? 0);
       let rows = this.events.filter((e) => e.ledger >= from && e.ledger <= through);
-      if (parts[1] === 'tokens') {
+      // v1/tokens/{token}/accounts/{account}/events and v1/payroll/{payroll}/accounts/{account}/events alike.
+      if (parts[3] === 'accounts') {
         const account = parts[4] as string;
         rows = rows.filter((e) => e.contractId === parts[2] && e.topicsXdr.slice(1).some((t) => topicIsAddress(t, account)));
       } else {

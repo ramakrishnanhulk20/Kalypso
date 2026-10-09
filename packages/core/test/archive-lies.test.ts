@@ -96,7 +96,7 @@ describe('complete only when the chain agrees with the archive (C17, C30, C48)',
     const gap = { reason: 'runs_opened_mismatch', companyId: COMPANY, expected: 2, found: 1 };
     expect(await audit(s)).toEqual({ complete: false, runs: [(await audit(s, false)).runs[0]], grandTotal: (PAY[0] as bigint) + (PAY[1] as bigint), undecryptable: [], gaps: [gap] });
     // The worker's own balance check (C16) catches it too: the rebuilt balance is short by the hidden pay.
-    expect(await view(s, w1)).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [gap] });
+    expect(await view(s, w1)).toEqual({ complete: false, payslips: [payslipOf(s, 0)], gaps: [gap], confirmedCompanyIds: [COMPANY] });
   });
 
   it('refuses both views when an archive hides every payroll and token event of a run in the middle, through the balance checks as well (C16, C19)', async () => {
@@ -131,7 +131,7 @@ describe('complete only when the chain agrees with the archive (C17, C30, C48)',
     const slip = s.ledger.events.find((e) => e.txHash === s.payTx && e.contractId === CONTRACTS.payroll && e.topicsXdr[3] === b64(raw.address(worker))) as RpcContractEvent;
     serve(s, { drop: new Set([idOf(slip)]) });
     // The token history is whole, so the balance still opens the chain and is shown; the list is not.
-    expect(await view(s, worker)).toEqual({ complete: false, spendable: 0n, receiving: PAY[0], payslips: [], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: RUN }] });
+    expect(await view(s, worker)).toEqual({ complete: false, spendable: 0n, receiving: PAY[0], payslips: [], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: RUN }], confirmedCompanyIds: [COMPANY] });
   });
 
   it('refuses the worker view when the list of companies leaves out one the chain says the worker joined', async () => {
@@ -200,7 +200,7 @@ describe('complete only when the chain agrees with the archive (C17, C30, C48)',
         if (row.tx_hash === s.payTx) Object.assign(row, { tx_hash: decoy, ledger_seq: decoyLedger, event_index: row.event_index + 10 });
       }
     });
-    expect(await view(s, worker)).toEqual({ complete: false, spendable: 0n, receiving: PAY[0], payslips: [], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: RUN }] });
+    expect(await view(s, worker)).toEqual({ complete: false, spendable: 0n, receiving: PAY[0], payslips: [], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: RUN }], confirmedCompanyIds: [COMPANY] });
     expect(await audit(s)).toEqual({
       complete: false,
       runs: [],
@@ -245,7 +245,7 @@ describe('a transfer outside payroll never touches completeness (C48)', () => {
     const treasuryRouted = routed(s.treasury, 3_000_003n);
     const txSource = s.ledger.txSource({ missing: new Set([direct, strangerRouted, treasuryRouted]) });
     serve(s);
-    expect(await view(s, worker, [COMPANY], txSource)).toEqual({ complete: true, spendable: 0n, receiving: (PAY[0] as bigint) + 6_000_006n, payslips: [payslipOf(s, 0)], gaps: [] });
+    expect(await view(s, worker, [COMPANY], txSource)).toEqual({ complete: true, spendable: 0n, receiving: (PAY[0] as bigint) + 6_000_006n, payslips: [payslipOf(s, 0)], gaps: [], confirmedCompanyIds: [COMPANY] });
     expect(await audit(s, true, txSource)).toMatchObject({ complete: true, undecryptable: [], gaps: [] });
     expect(txSource.calls).toEqual([s.payTx, s.payTx]);
   });
@@ -274,6 +274,7 @@ describe('what the binding refuses (C18, C30)', () => {
       receiving: (PAY[0] as bigint) + 4_000_004n,
       payslips: [],
       gaps: [admin, { reason: 'payslip_missing', companyId: COMPANY, runId: RUN }, { reason: 'payslip_missing', companyId: COMPANY, runId: 2n }],
+      confirmedCompanyIds: [COMPANY],
     });
     expect(await audit(s)).toMatchObject({ complete: false, runs: [], grandTotal: 0n, gaps: [admin, { runId: RUN }, { runId: 2n }] });
   });
@@ -308,7 +309,7 @@ describe('what the binding refuses (C18, C30)', () => {
     s.ledger.paid.add(`${COMPANY}/${RUN}/${s.outsider}`);
     serve(s);
 
-    expect(await view(s, s.outsider)).toEqual({ complete: false, payslips: [], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: RUN }] });
+    expect(await view(s, s.outsider)).toEqual({ complete: false, payslips: [], gaps: [{ reason: 'payslip_missing', companyId: COMPANY, runId: RUN }], confirmedCompanyIds: [COMPANY] });
     const audited = await audit(s);
     expect(audited.runs.flatMap((r) => r.lines.map((l) => l.worker))).not.toContain(s.outsider);
     expect(audited.complete).toBe(false);
