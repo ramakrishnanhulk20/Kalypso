@@ -13,9 +13,9 @@ The [threat model](/docs/security/threat-model) was written at the architecture 
 
 ### Attack tests for every claim
 
-Every claim in the threat model has a test that tries to break it. Thirteen of them run against the live showcase company on testnet in one command, `npm run prove:testnet`. The last full run, on 8 October 2026 at ledger 5089999 and commit 03dea90, passed 13 of 13. Its output is on [Attack run](/docs/security/attack-run).
+Every claim in the threat model has a test that tries to break it. Thirteen of them run against the live showcase company on testnet in one command, `npm run prove:testnet`. The last full run, on 10 October 2026 at ledger 5119392 and commit 65155fe, read its history from the live archive and passed 13 of 13. Its output is on [Attack run](/docs/security/attack-run).
 
-The test suites on 9 October, every one passing, 1,432 tests in all:
+The test suites on 10 October, every one passing, 1,444 tests in all:
 
 | Suite | Tests | Line coverage |
 |---|---|---|
@@ -24,7 +24,7 @@ The test suites on 9 October, every one passing, 1,432 tests in all:
 | Core library | 555 | 98.46% |
 | Server | 316 | 97.99% |
 | Server, production driver (`npm run test:wire`) | the same 316 again | |
-| Web app | 392 | |
+| Web app | 404 | |
 | Testnet scripts | 11 | |
 
 ### Static analysis

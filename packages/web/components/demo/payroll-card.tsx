@@ -63,7 +63,7 @@ export function PayrollCard({ title, companyId, chip, opening, payments, amounts
 
       <div className="relative">
         <div inert={revealed} className={revealed ? "absolute inset-0" : undefined}>
-          <LedgerTable layer="sealed" payments={payments} amounts={amounts} complete={chip.complete} failed={failed} onRetry={onRetry} />
+          <LedgerTable layer="sealed" payments={payments} amounts={amounts} complete={chip.complete} failed={failed} onRetry={onRetry} interactive={!revealed} />
         </div>
         {revealed ? (
           <div className="relative z-10">

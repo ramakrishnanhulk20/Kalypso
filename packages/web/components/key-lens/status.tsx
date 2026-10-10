@@ -113,16 +113,10 @@ export function LoadingLine({
   label: string;
 }) {
   return (
-    <div className="load-line" data-open={isLoading(phase)}>
-      <div>
-        <p
-          role="status"
-          className="t-label px-[22px] py-[10px]"
-          style={PLAIN_CASE}
-        >
-          {isLoading(phase) ? label : ""}
-        </p>
-      </div>
+    <div className="load-line">
+      <p role="status" className="t-label px-[22px] py-[10px]" style={PLAIN_CASE}>
+        {isLoading(phase) ? label : ""}
+      </p>
     </div>
   );
 }

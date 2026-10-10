@@ -312,6 +312,7 @@ export function KeyLens() {
                   complete={accountant.payroll?.complete ?? false}
                   failed={failed}
                   onRetry={retry}
+                  interactive={!openAll}
                 />
               </div>
 

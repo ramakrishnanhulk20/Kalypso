@@ -15,7 +15,7 @@ Testnet stack (from `packages/contracts/deployments/testnet.json`; the payroll r
 ## 1. System overview
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph Browser["Browser (the app)"]
     KL["Home page key lens<br/>/"]
     SB["Sandbox<br/>/demo"]

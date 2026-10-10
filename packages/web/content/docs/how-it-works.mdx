@@ -8,7 +8,7 @@ Kalypso has four parts: OpenZeppelin's confidential token on Stellar, two contra
 ## The whole system
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph Browser["Browser (the app)"]
     KL["Home page key lens<br/>/"]
     SB["Sandbox<br/>/demo"]
@@ -173,7 +173,7 @@ Stellar RPC keeps about the last 7 days of events, and a confidential balance ca
 
 Every screen reads the archive from its own site at `/api/archive`, and only over https. When the archive does not answer, or the page runs on a plain http dev server, readers use RPC's window alone, so history older than about 7 days shows as incomplete instead of as a number.
 
-Nothing trusts the archive alone. A balance rebuilt from it must open the on-chain commitment, and a payslip list must match the chain's own counters. Its public URL goes in the README after it is deployed.
+Nothing trusts the archive alone. A balance rebuilt from it must open the on-chain commitment, and a payslip list must match the chain's own counters. It is live, and its health is public at https://kalypso-payroll.vercel.app/api/archive/v1/health.
 
 ## What depends on what
 

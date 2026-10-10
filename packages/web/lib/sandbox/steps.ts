@@ -154,6 +154,10 @@ export async function runStep(ctx: StepContext, what: string, check: () => Promi
 
 const roleName = (role: Role) => (role === "employer" ? "employer" : role === "accountant" ? "accountant" : `worker ${role.slice(-1)}`);
 
+// Only the two job titles take "the": a worker is named by number, and "the worker 1's" reads wrong.
+const possessive = (role: Role) => (role === "employer" || role === "accountant" ? `the ${roleName(role)}'s` : `${roleName(role)}'s`);
+const startOfSentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 function returned(tx: Landed, what: string) {
   if (tx.returnValue === undefined) throw new SandboxError("CHAIN_DISAGREES", `The ${what} transaction landed, but the network no longer shows what it returned. Reset the sandbox to start a new one.`);
   return tx.returnValue;
@@ -222,7 +226,7 @@ export async function fundStep(ctx: StepContext): Promise<void> {
   await fundAll([...roleOf.keys()], wait ? { ledger, friendbot, wait } : { ledger, friendbot }, (account, result) => {
     const role = roleOf.get(account) as Role;
     if (result.hash !== undefined) journal.landed(`${role} account created by friendbot`, result.hash, undefined);
-    p.tick(result.created ? `Friendbot funded the ${roleName(role)}'s account` : `The ${roleName(role)}'s account already has test XLM`, result.hash);
+    p.tick(result.created ? `Friendbot funded ${possessive(role)} account` : `${startOfSentence(possessive(role))} account already has test XLM`, result.hash);
   });
 }
 

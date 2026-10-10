@@ -281,7 +281,7 @@ export function PosterHero() {
 
       <div
         ref={creditsRef}
-        className="relative z-10 px-[4vw] pb-[4.2svh]"
+        className="relative z-10 px-[4vw] pb-[4.2svh] max-md:pt-[14px]"
         style={HIDDEN}
       >
         <div

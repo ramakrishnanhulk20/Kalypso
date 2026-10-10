@@ -262,19 +262,16 @@
     animation: dot-pulse 1.2s ease-in-out infinite;
   }
 
-  .load-line {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* The line keeps its height with words or without, so choosing another key never moves the
+     table under it. On a phone a label can wrap to a second line, so it keeps room for two. */
+  .load-line > p {
+    min-height: 2.45rem;
   }
 
-  .load-line[data-open="true"] {
-    grid-template-rows: 1fr;
-  }
-
-  .load-line > div {
-    min-height: 0;
-    overflow: hidden;
+  @media (max-width: 767px) {
+    .load-line > p {
+      min-height: 3.65rem;
+    }
   }
 
   .ledger-card {
@@ -339,7 +336,6 @@
   @media (prefers-reduced-motion: reduce) {
     .link-draw,
     .link-draw::after,
-    .load-line,
     .logo-link svg {
       transition: none;
     }

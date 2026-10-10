@@ -251,6 +251,28 @@ describe("fund step", () => {
     expect(most).toBe(3);
     expect(progress.at(-1)).toMatchObject({ step: "fund", done: ROLES.length, total: ROLES.length });
   });
+
+  it("names each account the way a person would say it", async () => {
+    const state = sample();
+    const existing = new Set([addressOf(state, "employer"), addressOf(state, "worker2")]);
+    const funded = new Set<string>();
+    const ledger: LedgerPort = { xlmBalance: async (g) => (existing.has(g) || funded.has(g) ? 10_000n : null), usdcBalance: async () => null };
+    const friendbot: FriendbotPort = {
+      fund: async (g) => {
+        funded.add(g);
+        return { ok: true, status: 200, hash: "9".repeat(64) };
+      },
+    };
+    const { ctx, progress } = context(state, fakeChain().port, { ledger, friendbot });
+    await fundStep(ctx);
+    const said = progress.map((p) => p.label);
+    expect(said).toContain("The employer's account already has test XLM");
+    expect(said).toContain("Worker 2's account already has test XLM");
+    expect(said).toContain("Friendbot funded the accountant's account");
+    expect(said).toContain("Friendbot funded worker 1's account");
+    expect(said).toContain("Friendbot funded worker 3's account");
+    expect(said.some((line) => /the worker/i.test(line))).toBe(false);
+  });
 });
 
 describe("run id", () => {

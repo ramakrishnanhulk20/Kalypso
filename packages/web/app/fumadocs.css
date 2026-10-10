@@ -137,9 +137,15 @@
   color: var(--color-faint);
 }
 
-.kalypso-mermaid {
+.kalypso-diagram {
+  position: relative;
   margin: 1.5rem 0;
-  padding: 1rem;
+}
+
+/* The top padding is the Full size button's own strip, so the button never covers a box. */
+.kalypso-mermaid {
+  margin: 0;
+  padding: 3.25rem 1rem 1rem;
   overflow-x: auto;
   background: var(--color-ink-2);
   border: 1px solid var(--color-line);
@@ -167,6 +173,91 @@
   min-width: min(var(--diagram-w, 100%), max(640px, calc(var(--diagram-w, 0px) * 0.7)));
 }
 
+/* A wide diagram scrolls sideways. The fade on its right edge says there is more, and goes once the
+   end is in view. */
+.kalypso-mermaid-fade {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: var(--diagram-scrollbar, 1px);
+  width: 48px;
+  border-top-right-radius: 7px;
+  background: linear-gradient(to right, transparent, var(--color-ink-2));
+  pointer-events: none;
+}
+
+.kalypso-diagram-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+  background: var(--color-ink-2);
+}
+
+.kalypso-diagram-full {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 24px;
+  border: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--color-paper);
+  background: rgba(21, 16, 15, 0.96);
+}
+
+.kalypso-diagram-full::backdrop {
+  background: transparent;
+}
+
+.kalypso-diagram-full[open] {
+  animation: kalypso-diagram-in 180ms ease-out;
+}
+
+@keyframes kalypso-diagram-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.kalypso-diagram-close {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+  background: var(--color-ink-2);
+}
+
+/* Centred while it is smaller than the window, and scrolls both ways once it is larger. */
+.kalypso-diagram-full-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.kalypso-diagram-full-stage svg {
+  display: block;
+  flex: none;
+  width: var(--diagram-w);
+  height: auto;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
 .kalypso-mermaid-source {
   margin: 0;
   font-family: var(--font-mono);
@@ -190,6 +281,10 @@ body:has(.kalypso-docs) :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .kalypso-diagram-full[open] {
+    animation: none;
+  }
+
   :is(.kalypso-docs, body:has(.kalypso-docs)),
   :is(.kalypso-docs, body:has(.kalypso-docs)) * {
     animation: none !important;

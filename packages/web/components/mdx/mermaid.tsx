@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { showsRightFade } from "./diagram-fade";
 
 type MermaidProps = { chart: string };
 
@@ -50,9 +51,33 @@ function naturalWidth(svg: string) {
   return match ? Math.ceil(Number(match[1])) : 0;
 }
 
+function ExpandIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8.5 1.5h4v4M5.5 12.5h-4v-4M12.5 1.5 8 6M1.5 12.5 6 8" />
+    </svg>
+  );
+}
+
 export function Mermaid({ chart }: MermaidProps) {
   const id = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const [state, setState] = useState<DrawState>({ kind: "drawing" });
+  const [fade, setFade] = useState(false);
+  const [fullSize, setFullSize] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,30 +99,88 @@ export function Mermaid({ chart }: MermaidProps) {
     };
   }, [id, chart]);
 
+  const drawn = state.kind === "done";
+  useEffect(() => {
+    const frame = frameRef.current;
+    const box = boxRef.current;
+    if (!drawn || !frame || !box) return;
+    const update = () => {
+      setFade(showsRightFade(box));
+      // The fade stops above a sideways scrollbar instead of covering it.
+      frame.style.setProperty("--diagram-scrollbar", `${Math.max(0, box.offsetHeight - box.clientHeight - 1)}px`);
+    };
+    update();
+    box.addEventListener("scroll", update, { passive: true });
+    const resize = new ResizeObserver(update);
+    resize.observe(box);
+    const svg = box.querySelector("svg");
+    if (svg) resize.observe(svg);
+    return () => {
+      box.removeEventListener("scroll", update);
+      resize.disconnect();
+    };
+  }, [drawn]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (fullSize && dialog && !dialog.open) dialog.showModal();
+  }, [fullSize]);
+
   if (state.kind === "failed") {
     return (
-      <div className="kalypso-mermaid not-prose" tabIndex={0} role="region" aria-label="Diagram source">
-        <pre className="kalypso-mermaid-source">{chart}</pre>
+      <div className="kalypso-diagram not-prose">
+        <div className="kalypso-mermaid" tabIndex={0} role="region" aria-label="Diagram source">
+          <pre className="kalypso-mermaid-source">{chart}</pre>
+        </div>
       </div>
     );
   }
 
+  const natural = { "--diagram-w": `${state.kind === "done" ? state.width : 0}px` } as React.CSSProperties;
+
   return (
-    <div
-      className="kalypso-mermaid not-prose"
-      tabIndex={0}
-      role="region"
-      aria-label="Diagram"
-      aria-busy={state.kind === "drawing"}
-      data-state={state.kind}
-      style={
-        state.kind === "done"
-          ? ({ "--diagram-w": `${state.width}px` } as React.CSSProperties)
-          : undefined
-      }
-      dangerouslySetInnerHTML={
-        state.kind === "done" ? { __html: state.svg } : undefined
-      }
-    />
+    <div ref={frameRef} className="kalypso-diagram not-prose">
+      <div
+        ref={boxRef}
+        className="kalypso-mermaid"
+        tabIndex={0}
+        role="region"
+        aria-label="Diagram"
+        aria-busy={state.kind === "drawing"}
+        data-state={state.kind}
+        style={state.kind === "done" ? natural : undefined}
+        dangerouslySetInnerHTML={state.kind === "done" ? { __html: state.svg } : undefined}
+      />
+      {fade ? <div aria-hidden="true" className="kalypso-mermaid-fade" /> : null}
+      {state.kind === "done" ? (
+        <>
+          <button ref={openerRef} type="button" className="btn-ghost kalypso-diagram-button" onClick={() => setFullSize(true)}>
+            <ExpandIcon />
+            Full size
+          </button>
+          {/* The drawn markup is reused as it is, never rendered again. Its ids repeat while this is open,
+              and every reference inside it resolves to the identical element on the page. */}
+          <dialog
+            ref={dialogRef}
+            className="kalypso-diagram-full"
+            aria-label="Diagram, full size"
+            data-lenis-prevent
+            onClose={() => {
+              setFullSize(false);
+              openerRef.current?.focus();
+            }}
+          >
+            {fullSize ? (
+              <>
+                <button type="button" className="btn-ghost kalypso-diagram-close" onClick={() => dialogRef.current?.close()}>
+                  Close
+                </button>
+                <div className="kalypso-diagram-full-stage" style={natural} dangerouslySetInnerHTML={{ __html: state.svg }} />
+              </>
+            ) : null}
+          </dialog>
+        </>
+      ) : null}
+    </div>
   );
 }

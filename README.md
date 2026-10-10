@@ -8,8 +8,6 @@ The name is the Greek Kalypso (Καλυψώ), "she who conceals": the ledger sho
 
 [Live app](https://kalypso-payroll.vercel.app) · [Docs](https://kalypso-payroll.vercel.app/docs) · [Sandbox](https://kalypso-payroll.vercel.app/demo) · Video: link added at submission
 
-*The site deploys to this address before submission; until then, run it locally ([Quick start](#quick-start)).*
-
 Built for the Find Your Way hackathon. Testnet only. Not audited by a security firm. It is self-audited: a threat model written before the code, an attack test for every claim, and a three-pass review whose 20 findings are all fixed or named as limits ([Security](#security)).
 
 ## Live on Stellar testnet
@@ -119,7 +117,7 @@ cd packages/core && npm ci && npm run build
 cd ../contracts/scripts && npm ci && npm run prove:testnet
 ```
 
-The last full run, on 8 October 2026 at ledger 5089999 and commit `03dea90`, ended with:
+The last full run, on 10 October 2026 at ledger 5119392 and commit `65155fe`, reading history from the live archive, ended with:
 
 ```text
 13 passed, 0 failed of 13 checks. RESULT: PASS
@@ -127,7 +125,7 @@ The last full run, on 8 October 2026 at ledger 5089999 and commit `03dea90`, end
 
 That run had the seed's private file. Without it, the amounts are checked with the published demo accountant key and the worker half of P10 is skipped, so your run ends with `12 passed, 0 failed, 1 skipped of 13 checks. RESULT: PASS`. The full output is in [`docs/security/attack-run.md`](docs/security/attack-run.md).
 
-The history checks (P1, P2, P3, P9 and P10) read RPC, which keeps about the last 7 days. Once the showcase's first ledger, 5084191, falls outside that window, they fail and say why; they never pass on missing history. Add `-- --archive <url>` to read older ledgers from Kalypso's event archive; its URL goes here after the archive is deployed.
+The history checks (P1, P2, P3, P9 and P10) read RPC, which keeps about the last 7 days. Once the showcase's first ledger, 5084191, falls outside that window, they fail and say why; they never pass on missing history. Add `-- --archive https://kalypso-payroll.vercel.app/api/archive/` to read older ledgers from Kalypso's live event archive; its health, including how far it has read, is public at [`/api/archive/v1/health`](https://kalypso-payroll.vercel.app/api/archive/v1/health).
 
 ### Keep the stack alive
 
@@ -146,7 +144,7 @@ The full write-up is in [`ARCHITECTURE.md`](ARCHITECTURE.md) and on the [How it 
 Amounts exist in plain form only in the employer's browser (the CSV they upload), each worker's browser (their own payslips) and the accountant's browser (with their key). The server sees transaction bytes, where amounts are ciphertexts, and public events.
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph Browser["Browser (the app)"]
     KL["Home page key lens<br/>/"]
     SB["Sandbox<br/>/demo"]
@@ -276,18 +274,18 @@ flowchart TB
 4. Open the [sandbox](https://kalypso-payroll.vercel.app/demo). Under "This month's payroll", type three salaries and choose **Start the sandbox**. It works through ten steps, each a real testnet transaction, in about 3 minutes on a laptop.
 5. When the page says "Your payroll is on chain.", choose each key in turn. **Worker 1**, **Worker 2** and **Worker 3** each see their own payslip, **Accountant** sees every payment with its amount, and **Stranger** sees every payment sealed.
 6. Open the [docs](https://kalypso-payroll.vercel.app/docs): the overview, then the [security overview](https://kalypso-payroll.vercel.app/docs/security/overview), which maps each claim to the check that proves it.
-7. In a terminal, from a clone of this repo, run the prove command:
+7. In a terminal, from a clone of this repo, run the prove command. It takes about 3 minutes and prints each check as it goes:
 
 ```bash
 cd packages/core && npm ci && npm run build
-cd ../contracts/scripts && npm ci && npm run prove:testnet
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
 ```
 
-The last full run ended with `13 passed, 0 failed of 13 checks. RESULT: PASS` ([`docs/security/attack-run.md`](docs/security/attack-run.md)). Without the seed's private file, yours ends with `12 passed, 0 failed, 1 skipped of 13 checks. RESULT: PASS`.
+The last full run ended with `13 passed, 0 failed of 13 checks. RESULT: PASS` ([`docs/security/attack-run.md`](docs/security/attack-run.md)). Without the seed's private file, yours ends with `12 passed, 0 failed, 1 skipped of 13 checks. RESULT: PASS`. The `--archive` flag reads the showcase's history from the live archive, so the history checks keep working after RPC's 7-day window has passed.
 
 ## Quick start
 
-You need Git and Node.js 24 (the server needs 24; the testnet scripts need 22.9 or later). The contract tests need a Rust toolchain (CI uses Rust 1.99.0), and the build attestation check needs the stellar CLI 28.1.0.
+You need Git and Node.js 24 or later (the server needs 24; the testnet scripts need 22.9 or later). The contract tests need a Rust toolchain (CI uses Rust 1.99.0 on Ubuntu), and the build attestation check needs the stellar CLI 28.1.0.
 
 ### Run the app locally
 
@@ -300,7 +298,7 @@ cd ../web && npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. With no variables set, the home page, the sandbox, the employer console, the accountant view and the docs all work, reading Stellar testnet directly, and every `/api` route answers 503 `not_configured`.
+Open http://localhost:3000. With no variables set, the home page, the sandbox, the employer console, the accountant view and the docs all work, reading Stellar testnet directly, and the sponsor and archive routes under `/api` answer 503 `not_configured`.
 
 The worker portal sends every contract call through the fee sponsor. To run the sponsor and the archive locally, copy the example file, still in `packages/web`:
 
@@ -317,12 +315,16 @@ Then set these in `packages/web/.env.local` and restart `npm run dev`:
 | `CHANNELS_API_KEY` | A free OpenZeppelin Channels testnet key: open https://channels.openzeppelin.com/testnet/gen and copy the `apiKey` value. |
 | `CRON_SECRET` and `LOG_SALT` | Two different values, each from `openssl rand -hex 32` |
 | `TRUSTED_IP_HEADER` | `x-forwarded-for`, under `next dev` only. A caller can forge it there, so never use it in production. |
+| `ARCHIVE_START_LEDGER` | `5083382`, the ledger of the token's deploy |
+| `TOKEN_DEPLOY_TX` | `348da699d0e3494a0496a45a1fe33b558d100d2f63c5ef202f93aa19056299b9`, the token's deploy transaction. Both come from `contracts.token.deployTx` in `deployments/testnet.json` and let the archive prove where its history starts. |
 
 The four contract ids are already filled in from `deployments/testnet.json`. Screens served over plain http read RPC's 7-day window and do not read the archive. Every variable has a one-line note in [`packages/web/.env.example`](packages/web/.env.example).
 
 ### Run the tests
 
 After the `npm ci` steps above, each line runs from the repo root (`packages/contracts/scripts` needs its own `npm ci` first):
+
+On Windows with Rust's default GNU toolchain, run `export CARGO_PROFILE_DEV_OPT_LEVEL=2` first: at the default debug level, OpenZeppelin's contract crates export more than the 65,535 symbols a Windows library can hold, and the link fails with "export ordinal too large". Linux, macOS and WSL need nothing extra.
 
 ```bash
 (cd packages/contracts && cargo test -p kalypso-payroll --locked)
@@ -373,7 +375,7 @@ The registry has no constructor, no admin and no upgrade entry point, so the dep
 
 ## Test results
 
-Run on 9 October 2026. Every suite passed: 1,432 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
+Run on 9 and 10 October 2026. Every suite passed: 1,444 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
 
 | Suite | Command, from the repo root | Tests |
 |---|---|---|
@@ -382,7 +384,7 @@ Run on 9 October 2026. Every suite passed: 1,432 tests in all. The server's test
 | Core library | `cd packages/core && npx vitest run` | 555 in 27 files |
 | Server | `cd packages/server && npx vitest run` | 316 in 14 files |
 | Server, production driver | `cd packages/server && npm run test:wire` | the same 316 |
-| Web app | `cd packages/web && npm test` | 392 in 40 files |
+| Web app | `cd packages/web && npm test` | 404 in 41 files |
 | Testnet scripts | `cd packages/contracts/scripts && npm test` | 11 |
 
 Line coverage: core 98.46%, server 97.99%.
@@ -434,10 +436,10 @@ Server, through the production Postgres driver (`npm run test:wire`):
 Web app:
 
 ```text
- Test Files  40 passed (40)
-      Tests  392 passed (392)
-   Start at  19:57:50
-   Duration  3.98s (import 55%, transform 23%, tests 21%)
+ Test Files  41 passed (41)
+      Tests  404 passed (404)
+   Start at  14:52:04
+   Duration  4.27s (import 57%, transform 21%, tests 21%)
 ```
 
 Testnet scripts:

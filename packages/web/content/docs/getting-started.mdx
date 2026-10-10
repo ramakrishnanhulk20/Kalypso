@@ -61,7 +61,7 @@ Each command block below starts from the repo root.
 
 ### Run the tests
 
-On 9 October the suites held 115 payroll and 43 auditor tests (`cargo test`), 555 core tests at 98.46% line coverage, 316 server tests at 97.99%, 392 web app tests and 11 tests for the testnet scripts, 1,432 in all. The server's 316 also run a second time through the production Postgres driver, with `npm run test:wire`.
+On 10 October the suites held 115 payroll and 43 auditor tests (`cargo test`), 555 core tests at 98.46% line coverage, 316 server tests at 97.99%, 404 web app tests and 11 tests for the testnet scripts, 1,444 in all. The server's 316 also run a second time through the production Postgres driver, with `npm run test:wire`.
 
 ```bash
 cd packages/contracts && cargo test
@@ -115,10 +115,10 @@ The same files are on the [Releases page](https://github.com/ramakrishnanhulk20/
 
 ```bash
 cd packages/core && npm ci && npm run build
-cd ../contracts/scripts && npm ci && npm run prove:testnet
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
 ```
 
-Without the seed's private file, the amounts are checked with the published demo accountant key and the worker half of P10 is skipped, so a stranger's run ends with 12 passed and 1 skipped. The history checks read RPC, which keeps about the last 7 days. Add `-- --archive <url>` to read older ledgers from Kalypso's event archive; its URL goes in the README after the archive is deployed. The last full run is on [Attack run](/docs/security/attack-run).
+Without the seed's private file, the amounts are checked with the published demo accountant key and the worker half of P10 is skipped, so a stranger's run ends with 12 passed and 1 skipped. The history checks read RPC, which keeps about the last 7 days. The `--archive` flag above reads older ledgers from Kalypso's live event archive, so the history checks keep working after that window; its health is public at [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health). The last full run is on [Attack run](/docs/security/attack-run).
 
 ### Keep the stack alive
 

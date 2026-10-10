@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeading } from "@/components/app/page-heading";
 import type { SandboxResult } from "@/lib/sandbox/engine";
 import { amountsFrom } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
 import { contracts } from "@/lib/stack";
+import { afterPaint } from "./after-paint";
 import type { Engine } from "./engine";
 import { KEYS, KeySwitcher } from "./key-switcher";
 import type { KeyId } from "./key-switcher";
@@ -37,9 +38,17 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
     openAccountant();
   }, [openAccountant]);
 
+  const pendingOpens = useRef(new Set<() => void>());
+  useEffect(() => {
+    const pending = pendingOpens.current;
+    return () => pending.forEach((cancel) => cancel());
+  }, []);
+
+  // The tab is chosen at once. Opening a key does some work before its first wait, so it starts
+  // after the chosen tab has painted, never in front of it.
   const choose = (id: KeyId) => {
     setSelected(id);
-    reads[id].open();
+    pendingOpens.current.add(afterPaint(() => reads[id].open()));
   };
 
   const label = `Sandbox ${result.treasury.slice(0, 4)}`;

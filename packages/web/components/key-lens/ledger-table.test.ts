@@ -3,18 +3,23 @@
 // open shows "Total withheld" in the wait colour with its title, and a key that opened nothing keeps
 // "No key fits". Does NOT cover the table's layout or how the landing lens, /demo and the books pass
 // the complete flag in; the live before and after check in scratchpad/rd covers those.
-import { isValidElement } from "react";
+import { createElement, isValidElement } from "react";
 import type { ReactNode } from "react";
+// The project does not install react-dom's type package; this test only needs the markup string.
+// @ts-expect-error TS7016
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { SealedPayment } from "@kalypso/core";
 
 // The test runner has no "@/" alias, so the table's own imports are pointed at the same files.
+const screen = vi.hoisted(() => ({ wide: true }));
+vi.mock("@/hooks/use-wide-screen", () => ({ useWideScreen: () => screen.wide }));
 vi.mock("@/lib/ledger", () => import("../../lib/ledger"));
 vi.mock("@/lib/links", () => import("../../lib/links"));
 vi.mock("@/lib/money", () => import("../../lib/money"));
 
-const { WITHHELD_TITLE, WithheldTotal, totalOf } = await import("./ledger-table");
-const { paymentKey } = await import("../../lib/ledger");
+const { LedgerTable, WITHHELD_TITLE, WithheldTotal, totalOf } = await import("./ledger-table");
+const { paymentKey, shortId } = await import("../../lib/ledger");
 
 const payment = (runId: bigint, n: number, amount: bigint | null): SealedPayment => ({
   runId,
@@ -78,5 +83,32 @@ describe("WithheldTotal", () => {
     expect(shown.titles).toEqual([WITHHELD_TITLE]);
     expect(WITHHELD_TITLE).toBe("Some payments could not be read, so no total is shown.");
     expect(shown.colours).toEqual(["var(--color-wait)"]);
+  });
+});
+
+describe("LedgerTable transaction links", () => {
+  const markup = (wide: boolean, interactive: boolean): string => {
+    screen.wide = wide;
+    return renderToStaticMarkup(
+      createElement(LedgerTable, { layer: "sealed", payments: run, amounts: opened(run), complete: true, failed: false, onRetry: () => undefined, interactive }),
+    );
+  };
+  const links = (html: string) => [...html.matchAll(/<a [^>]*href="[^"]*\/tx\/([0-9a-f]{64})"[^>]*>(.*?)<\/a>/g)].map((m) => ({ hash: m[1], text: (m[2] ?? "").replace(/<[^>]*>/g, "") }));
+
+  it("draws one link per payment on a wide screen, showing the short hash", () => {
+    const found = links(markup(true, true));
+    expect(found.map((l) => l.hash)).toEqual(run.map((p) => p.txHash));
+    expect(found.map((l) => l.text)).toEqual(run.map((p) => shortId(p.txHash)));
+  });
+
+  it("draws one link per payment on a phone, under the worker", () => {
+    const found = links(markup(false, true));
+    expect(found.map((l) => l.hash)).toEqual(run.map((p) => p.txHash));
+    expect(found.every((l) => l.text.startsWith("tx "))).toBe(true);
+  });
+
+  it("draws no link at all for a layer that is only a backdrop", () => {
+    expect(links(markup(true, false))).toEqual([]);
+    expect(links(markup(false, false))).toEqual([]);
   });
 });

@@ -113,8 +113,13 @@ export function stepNumber(state: RunState): number {
   return Math.min(state.frontier, SHOT_COUNT - 1) + 1;
 }
 
+/** Typical seconds still to go when `frontier` is the first step not done: every step from there on, in full. */
+export function secondsLeft(frontier: number): number {
+  return SHOTS.slice(Math.max(frontier, 0)).reduce((sum, shot) => sum + shot.seconds, 0);
+}
+
 export function timeLeftLabel(frontier: number): string {
-  const left = SHOTS.slice(frontier).reduce((sum, shot) => sum + shot.seconds, 0);
+  const left = secondsLeft(frontier);
   return left < 60 ? "under a minute left" : `about ${Math.ceil(left / 60)} min left`;
 }
 

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { SealedPayment } from "@kalypso/core";
+import { useWideScreen } from "@/hooks/use-wide-screen";
 import { buildLedgerRows, paymentKey, shortId } from "@/lib/ledger";
 import type { LedgerRow } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
@@ -144,11 +145,14 @@ function PaymentRow({
   layer,
   amounts,
   interactive,
+  wide,
 }: {
   row: Extract<LedgerRow, { kind: "payment" }>;
   layer: LedgerLayer;
   amounts: Map<string, bigint | null> | null;
   interactive: boolean;
+  /** From the md breakpoint up the transaction sits in its own column, below it under the worker. */
+  wide: boolean;
 }) {
   const { payment } = row;
   const lens = layer === "revealed";
@@ -197,24 +201,28 @@ function PaymentRow({
         <span className="whitespace-nowrap font-mono text-[0.875rem] text-paper">
           {shortId(payment.worker)}
         </span>
-        <span className="t-label block md:hidden">
+        {wide ? null : (
+          <span className="t-label block">
+            <TxLink
+              interactive={interactive}
+              txHash={payment.txHash}
+              className="underline decoration-line underline-offset-2"
+            >
+              tx {payment.txHash.slice(0, 4)}…{payment.txHash.slice(-4)}
+            </TxLink>
+          </span>
+        )}
+      </td>
+      <td className={`${CELL} max-md:hidden`}>
+        {wide ? (
           <TxLink
             interactive={interactive}
             txHash={payment.txHash}
-            className="underline decoration-line underline-offset-2"
+            className="whitespace-nowrap font-mono text-[0.875rem] text-muted"
           >
-            tx {payment.txHash.slice(0, 4)}…{payment.txHash.slice(-4)}
+            {shortId(payment.txHash)}
           </TxLink>
-        </span>
-      </td>
-      <td className={`${CELL} max-md:hidden`}>
-        <TxLink
-          interactive={interactive}
-          txHash={payment.txHash}
-          className="whitespace-nowrap font-mono text-[0.875rem] text-muted"
-        >
-          {shortId(payment.txHash)}
-        </TxLink>
+        ) : null}
       </td>
       <td className={`${CELL} text-right`}>{amountCell}</td>
     </tr>
@@ -286,6 +294,7 @@ export function LedgerTable({
   interactive = true,
 }: LedgerTableProps) {
   const lens = layer === "revealed";
+  const wide = useWideScreen();
   const rows = useMemo(
     () => (payments ? buildLedgerRows(payments) : null),
     [payments],
@@ -323,6 +332,7 @@ export function LedgerTable({
                   layer={layer}
                   amounts={amounts}
                   interactive={interactive}
+                  wide={wide}
                 />
               ) : (
                 <SubtotalRow
