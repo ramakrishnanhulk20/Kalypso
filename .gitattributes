@@ -1,0 +1,9 @@
+# Text is stored and checked out with LF whatever core.autocrlf says. A server test compares the
+# embedded schema with schema.sql byte for byte, and a Windows checkout would otherwise turn it CRLF.
+* text=auto eol=lf
+*.wasm binary
+*.dat binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
