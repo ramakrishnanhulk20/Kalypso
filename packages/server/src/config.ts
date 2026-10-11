@@ -1,6 +1,7 @@
 import { BlockList, isIP } from "node:net";
 import { Networks } from "@stellar/stellar-sdk";
 import { z } from "zod";
+import { CIRCLE_TESTNET_USDC_ISSUER, createFaucetSigner, faucetUsdcAsset, isFaucetSecret, type FaucetSigner } from "./faucet/signer.ts";
 import { canonicalContractId } from "./stellar.ts";
 
 export interface Config {
@@ -46,6 +47,19 @@ export interface Config {
   readonly ARCHIVE_START_LEDGER?: number;
   /** The token's deploy transaction hash, lower-case hex: the only proof of where its history begins. */
   readonly TOKEN_DEPLOY_TX?: string;
+  /** What one XLM claim pays: a new account's starting balance, or a payment to an existing one. */
+  readonly FAUCET_XLM_STROOPS: bigint;
+  /** What one USDC claim pays. */
+  readonly FAUCET_USDC_STROOPS: bigint;
+  /** Faucet claims each client IP bucket (IPv6: per /48) may make per UTC day. */
+  readonly FAUCET_CLAIMS_PER_IP_PER_DAY: number;
+  /** Faucet claims the whole service pays per UTC day. */
+  readonly FAUCET_CLAIMS_PER_DAY: number;
+  /**
+   * The testnet faucet's key, present only when FAUCET_SECRET_KEY is set. The secret itself is
+   * never a config field: this signer holds it and signs faucet payouts and nothing else.
+   */
+  readonly FAUCET_SIGNER?: FaucetSigner;
 }
 
 export class ConfigError extends Error {
@@ -106,11 +120,11 @@ const postgresUrl = z
   .string({ error: "missing" })
   .refine(isPostgresUrl, { error: "must be a postgres:// or postgresql:// connection URL" });
 
-const stroops = (max: bigint) =>
+const stroops = (max: bigint, min = 1n) =>
   z
     .string({ error: "missing" })
-    .refine((v) => /^[1-9]\d{0,18}$/.test(v) && BigInt(v) <= max, {
-      error: "must be a whole number of stroops from 1 to " + max.toString(),
+    .refine((v) => /^[1-9]\d{0,18}$/.test(v) && BigInt(v) >= min && BigInt(v) <= max, {
+      error: "must be a whole number of stroops from " + min.toString() + " to " + max.toString(),
     })
     .transform((v) => BigInt(v));
 
@@ -237,6 +251,14 @@ const schemaFor = (production: boolean) => z
       .string()
       .refine((v) => /^[0-9a-f]{64}$/.test(v), { error: "must be 64 lower-case hex characters" })
       .optional(),
+    // The rule's message never repeats the value: this one is a secret.
+    FAUCET_SECRET_KEY: z.string().refine(isFaucetSecret, { error: "must be a Stellar secret key (S...)" }).optional(),
+    // 1 XLM is the least createAccount takes on testnet (two base reserves); 10,000 XLM is
+    // what friendbot grants a whole account. Both defaults are 100 units.
+    FAUCET_XLM_STROOPS: stroops(100_000_000_000n, 10_000_000n).default(1_000_000_000n),
+    FAUCET_USDC_STROOPS: stroops(100_000_000_000n).default(1_000_000_000n),
+    FAUCET_CLAIMS_PER_IP_PER_DAY: countUpTo99999.default(6),
+    FAUCET_CLAIMS_PER_DAY: countUpTo99999.default(500),
   })
   .superRefine((cfg, ctx) => {
     // A key that failed its own rule arrives here as its raw string, which
@@ -259,6 +281,15 @@ const schemaFor = (production: boolean) => z
           message: "must give creations at least FEE_CAP_CREATION_STROOPS of DAILY_FEE_BUDGET_STROOPS",
         });
       }
+    }
+    // The boot assertion behind every USDC payout: the faucet pays the classic asset whose token
+    // contract is the configured one, and it knows only Circle's.
+    if (cfg.FAUCET_SECRET_KEY !== undefined && faucetUsdcAsset(cfg.USDC_SAC_ID, Networks.TESTNET) === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["USDC_SAC_ID"],
+        message: "must be the token contract of Circle's testnet USDC (USDC:" + CIRCLE_TESTNET_USDC_ISSUER + ") while FAUCET_SECRET_KEY is set",
+      });
     }
     if (cfg.TOKEN_DEPLOY_TX !== undefined && cfg.ARCHIVE_START_LEDGER === undefined) {
       ctx.addIssue({ code: "custom", path: ["TOKEN_DEPLOY_TX"], message: "needs ARCHIVE_START_LEDGER, the ledger of that transaction" });
@@ -286,6 +317,9 @@ export function creationBudgetOf(cfg: Pick<Config, "DAILY_FEE_BUDGET_STROOPS" | 
   return (cfg.DAILY_FEE_BUDGET_STROOPS * BigInt(cfg.CREATION_BUDGET_SHARE_PERCENT)) / 100n;
 }
 
+// The faucet secret stays off the config object, so this is how the log scrubber still learns it.
+const faucetSecrets = new WeakMap<Config, string>();
+
 /**
  * Validates the environment at boot and fails loudly.
  *
@@ -294,6 +328,10 @@ export function creationBudgetOf(cfg: Pick<Config, "DAILY_FEE_BUDGET_STROOPS" | 
  * because the values include secrets. An empty string counts as missing so a
  * blank line in a .env file cannot silently become a value. NODE_ENV is read
  * from `env` too: "production" refuses http://localhost origins.
+ *
+ * FAUCET_SECRET_KEY is optional. When set, the network must be testnet like
+ * every other key requires, USDC_SAC_ID must be Circle's testnet USDC, and the
+ * secret becomes FAUCET_SIGNER instead of a field.
  */
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const input: Record<string, string | undefined> = {};
@@ -314,15 +352,30 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     }
   }
   if (!parsed.success || problems.length > 0) throw new ConfigError([...new Set(problems)]);
-  return Object.freeze({ ...parsed.data, NETWORK_PASSPHRASE: Networks.TESTNET });
+  const { FAUCET_SECRET_KEY: faucetSecret, ...settings } = parsed.data;
+  if (faucetSecret === undefined) return Object.freeze({ ...settings, NETWORK_PASSPHRASE: Networks.TESTNET });
+  const signer = createFaucetSigner(faucetSecret, {
+    xlmStroops: settings.FAUCET_XLM_STROOPS,
+    usdcStroops: settings.FAUCET_USDC_STROOPS,
+    usdc: faucetUsdcAsset(settings.USDC_SAC_ID, Networks.TESTNET)!,
+  });
+  const cfg: Config = Object.freeze({ ...settings, NETWORK_PASSPHRASE: Networks.TESTNET, FAUCET_SIGNER: signer });
+  faucetSecrets.set(cfg, faucetSecret);
+  return cfg;
 }
 
 /** Every secret string a log line or error body must never contain. */
 export function secretValues(cfg: Config): string[] {
   const out = [cfg.CHANNELS_API_KEY, cfg.DATABASE_URL_INGEST, cfg.DATABASE_URL_API, cfg.CRON_SECRET, cfg.LOG_SALT];
+  const faucetSecret = faucetSecrets.get(cfg);
+  if (faucetSecret !== undefined) out.push(faucetSecret);
   for (const value of [cfg.DATABASE_URL_INGEST, cfg.DATABASE_URL_API]) {
     const password = new URL(value).password;
     if (password) out.push(password, decodeURIComponent(password));
   }
+  // Hosted RPC providers put the access token in the path or query, so any non-root RPC URL is
+  // treated as a secret, in full and by its token-bearing parts.
+  const rpc = new URL(cfg.RPC_URL);
+  if (rpc.pathname.length > 1 || rpc.search) out.push(cfg.RPC_URL, rpc.pathname, rpc.pathname.replace(/^\/|\/$/g, ""), rpc.search);
   return [...new Set(out.filter((s) => s.length >= 4))];
 }

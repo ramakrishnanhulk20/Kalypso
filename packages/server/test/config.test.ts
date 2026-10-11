@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { Networks, StrKey } from "@stellar/stellar-sdk";
 import { ConfigError, isAllowedOutboundUrl, loadConfig, secretValues } from "../src/config.ts";
-import { API_KEY, CRON_SECRET, DB_API, DB_INGEST, LOG_SALT, TOKEN, keypairFor, testEnv } from "./helpers.ts";
+import { API_KEY, CRON_SECRET, DB_API, DB_INGEST, LOG_SALT, TOKEN, contractFor, keypairFor, testEnv } from "./helpers.ts";
 
 function problemsOf(env: Record<string, string | undefined>): string[] {
   try {
@@ -221,9 +221,68 @@ describe("loadConfig", () => {
     expect(err.message).not.toMatch(/hunter/);
   });
 
+  it("leaves the faucet off without FAUCET_SECRET_KEY, with its documented defaults", () => {
+    const cfg = loadConfig(testEnv());
+    expect(cfg.FAUCET_SIGNER).toBeUndefined();
+    expect(cfg.FAUCET_XLM_STROOPS).toBe(1_000_000_000n);
+    expect(cfg.FAUCET_USDC_STROOPS).toBe(1_000_000_000n);
+    expect(cfg.FAUCET_CLAIMS_PER_IP_PER_DAY).toBe(6);
+    expect(cfg.FAUCET_CLAIMS_PER_DAY).toBe(500);
+  });
+
+  it("turns FAUCET_SECRET_KEY into the faucet signer and keeps the secret off the config, while the log scrubber still learns it", () => {
+    const faucet = keypairFor("faucet");
+    const cfg = loadConfig(testEnv({ FAUCET_SECRET_KEY: faucet.secret() }));
+    expect(cfg.FAUCET_SIGNER?.publicKey).toBe(faucet.publicKey());
+    expect(Object.keys(cfg)).not.toContain("FAUCET_SECRET_KEY");
+    expect(JSON.stringify(cfg, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value))).not.toContain(faucet.secret());
+    expect(secretValues(cfg)).toContain(faucet.secret());
+    expect(Object.isFrozen(cfg)).toBe(true);
+  });
+
+  it("refuses a FAUCET_SECRET_KEY that is not a canonical S... key, without repeating it", () => {
+    const secret = keypairFor("faucet").secret();
+    for (const bad of [keypairFor("faucet").publicKey(), secret.toLowerCase(), secret.slice(0, 55) + (secret.endsWith("A") ? "B" : "A"), "S" + "A".repeat(55)]) {
+      const problems = problemsOf(testEnv({ FAUCET_SECRET_KEY: bad }));
+      expect(problems, bad.slice(0, 4)).toEqual(["FAUCET_SECRET_KEY: must be a Stellar secret key (S...)"]);
+      expect(JSON.stringify(problems)).not.toContain(bad);
+    }
+  });
+
+  it("asserts at boot that USDC_SAC_ID is Circle's testnet USDC while the faucet is on, and starts the faucet on testnet only", () => {
+    const secret = keypairFor("faucet").secret();
+    const other = contractFor("other usdc");
+    expect(problemsOf(testEnv({ FAUCET_SECRET_KEY: secret, USDC_SAC_ID: other }))).toEqual([
+      "USDC_SAC_ID: must be the token contract of Circle's testnet USDC (USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5) while FAUCET_SECRET_KEY is set",
+    ]);
+    expect(loadConfig(testEnv({ USDC_SAC_ID: other })).USDC_SAC_ID).toBe(other);
+    for (const network of ["public", "mainnet", "futurenet", "TESTNET"]) {
+      expect(problemsOf(testEnv({ FAUCET_SECRET_KEY: secret, NETWORK: network })), network).toEqual(["NETWORK: must be testnet (the only network this server supports)"]);
+    }
+  });
+
+  it("takes the faucet amounts as whole stroops, XLM from 1 (what createAccount needs) to 10,000, and its claim limits from 1 to 99999", () => {
+    const cfg = loadConfig(testEnv({ FAUCET_XLM_STROOPS: "10000000", FAUCET_USDC_STROOPS: "1", FAUCET_CLAIMS_PER_IP_PER_DAY: "1", FAUCET_CLAIMS_PER_DAY: "99999" }));
+    expect([cfg.FAUCET_XLM_STROOPS, cfg.FAUCET_USDC_STROOPS, cfg.FAUCET_CLAIMS_PER_IP_PER_DAY, cfg.FAUCET_CLAIMS_PER_DAY]).toEqual([10_000_000n, 1n, 1, 99_999]);
+    for (const bad of ["9999999", "100000000001", "0", "1.5"]) {
+      expect(problemsOf(testEnv({ FAUCET_XLM_STROOPS: bad })), bad).toEqual(["FAUCET_XLM_STROOPS: must be a whole number of stroops from 10000000 to 100000000000"]);
+    }
+    expect(problemsOf(testEnv({ FAUCET_USDC_STROOPS: "100000000001" }))).toEqual(["FAUCET_USDC_STROOPS: must be a whole number of stroops from 1 to 100000000000"]);
+    for (const key of ["FAUCET_CLAIMS_PER_IP_PER_DAY", "FAUCET_CLAIMS_PER_DAY"]) {
+      expect(problemsOf(testEnv({ [key]: "0" }))).toEqual([key + ": must be a whole number from 1 to 99999"]);
+    }
+  });
+
   it("collects every secret string, including the passwords inside the database URLs", () => {
     const secrets = secretValues(loadConfig(testEnv()));
     expect(secrets).toEqual(expect.arrayContaining([API_KEY, DB_INGEST, DB_API, "ingest-pass-7Hq2", "reader-pass-K9z4", CRON_SECRET, LOG_SALT]));
+  });
+
+  it("treats a token-bearing RPC URL as a secret, and leaves the public root URL alone", () => {
+    const hosted = "https://rpc.example/abc123token456/";
+    const secrets = secretValues(loadConfig(testEnv({ RPC_URL: hosted })));
+    expect(secrets).toEqual(expect.arrayContaining([hosted, "abc123token456"]));
+    expect(secretValues(loadConfig(testEnv({ RPC_URL: "https://soroban-testnet.stellar.org" })))).not.toContain("https://soroban-testnet.stellar.org");
   });
 });
 

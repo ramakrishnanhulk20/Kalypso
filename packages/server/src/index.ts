@@ -21,6 +21,8 @@ export {
   type SponsorRequest,
   type SponsorRefusalCode,
 } from "./sponsor/validate.ts";
+export { faucetHandler, type FaucetContext, type FaucetAsset } from "./faucet/handler.ts";
+export { FAUCET_MAX_MS } from "./faucet/limits.ts";
 export { archiveHandler, type ArchiveContext } from "./archive/api.ts";
 export { ingestCronHandler, INGEST_CRON_DEADLINE_MS, type IngestCronContext } from "./archive/cron.ts";
 export { ingestOnce, UpstreamDataError, type IngestOptions, type IngestResult } from "./archive/ingest.ts";
