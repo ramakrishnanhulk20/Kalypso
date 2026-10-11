@@ -25,17 +25,13 @@
   "common": {
     "home": "Kalypso home",
     "testnet": "testnet",
+    "testShort": "Test",
     "nav": {
-      "label": "Primary",
-      "tryIt": "Try it",
-      "sandbox": "Sandbox",
-      "docs": "Docs",
-      "docsShort": "Docs",
-      "source": "Source",
-      "attackRun": "Read the attack run"
+      "label": "Primary"
     },
     "tryAgain": "Try again",
     "startOver": "Start over",
+    "keepIt": "Keep it",
     "resume": "Resume",
     "done": "Done",
     "copy": "Copy",
@@ -62,8 +58,10 @@
       "eyebrow": "Private payroll on Stellar",
       "title": "Pay your team in USDC. Nobody else can read the salaries.",
       "lead": "Every payment is public proof that it happened. The amount is sealed, and only each worker and your accountant hold a key that opens it.",
-      "ctaLens": "Try to read the salaries",
-      "ctaCode": "Read the code",
+      "usdc": "USDC is a digital dollar: one USDC is worth one US dollar.",
+      "ctaPay": "Pay your team",
+      "ctaSee": "See it work",
+      "testNote": "Test network: no real money moves yet.",
       "credit1": "Confidential USDC",
       "credit2": "Zero-knowledge proofs",
       "credit3": "Stellar testnet",
@@ -93,7 +91,7 @@
       "worker": "Worker",
       "payment": "Payment",
       "amount": "Amount",
-      "noKeyFits": "No key fits",
+      "noKeyFits": "Sealed. This key can't open it.",
       "withheld": "Total withheld",
       "withheldTitle": "Some payments could not be read, so no total is shown.",
       "sealed": "sealed",
@@ -184,17 +182,17 @@
       "attackRun": "Attack run",
       "threatModel": "Threat model",
       "license": "License: MIT",
-      "note": "Stellar testnet only. Not audited by a security firm. Built for the Find Your Way hackathon."
+      "note": "Stellar testnet. Not yet audited by a security firm."
     }
   },
   "sandbox": {
     "intro": {
       "eyebrow": "Sandbox · Stellar testnet",
-      "title": "Run a real payroll in three minutes.",
+      "title": "Run a real payroll in four minutes.",
       "lead": "Your browser creates a company, its accountant and three workers on Stellar testnet, funds them with test money, and pays the team through Kalypso with real zero-knowledge proofs. No wallet, no sign-up. Then you open the payroll as each of them.",
       "promise1": "Every step is a real testnet transaction you can open on stellar.expert.",
       "promise2": "The keys live only in this browser. Close the tab and come back to resume.",
-      "promise3": "Free test XLM comes from Stellar's friendbot; nothing here costs real money."
+      "promise3": "Stellar gives test XLM away for free; nothing here costs real money."
     },
     "card": {
       "title": "This month's payroll",
@@ -202,7 +200,7 @@
       "invalid": "Enter an amount above zero, like {plain} or {grouped}.",
       "total": "Total",
       "start": "Start the sandbox",
-      "takes": "Takes about 3 minutes on a laptop. Slower phones take longer."
+      "takes": "Takes about 4 minutes on a laptop. Slower phones take longer."
     },
     "run": {
       "srTitle": "Sandbox",
@@ -219,38 +217,38 @@
       "feedLabel": "On chain",
       "feedEmpty": "Transactions appear here as they land.",
       "unexpected": "Something unexpected stopped the sandbox. Your progress is saved; try again.",
-      "confirmStartOver": "Start over? This sandbox's company stays on testnet, but this browser forgets it."
+      "startOverAsk": "Start a new sandbox? This forgets the one you ran."
     },
     "shots": {
       "keysTitle": "Keys",
-      "keysText": "Five accounts are created in this browser.",
+      "keysText": "Your browser makes five test accounts: the company, its accountant and three workers.",
       "fundTitle": "Test money",
-      "fundText": "Friendbot funds all five with test XLM.",
+      "fundText": "Stellar's test network gives each account free test XLM for its small network fees.",
       "usdcTitle": "USDC",
-      "usdcText": "The company buys test USDC on the Stellar exchange.",
+      "usdcText": "The company buys test USDC, a digital dollar, on Stellar's built-in exchange.",
       "accountantTitle": "Accountant",
-      "accountantText": "The accountant registers their own key and gets an id.",
+      "accountantText": "The accountant registers the key that opens the company's books, and gets a key number.",
       "treasuryTitle": "Treasury",
-      "treasuryText": "The company's account joins the confidential token under that id.",
+      "treasuryText": "The company's account signs up for private USDC payments under that key number, so the accountant can read them.",
       "companyTitle": "Company",
-      "companyText": "The payroll contract creates the company, naming its accountant.",
+      "companyText": "Kalypso's payroll program on Stellar creates the company and names its accountant.",
       "workersTitle": "Workers",
-      "workersText": "Each worker registers a key, joins the token and accepts the invite.",
+      "workersText": "Each worker makes their own key for reading their pay, signs up for private payments and accepts the company's invite.",
       "depositTitle": "Funding",
-      "depositText": "USDC moves into the treasury's sealed balance.",
+      "depositText": "The company moves its USDC into its private payroll account, where nobody else can see the balance.",
       "runTitle": "Run",
-      "runText": "This month's run opens for three workers.",
+      "runText": "The company opens this month's payroll for three workers.",
       "payTitle": "Payroll",
-      "payText": "Each payment is proved in your browser and paid."
+      "payText": "Your browser proves each payment is valid without showing the amount, then sends it."
     },
     "progress": {
       "keys": "Making five throwaway testnet accounts in your browser",
-      "fund": "Asking friendbot for test XLM, account {done} of {total}",
-      "usdc": "Buying test USDC on the Stellar DEX for the treasury",
-      "accountant": "Registering the accountant's audit key",
+      "fund": "Getting free test XLM, account {done} of {total}",
+      "usdc": "Buying test USDC on the Stellar exchange for the treasury",
+      "accountant": "Registering the accountant's key",
       "treasury": "Registering the treasury with the confidential token, proved in your browser",
       "company": "Creating the company on the payroll contract",
-      "workers": "Setting up worker {done} of {total}: audit key, token account, invite and acceptance",
+      "workers": "Setting up worker {done} of {total}: key for reading their pay, token account, invite and acceptance",
       "deposit": "Depositing test USDC into the confidential treasury",
       "run": "Opening this month's payroll run",
       "pay": "Proving and sending payment {done} of {total} in your browser",
@@ -258,10 +256,12 @@
     },
     "result": {
       "eyebrow": "Done · on Stellar testnet",
+      "earlier": "This is the sandbox you ran earlier.",
       "title": "Your payroll is on chain.",
       "lead": "Anyone can see that three people were paid. Only the keys below can open how much. Every key here lives in this browser and was used only here.",
       "treasuryLink": "Company treasury on stellar.expert",
       "payrollLink": "Payroll contract",
+      "caption": "The same payroll, as each key sees it. Workers see only their own pay, the accountant sees everyone's, and a stranger sees nothing.",
       "keysLabel": "Which key",
       "keyWorker": "Worker {n}",
       "keyAccountant": "Accountant",
@@ -269,8 +269,8 @@
       "openingWorker": "Opening with Worker {n}'s key in your browser",
       "openingAccountant": "Opening with the accountant's key in your browser",
       "openingStranger": "Opening with a stranger's key in your browser",
-      "sandboxLabel": "Sandbox {short}",
       "closing": "That is Kalypso.",
+      "forYourCompany": "Do this for your company",
       "readHow": "Read how it works"
     },
     "payslip": {
@@ -304,7 +304,133 @@
     "devPreparing": "Preparing a development wallet",
     "devFailed": "The development wallet could not be made.",
     "devModuleFailed": "The development wallet module did not load.",
-    "liveProof": "Live on testnet: {company} has paid {payments, plural, one {# worker} other {# workers}} across {runs, plural, one {# run} other {# runs}}, every amount sealed."
+    "liveProof": "Live on testnet: {company} has paid {payments, plural, one {# worker} other {# workers}} across {runs, plural, one {# run} other {# runs}}, every amount sealed.",
+    "before": {
+      "label": "Before you start",
+      "computer": "Freighter runs in a computer's browser (Chrome, Firefox, Edge or Brave), not on a phone.",
+      "phone": "On a phone? Try the sandbox now, and set up from a computer later.",
+      "needLabel": "You'll need",
+      "need1": "A computer with Freighter, Stellar's wallet.",
+      "need2": "A safe place to write down Freighter's recovery phrase. Freighter shows it once when you create your wallet; it is the only way back into the wallet.",
+      "need3": "Each worker's Kalypso address. They make one on the Your pay page; it starts with C.",
+      "need4": "Your pay amounts, typed in or as a spreadsheet saved as CSV (address, amount, name).",
+      "need5": "Nothing else: test money is free once you connect.",
+      "step1": "Install Freighter, Stellar's wallet for your browser, from <site>freighter.app</site>.",
+      "step2": "Click the Freighter icon in your browser's toolbar. At the top of Freighter, click the network name (it says Main Net) and choose Test Net.",
+      "step3": "Come back here and choose Connect Freighter. Free test money is one click away after that.",
+      "accountantFirst": "Keeping your own books? You choose that during setup, with this same wallet. Using an outside accountant? They go first: they open the <accountant>Accountant page</accountant>, register their key, and send you an accountant id and an address. Just exploring? <sandbox>Try the sandbox</sandbox>, which plays every part for you."
+    },
+    "testMoney": {
+      "label": "Free test money",
+      "employer": "After you connect, one click gives you 100 test XLM and 100 test USDC from Kalypso's faucet. Test money has no value.",
+      "accountant": "After you connect, one click gives you 100 test XLM from Kalypso's faucet. Test money has no value."
+    }
+  },
+  "testFunds": {
+    "open": "Need free test money?",
+    "label": "Test money",
+    "title": "Get free test money",
+    "lead": "Kalypso runs on Stellar's test network, where money is free and has no value. Get what you need in one click.",
+    "sending": "Sending your test money. This can take up to a minute.",
+    "confirming": "Waiting for the network to confirm",
+    "addingUsdc": "Adding USDC to your wallet. Approve it in Freighter.",
+    "xlm": {
+      "title": "Test XLM",
+      "sub": "Pays the network's tiny fees.",
+      "button": "Get 100 test XLM",
+      "added": "Added {amount} test XLM. Your wallet now holds {balance} XLM."
+    },
+    "usdc": {
+      "title": "Test USDC",
+      "sub": "What you pay your team with.",
+      "button": "Get 100 test USDC",
+      "addButton": "Add USDC to your wallet",
+      "added": "Added {amount} test USDC. Your wallet now holds {balance} USDC."
+    },
+    "errors": {
+      "rate_limited": "Too many requests from this network. Wait an hour, then try again.",
+      "already_claimed": "This wallet has had today's test {asset} already. Come back tomorrow.",
+      "network_limit": "This network has used its free test money for today. Try again tomorrow, or use the Fund button inside Freighter for test XLM.",
+      "daily_limit": "The faucet has given out all of today's test money. Come back tomorrow, or use the Fund button inside Freighter for test XLM.",
+      "no_account": "Get test XLM first. It also opens your account.",
+      "no_trustline": "Freighter asks you to approve once, so your account can hold USDC.",
+      "trustline_unauthorized": "USDC isn't enabled for this wallet. Remove USDC in Freighter and add it again, then try again.",
+      "trustline_full": "Your wallet's USDC limit is too low for 100 USDC. In Freighter, raise the limit for USDC, or remove and add USDC again, then try again.",
+      "faucet_empty": "The faucet has run dry for now and will be topped up soon. Meanwhile, Freighter's Fund button gives free test XLM, and Freighter's Swap turns XLM into USDC.",
+      "faucet_busy": "The faucet is serving someone else. Try again in a few seconds.",
+      "not_configured": "The faucet is not switched on here. Use Freighter's Fund button, then Swap XLM for USDC.",
+      "rpc_unavailable": "Couldn't reach the network. Try again in a moment.",
+      "payout_unconfirmed": "Your test money was sent, but the network hasn't confirmed it yet. It may still arrive within a minute; check your wallet before asking again.",
+      "payout_failed": "The network turned this payment down, and it still counts as today's claim. Come back tomorrow, or use the Fund button inside Freighter for test XLM.",
+      "network": "Couldn't reach the network. Try again in a moment.",
+      "bad_address": "This wallet address isn't one the faucet can pay.",
+      "bad_request": "Something went wrong. Try again.",
+      "method_not_allowed": "Something went wrong. Try again.",
+      "no_client_ip": "Something went wrong. Try again.",
+      "internal_error": "Something went wrong. Try again.",
+      "bad_reply": "Something went wrong. Try again.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
+  "progress": {
+    "keys_treasury": "Sign the Kalypso key message twice in your wallet to open the treasury",
+    "keys_company": "Sign the Kalypso key message twice in your wallet to make the company's private payroll key",
+    "keys_accountant": "Sign the Kalypso key message twice in your wallet to make your accountant key",
+    "keys_books": "Sign the Kalypso key message twice in your wallet to open the books with your key",
+    "treasury_open": "The treasury is open in this browser",
+    "balance_checking": "Checking this browser's treasury records against the chain",
+    "balance_rebuilt": "The balance comes from the last rebuild and matches the chain",
+    "balance_saved": "The balance comes from this browser's records and matches the chain",
+    "balance_empty": "This treasury has had no deposits yet",
+    "trustline_ready": "This wallet can hold testnet USDC",
+    "trustline_sending": "Letting this wallet hold testnet USDC; you approve it once",
+    "deposit_checking_earlier": "Checking the deposit this browser sent last time",
+    "deposit_sending": "Depositing testnet USDC into the private treasury",
+    "deposit_resumed": "Your earlier deposit had landed, so no new one was sent",
+    "deposit_incoming": "The deposit is in the treasury's incoming balance",
+    "merge_sending": "Making the deposit spendable in the treasury balance",
+    "merge_done": "The deposit is now spendable in the treasury balance",
+    "rebuild_running": "Rebuilding the treasury balance from the chain's history",
+    "rebuild_ready": "This browser can pay from the treasury balance the chain shows",
+    "rebuild_matches": "The chain's history matches what this browser expected",
+    "rebuild_differs": "Rebuilt from the chain. Compare it with what this browser expected before paying",
+    "invite_already_active": "Worker {n} of {total} is already in the company",
+    "invite_already_invited": "Worker {n} of {total} is already invited",
+    "invite_sending": "Inviting worker {n} of {total}",
+    "invite_done": "Worker {n} of {total} is invited",
+    "run_opening": "Opening the {label} run",
+    "run_already_closed": "The {label} run was already paid and closed",
+    "run_open": "The {label} run is open",
+    "pay_proving": "Payment {n} of {total} (line {line}): proving it in your browser",
+    "pay_submitted": "Payment {n} of {total} (line {line}): sent to the network",
+    "pay_landed": "Payment {n} of {total} (line {line}): landed",
+    "pay_already_paid": "Payment {n} of {total} (line {line}): already paid",
+    "pay_failed": "Payment {n} of {total} (line {line}): did not go through",
+    "run_stays_open": "The {label} run stays open: some payments did not go through",
+    "run_closing": "Closing the {label} run",
+    "run_closed": "Every payment landed and the {label} run is closed",
+    "setup_checking_accountant": "Checking the accountant id on chain",
+    "setup_accountant_ok": "Accountant id {id} belongs to the accountant and holds the key you confirmed",
+    "setup_treasury_ready": "The company's account is signed up for private USDC payments",
+    "setup_company_exists": "Company {id} already exists on the payroll contract",
+    "setup_looking": "Looking for a company this wallet already set up",
+    "setup_proving": "Proving the company's sign-up in your browser",
+    "setup_registering": "Signing the company's account up for private USDC payments",
+    "setup_registered": "The company's account is signed up under the accountant's id",
+    "setup_creating": "Creating {label} on the payroll contract",
+    "setup_created": "Company {id} exists on the payroll contract",
+    "accountant_key_ready": "Your accountant key is ready",
+    "accountant_id_held": "Accountant id {id} already holds your key",
+    "accountant_registering": "Registering your accountant key on chain",
+    "accountant_registered": "Your accountant id is {id}",
+    "own_books_number": "Your accountant key is number {id}",
+    "own_books_checking": "Checking your accountant key on chain",
+    "own_books_checked": "Accountant id {id} belongs to this wallet and holds its key",
+    "books_key_holds": "Your key holds accountant id {id}, which this company's pay is sealed to",
+    "books_history_start": "Reading the company's payroll history",
+    "books_history": "Reading the payroll history: {done} of {total, plural, one {# payment} other {# payments}}",
+    "books_opening": "Opening {total, plural, one {# payment} other {# payments}} with your key",
+    "books_opened": "Opened {done} of {total, plural, one {# payment} other {# payments}}"
   },
   "employer": {
     "gateHeading": "Pay your team privately.",
@@ -319,7 +445,14 @@
     "notAdmin": "This wallet is not the admin of company #{id}.",
     "wizard": {
       "accountant": "Your accountant",
-      "accountantText": "Ask your accountant to open the accountant page, register their key and send you two things: their accountant id and their address.",
+      "sharedKey": "Every company you pay from this wallet shares one accountant key: the one you chose for your first company.",
+      "ownChoice": "I'll keep my own books",
+      "ownChoiceText": "Use this same wallet as your accountant. Freighter asks you to sign twice to make the key, then to approve one transaction.",
+      "ownTaken": "This wallet's payroll account already names an outside accountant, so every company you pay from it shares that accountant. Use another wallet to keep your own books.",
+      "otherChoice": "Someone else keeps the books",
+      "ownButton": "Make my accountant key",
+      "ownDone": "Your accountant key is number {id}. You'll open your books on the Accountant page with this same wallet.",
+      "accountantText": "Ask your accountant to open the accountant page, register their key and send you two things: their accountant id (the number their registration gave them) and their address.",
       "idLabel": "Accountant id",
       "addressLabel": "Accountant address",
       "check": "Check",
@@ -331,7 +464,7 @@
       "nameError": "The company name must be 1 to 64 bytes long.",
       "counter": "{n}/{max}",
       "create": "Create",
-      "createText": "Freighter will ask you to approve two transactions: registering the treasury with the confidential token, and creating the company.",
+      "createText": "Freighter will ask you to sign twice to make the company's key, then to approve two transactions: signing the company's account up for private USDC payments, and creating the company.",
       "createButton": "Create the company",
       "notChecked": "The accountant has not been checked."
     },
@@ -339,6 +472,7 @@
       "eyebrow": "Company #{id}",
       "treasury": "Treasury {short}",
       "accountantId": "Accountant id {id}",
+      "ownBooks": "You keep your own books. Open them on the <link>Accountant page</link>.",
       "payrollContract": "Payroll contract {short}",
       "retry": "Read the company again"
     },
@@ -347,6 +481,7 @@
       "title": "Treasury",
       "opening": "Opening your treasury with your key",
       "sealedLabel": "USDC · sealed on chain, opened with your key",
+      "noDeposits": "No deposits yet.",
       "readAgain": "Read the balance again",
       "addFunds": "Add funds",
       "amountLabel": "Amount (USDC)",
@@ -357,8 +492,8 @@
       "resumed": "A deposit from earlier finished first: {amount} USDC was added. Nothing new was deposited.",
       "differs": "The chain holds {amount} USDC; this device expected {expected}. The chain's value is now saved.",
       "deposit": "Deposit",
-      "merge": "Merge",
-      "needUsdc": "Need test USDC? Swap test XLM for USDC on the <lab>Stellar Laboratory</lab> or any testnet DEX, then add it here.",
+      "merge": "Merge (makes it spendable)",
+      "needUsdc": "Need test USDC? Get it free in <card>Test money above</card>.",
       "tools": "Treasury tools"
     },
     "team": {
@@ -406,12 +541,12 @@
   },
   "accountant": {
     "gateHeading": "Keep the books on private payroll.",
-    "gateText": "Connect Freighter on Testnet. Your key is derived from your wallet's signature, so it never leaves this browser and the same wallet always rebuilds it.",
+    "gateText": "Connect Freighter on Testnet. Your key is made from your wallet's signature, so it never leaves this browser and the same wallet always rebuilds it.",
     "srTitle": "Accountant",
     "key": {
       "eyebrow": "01",
       "title": "Your key",
-      "derive": "Derive my key",
+      "derive": "Make my key",
       "deriveNote": "Freighter asks you to sign the same message twice; that proves your wallet always rebuilds the same key.",
       "code": "Confirmation code",
       "register": "Register my key",
@@ -443,15 +578,21 @@
       "title": "Your pay, sealed for you.",
       "lead": "Sign in with Face ID, your fingerprint or your device PIN. Your key is made on this device from your passkey, so only you can open your payslips. No app, no seed phrase, no fees.",
       "signIn": "Sign in with Face ID",
-      "create": "New here? Create your pay key",
-      "useWallet": "Use a wallet instead",
+      "create": "Create your pay key",
+      "passkeyNote": "Your pay key lives in the passkey your device saves: no password and no seed phrase to remember.",
+      "useWallet": "Use a Stellar wallet (Freighter) instead",
+      "devices": "Works with Face ID or a fingerprint on a recent iPhone, Android phone or Mac. On Windows, use Chrome signed in to your Google account and save the passkey in Google Password Manager, or open this page on your phone. Windows Hello can't do this yet.",
+      "lostLabel": "If you lose your phone",
+      "lostText": "Pay you have already moved out of Kalypso stays yours. Pay still sealed in Kalypso can only be opened with your passkey, so keep it synced with iCloud Keychain or Google Password Manager, and move your pay out after each payday. If you do lose every device, make a new pay key and send your employer the new address; your future pay goes there.",
       "waiting": "Waiting for your device",
       "creating": "Waiting for your device, then setting up your wallet",
       "prfHint": "When your browser asks where to save the passkey, choose Google Password Manager or iCloud Keychain, or use your phone. Or use a wallet instead.",
       "fact1": "Your employer never sees your key.",
       "fact2": "Kalypso pays the network fees for you.",
       "fact3": "Payslips are sealed on Stellar; only your key opens them.",
-      "notLoaded": "The worker code has not loaded."
+      "notLoaded": "The worker code has not loaded.",
+      "haveKey": "Already have a pay key?",
+      "invite": "Your employer sends you an invite link. Open it, then create your pay key here. No link yet? Create your key now and send your address to your employer. Your address starts with C. It shows on the next screen with a Copy button."
     },
     "srTitle": "Your pay",
     "session": {
@@ -482,12 +623,13 @@
       "wallet_sending": "Setting up your wallet",
       "wallet_done": "Your wallet is ready",
       "wallet_skipped": "Your wallet is already set up",
-      "auditor_key_skipped": "Audit key {id} already belongs to you",
-      "auditor_key_sending": "Creating your own audit key",
-      "auditor_key_done": "Audit key {id} belongs to you",
+      "auditor_key_skipped": "Your key for reading your pay (number {id}) is already yours",
+      "auditor_key_sending": "Creating your own key for reading your pay",
+      "auditor_key_done": "Your key for reading your pay (number {id}) is now yours",
       "token_account_checking": "Checking your private account",
       "token_account_skipped": "Your private account is already set up",
       "token_account_sending": "Setting up your private account, proved in this browser",
+      "token_account_registering": "Registering your private account",
       "token_account_done": "Your private account is set up",
       "accept_skipped": "You are already part of this company",
       "accept_sending": "Accepting the invite",
@@ -523,6 +665,7 @@
     "chips": {
       "publiclyReadable": "Publicly readable",
       "publicTitle": "This company uses the published demo accountant key, so anyone can read its amounts.",
+      "publicNote": "This is Kalypso's public demo company, so anyone can read its amounts.",
       "readersUnknown": "Readers unknown",
       "unknownTitle": "This company's settings did not load from the chain, so Kalypso cannot say whether anyone else can read this amount. Reload to check again."
     },
@@ -538,7 +681,7 @@
     "cashOut": {
       "label": "Cash out",
       "title": "Move your pay to your bank.",
-      "text": "Your pay moves to your cash-out account as plain USDC, then Stellar's test anchor pays it out. On testnet no real money moves.",
+      "text": "Your pay moves to your cash-out account as plain USDC, then Stellar's test anchor (a practice bank) pays it out. On testnet no real money moves.",
       "step1": "Move to your cash-out account",
       "step2": "Cash out at the anchor",
       "amount": "Amount",
@@ -550,7 +693,8 @@
       "movingSelf": "Moving your pay and paying the network fee yourself",
       "selfPayNote": "The fee sponsor cannot pay for this move right now. You can pay the small network fee yourself, from your cash-out account's test XLM.",
       "payFee": "Pay the fee yourself",
-      "moved": "Moved. Your cash-out account {short} now holds it as USDC."
+      "moved": "Moved. Your cash-out account {short} now holds it as USDC.",
+      "testChip": "Test network: no real money moves"
     },
     "anchor": {
       "open": "Open the anchor",
@@ -581,7 +725,8 @@
         "too_small": "This amount is below the anchor's minimum, so it stopped.",
         "too_large": "This amount is above the anchor's maximum, so it stopped.",
         "error": "The anchor stopped this cash-out."
-      }
+      },
+      "windowNote": "Stellar's test anchor opens in a small window. It is a practice bank: any made-up details work, and no real money moves."
     },
     "confirm": {
       "label": "The payment the anchor asks for",
@@ -611,7 +756,7 @@
       "STORAGE_UNAVAILABLE": "This browser does not let Kalypso keep the treasury records it needs (private browsing can block it), so nothing was sent.",
       "STORAGE_FAILED": "This browser refused to save or read a treasury record, so nothing was sent. Leave private browsing or free some disk space, then try again.",
       "BUSY": "Another Kalypso tab is working with this wallet right now. Finish there, then try again.",
-      "ACCOUNT_NOT_FOUND": "This wallet's account does not exist on testnet yet. Fund it with test XLM from friendbot (Freighter's Fund button does this), then try again.",
+      "ACCOUNT_NOT_FOUND": "This wallet's account does not exist on testnet yet. Get free test XLM from the Test money card, or with Freighter's Fund button, then try again.",
       "KEY_NOT_DERIVED": "The wallet's signatures could not make a Kalypso key, so nothing was sent.",
       "ACCOUNTANT_ID_INVALID": "The accountant id must be a whole number, exactly as the accountant's own screen shows it.",
       "ACCOUNTANT_ADDRESS_INVALID": "The accountant's address is not a valid Stellar address.",
@@ -621,6 +766,7 @@
       "ACCOUNTANT_KEY_CHANGED": "The key under this accountant id changed since it was checked. Check it with your accountant again before going on.",
       "ACCOUNTANT_ID_NOT_YOURS": "This id is not registered to this wallet with the key it makes here, so it was not used. Register your key to get your own id.",
       "DEMO_ACCOUNTANT": "This accountant id is Kalypso's public demo key: anyone can read payroll under it. Ask your accountant to register their own key and use that id.",
+      "OWN_BOOKS_TAKEN": "This wallet's payroll account already names an outside accountant, so every company you pay from it shares that accountant. Use another wallet to keep your own books.",
       "BOOKS_NOT_YOURS": "This company's books are sealed to an accountant id this wallet's key does not hold, so they cannot be opened with it.",
       "BOOKS_INCOMPLETE": "The books are incomplete, so nothing was exported. Try again in a minute.",
       "LABEL_INVALID": "The company name must be 1 to 64 bytes long.",
@@ -632,7 +778,7 @@
       "TREASURY_KEYS_MISMATCH": "This wallet is registered with the confidential token under keys Kalypso did not make here, so nothing was changed.",
       "TREASURY_NOT_REGISTERED": "Set up the company first: this wallet is not registered with the confidential token yet.",
       "AMOUNT_INVALID": "The deposit must be above zero and no more than the token can hold.",
-      "USDC_SHORT": "This wallet holds less testnet USDC than this deposit. Get testnet USDC from the Stellar Laboratory (lab.stellar.org) or swap test XLM for USDC on the testnet DEX, then try again.",
+      "USDC_SHORT": "This wallet holds less testnet USDC than this deposit. Get free test USDC from the Test money card at the top of the page, then try again.",
       "WORKERS_INVALID": "The worker list is empty, too long, or has an address that cannot be invited.",
       "PERIOD_INVALID": "Pick a month from 1 to 12 and a four-digit year.",
       "CSV_INVALID": "The payroll file has problems, so nothing was sent. Fix the lines listed and upload it again.",
@@ -683,7 +829,7 @@
       "WALLET_REJECTED": "The wallet did not approve the request.",
       "WALLET_NOT_REPRODUCIBLE": "This wallet gave two different signatures for the same message, so it cannot rebuild your key next time. Use a wallet that signs the same way each time, such as Freighter.",
       "WALLET_SIGNATURE_INVALID": "The wallet's signature is not this account's signature over the Kalypso key message. Sign it again.",
-      "WALLET_ACCOUNT_MISSING": "This wallet account is not on the Stellar test network yet. Fund it with friendbot, then try again.",
+      "WALLET_ACCOUNT_MISSING": "This wallet account is not on the Stellar test network yet. Fund it with Freighter's Fund button (free test XLM), then try again.",
       "WALLET_CHANGED_TRANSACTION": "The wallet returned a different transaction from the one it was asked to sign, so nothing was sent.",
       "SIGNING_TOO_SLOW": "The approval took longer than the minute the relayer accepts. Try again and approve a little sooner.",
       "KEYS_MISMATCH": "This account is registered with other private keys than the ones this sign-in made, so its pay cannot be read here.",
@@ -691,7 +837,7 @@
       "NOT_INVITED": "This company has not invited this account. Ask them to invite the address shown here.",
       "INVITE_WITHDRAWN": "This invite was withdrawn, or you were removed from the company. Ask them to invite you again.",
       "NOT_REGISTERED": "This account is not set up for private pay yet. Join a company first.",
-      "AUDITOR_ID_TAKEN": "The audit key id does not belong to you, so Kalypso will not register under it.",
+      "AUDITOR_ID_TAKEN": "That key number does not belong to you, so Kalypso will not register under it.",
       "PROOF_REFUSED": "The network refused this browser's proof, so nothing changed. Try again.",
       "SIMULATION_FAILED": "The network would not run this step, so nothing was sent.",
       "FEE_TOO_HIGH": "The network asked for a fee above Kalypso's cap, so nothing was signed.",
@@ -711,7 +857,7 @@
       "ANCHOR_NOT_READY": "The cash-out service is still waiting for you to finish its page.",
       "ANCHOR_RECORD_INVALID": "The cash-out service's record of this withdrawal is not one Kalypso can pay, so nothing was built.",
       "ANCHOR_RECORD_CHANGED": "The cash-out service changed its request after you saw it, so nothing was sent. Start the cash-out again.",
-      "CASHOUT_NO_XLM": "Your cash-out account has no XLM left for the network fee, so nothing was sent. Fund it with friendbot, then try again.",
+      "CASHOUT_NO_XLM": "Your cash-out account has no XLM left for the network fee, so nothing was sent. Fund it with Stellar's free test-money service, then try again.",
       "ANCHOR_ALREADY_PAID": "This cash-out was already paid from your account, so it was not sent again."
     },
     "sponsor": {
@@ -724,7 +870,7 @@
       "missing_soroban_data": "The transaction does not state its resource limits, so the fee sponsor will not pay for it.",
       "wasm_upload": "The fee sponsor never pays to upload contract code.",
       "contract_creation": "The fee sponsor only pays to create a passkey wallet set up the way Kalypso sets one up.",
-      "root_contract_not_allowed": "The fee sponsor only pays for calls into the Kalypso payroll and token contracts, and for registering your own audit key.",
+      "root_contract_not_allowed": "The fee sponsor only pays for calls into the Kalypso payroll and token contracts, and for registering your own key.",
       "nested_contract_not_allowed": "This call reaches a contract the fee sponsor does not pay for.",
       "no_auth": "The call carries no approval from you, so the fee sponsor will not pay for it.",
       "source_account_auth": "The fee sponsor needs your own approval on this call, not the sender's.",
@@ -787,7 +933,7 @@
     },
     "sandbox": {
       "INVALID_AMOUNTS": "These salaries are larger than the token can hold.",
-      "NOT_ENOUGH_XLM": "Friendbot did not give enough test XLM to run the sandbox. Try again in a minute.",
+      "NOT_ENOUGH_XLM": "Not enough free test XLM came through to run the sandbox. Try again in a minute.",
       "BUSY": "Another tab is running this sandbox. Finish there, or close that tab and try again.",
       "NO_SANDBOX": "This browser has no saved sandbox to pick up. Start a new one.",
       "SIMULATION_FAILED": "The network would not run this step, so nothing was sent.",
@@ -834,7 +980,89 @@
     "run": {
       "paid": "Paid.",
       "alreadyPaid": "Already paid in this run.",
-      "failed": "This payment did not go through."
+      "failed": "This payment did not go through.",
+      "PROOF_FAILED": "The payment proof could not be made in this browser, even with every key read again from chain.",
+      "SIMULATION_FAILED": "The network would not run this payment, even with every key read again from chain.",
+      "FEE_TOO_HIGH": "The network asked for a fee above Kalypso's cap for a payment, so it was not signed.",
+      "SUBMIT_REFUSED": "The network refused this payment, so the run stopped here.",
+      "TRANSACTION_FAILED": "This payment failed on chain, so the run stopped here.",
+      "TRANSACTION_EXPIRED": "This payment expired before it landed, so the run stopped here.",
+      "RUN_STOPPED": "Not sent, because the run stopped at an earlier payment."
+    }
+  },
+  "siteNav": {
+    "employers": "For employers",
+    "workers": "For workers",
+    "accountants": "For accountants",
+    "docs": "Docs",
+    "source": "Source",
+    "sandbox": "Try the sandbox",
+    "hintArrows": "Arrows move",
+    "hintEsc": "Esc closes",
+    "open": "Open",
+    "menu": "Menu",
+    "close": "Close",
+    "items": {
+      "payTeam": {
+        "title": "Pay your team",
+        "text": "Run payroll in USDC from a spreadsheet. Every amount stays sealed on chain."
+      },
+      "setUpCompany": {
+        "title": "Set up your company",
+        "text": "Connect your wallet, name your accountant and create the company."
+      },
+      "testFunds": {
+        "title": "Get test funds",
+        "text": "Free test XLM and USDC to try Kalypso on testnet."
+      },
+      "tryNoWallet": {
+        "title": "Try it with no wallet",
+        "text": "Run a whole payroll in your browser in about four minutes."
+      },
+      "howPayrollWorks": {
+        "title": "How payroll works",
+        "text": "What the public sees, what stays sealed, and who can open it."
+      },
+      "getYourPay": {
+        "title": "Get your pay",
+        "text": "Sign in with Face ID, read your payslips and cash out. No app, no fees."
+      },
+      "joinCompany": {
+        "title": "Join your company",
+        "text": "Open the invite link your employer sends you."
+      },
+      "cashOut": {
+        "title": "Cash out",
+        "text": "Move your pay to your bank. On testnet no real money moves."
+      },
+      "yourPasskey": {
+        "title": "Your passkey",
+        "text": "Which phones and browsers work, and what to do if yours does not."
+      },
+      "whoSeesPay": {
+        "title": "Who sees your pay",
+        "text": "Only you and your company's accountant can read the amount."
+      },
+      "openBooks": {
+        "title": "Open the books",
+        "text": "Read every payment a company made and export it for tax."
+      },
+      "registerKey": {
+        "title": "Register your key",
+        "text": "One key, made from your own wallet, that only you control."
+      },
+      "exportTax": {
+        "title": "Export for tax and audit",
+        "text": "A complete CSV, refused when any payment is missing."
+      },
+      "realBooks": {
+        "title": "See a real company's books",
+        "text": "Open the demo company's payroll with its published key."
+      },
+      "security": {
+        "title": "Security",
+        "text": "The threat model, and how each claim is checked."
+      }
     }
   }
 }

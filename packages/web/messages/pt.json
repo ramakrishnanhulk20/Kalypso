@@ -25,17 +25,13 @@
   "common": {
     "home": "Página inicial da Kalypso",
     "testnet": "testnet",
+    "testShort": "Test",
     "nav": {
-      "label": "Principal",
-      "tryIt": "Experimente",
-      "sandbox": "Sandbox",
-      "docs": "Documentação",
-      "docsShort": "Docs",
-      "source": "Código",
-      "attackRun": "Leia o relatório do ataque"
+      "label": "Principal"
     },
     "tryAgain": "Tentar de novo",
     "startOver": "Recomeçar",
+    "keepIt": "Manter",
     "resume": "Continuar",
     "done": "Pronto",
     "copy": "Copiar",
@@ -62,8 +58,10 @@
       "eyebrow": "Folha de pagamento privada na Stellar",
       "title": "Pague sua equipe em USDC. Ninguém mais lê os salários.",
       "lead": "Cada pagamento é uma prova pública de que aconteceu. O valor fica selado, e só cada funcionário e o seu contador têm uma chave que o abre.",
-      "ctaLens": "Tente ler os salários",
-      "ctaCode": "Leia o código",
+      "usdc": "USDC é um dólar digital: um USDC vale um dólar americano.",
+      "ctaPay": "Pague sua equipe",
+      "ctaSee": "Veja funcionando",
+      "testNote": "Rede de teste: ainda não se move dinheiro de verdade.",
       "credit1": "USDC confidencial",
       "credit2": "Provas de conhecimento zero",
       "credit3": "Testnet da Stellar",
@@ -93,7 +91,7 @@
       "worker": "Funcionário",
       "payment": "Pagamento",
       "amount": "Valor",
-      "noKeyFits": "Nenhuma chave abre",
+      "noKeyFits": "Selado. Esta chave não abre.",
       "withheld": "Total retido",
       "withheldTitle": "Alguns pagamentos não puderam ser lidos, então nenhum total é mostrado.",
       "sealed": "selado",
@@ -184,17 +182,17 @@
       "attackRun": "Relatório do ataque",
       "threatModel": "Modelo de ameaças",
       "license": "Licença: MIT",
-      "note": "Apenas na testnet da Stellar. Sem auditoria de uma empresa de segurança. Feito para o hackathon Find Your Way."
+      "note": "Testnet da Stellar. Ainda sem auditoria de uma empresa de segurança."
     }
   },
   "sandbox": {
     "intro": {
       "eyebrow": "Sandbox · testnet da Stellar",
-      "title": "Rode uma folha de pagamento real em três minutos.",
+      "title": "Rode uma folha de pagamento real em quatro minutos.",
       "lead": "Seu navegador cria uma empresa, o contador dela e três funcionários na testnet da Stellar, financia todos com dinheiro de teste e paga a equipe pela Kalypso com provas de conhecimento zero reais. Sem carteira, sem cadastro. Depois você abre a folha como cada um deles.",
       "promise1": "Cada etapa é uma transação real na testnet que você pode abrir no stellar.expert.",
       "promise2": "As chaves ficam só neste navegador. Feche a aba e volte para continuar.",
-      "promise3": "O XLM de teste gratuito vem do friendbot da Stellar; nada aqui custa dinheiro de verdade."
+      "promise3": "A Stellar oferece XLM de teste de graça; nada aqui custa dinheiro de verdade."
     },
     "card": {
       "title": "Folha de pagamento deste mês",
@@ -202,7 +200,7 @@
       "invalid": "Digite um valor maior que zero, como {plain} ou {grouped}.",
       "total": "Total",
       "start": "Iniciar o sandbox",
-      "takes": "Leva cerca de 3 minutos em um notebook. Celulares mais lentos levam mais."
+      "takes": "Leva cerca de 4 minutos em um notebook. Celulares mais lentos levam mais."
     },
     "run": {
       "srTitle": "Sandbox",
@@ -219,38 +217,38 @@
       "feedLabel": "Na cadeia",
       "feedEmpty": "As transações aparecem aqui conforme chegam.",
       "unexpected": "Algo inesperado interrompeu o sandbox. Seu progresso está salvo; tente de novo.",
-      "confirmStartOver": "Recomeçar? A empresa deste sandbox continua na testnet, mas este navegador a esquece."
+      "startOverAsk": "Começar um sandbox novo? Isso esquece o que você rodou."
     },
     "shots": {
       "keysTitle": "Chaves",
-      "keysText": "Cinco contas são criadas neste navegador.",
+      "keysText": "Seu navegador cria cinco contas de teste: a empresa, o contador dela e três funcionários.",
       "fundTitle": "Dinheiro de teste",
-      "fundText": "O friendbot financia as cinco com XLM de teste.",
+      "fundText": "A rede de teste da Stellar dá a cada conta XLM de teste grátis para as pequenas taxas de rede.",
       "usdcTitle": "USDC",
-      "usdcText": "A empresa compra USDC de teste na exchange da Stellar.",
+      "usdcText": "A empresa compra USDC de teste, um dólar digital, na exchange embutida da Stellar.",
       "accountantTitle": "Contador",
-      "accountantText": "O contador registra a própria chave e recebe um id.",
+      "accountantText": "O contador registra a chave que abre os livros da empresa e recebe um número de chave.",
       "treasuryTitle": "Tesouraria",
-      "treasuryText": "A conta da empresa entra no token confidencial com esse id.",
+      "treasuryText": "A conta da empresa se inscreve para pagamentos privados em USDC com esse número de chave, para que o contador possa lê-los.",
       "companyTitle": "Empresa",
-      "companyText": "O contrato de folha de pagamento cria a empresa e indica o contador dela.",
+      "companyText": "O programa de folha de pagamento da Kalypso na Stellar cria a empresa e indica o contador dela.",
       "workersTitle": "Funcionários",
-      "workersText": "Cada funcionário registra uma chave, entra no token e aceita o convite.",
+      "workersText": "Cada funcionário cria a própria chave para ler o pagamento, se inscreve para pagamentos privados e aceita o convite da empresa.",
       "depositTitle": "Financiamento",
-      "depositText": "O USDC passa para o saldo selado da tesouraria.",
+      "depositText": "A empresa passa o USDC para a conta privada da folha, onde ninguém mais vê o saldo.",
       "runTitle": "Ciclo",
-      "runText": "O ciclo deste mês é aberto para três funcionários.",
+      "runText": "A empresa abre a folha deste mês para três funcionários.",
       "payTitle": "Folha de pagamento",
-      "payText": "Cada pagamento é provado no seu navegador e pago."
+      "payText": "Seu navegador prova que cada pagamento é válido sem mostrar o valor e depois o envia."
     },
     "progress": {
       "keys": "Criando cinco contas descartáveis da testnet no seu navegador",
-      "fund": "Pedindo XLM de teste ao friendbot, conta {done} de {total}",
-      "usdc": "Comprando USDC de teste na DEX da Stellar para a tesouraria",
-      "accountant": "Registrando a chave de auditoria do contador",
+      "fund": "Pegando XLM de teste grátis, conta {done} de {total}",
+      "usdc": "Comprando USDC de teste na exchange da Stellar para a tesouraria",
+      "accountant": "Registrando a chave do contador",
       "treasury": "Registrando a tesouraria no token confidencial, com prova gerada no seu navegador",
       "company": "Criando a empresa no contrato de folha de pagamento",
-      "workers": "Configurando o funcionário {done} de {total}: chave de auditoria, conta no token, convite e aceite",
+      "workers": "Configurando o funcionário {done} de {total}: chave para ler o pagamento dele, conta no token, convite e aceite",
       "deposit": "Depositando USDC de teste na tesouraria confidencial",
       "run": "Abrindo o ciclo de pagamento deste mês",
       "pay": "Provando e enviando o pagamento {done} de {total} no seu navegador",
@@ -258,10 +256,12 @@
     },
     "result": {
       "eyebrow": "Pronto · na testnet da Stellar",
+      "earlier": "Este é o sandbox que você rodou antes.",
       "title": "Sua folha de pagamento está na cadeia.",
       "lead": "Qualquer pessoa vê que três pessoas foram pagas. Só as chaves abaixo abrem quanto foi. Cada chave aqui vive neste navegador e foi usada só aqui.",
       "treasuryLink": "Tesouraria da empresa no stellar.expert",
       "payrollLink": "Contrato de folha de pagamento",
+      "caption": "A mesma folha de pagamento, como cada chave a vê. Os funcionários veem só o próprio pagamento, o contador vê o de todos e um desconhecido não vê nada.",
       "keysLabel": "Qual chave",
       "keyWorker": "Funcionário {n}",
       "keyAccountant": "Contador",
@@ -269,8 +269,8 @@
       "openingWorker": "Abrindo com a chave do funcionário {n} no seu navegador",
       "openingAccountant": "Abrindo com a chave do contador no seu navegador",
       "openingStranger": "Abrindo com a chave de um desconhecido no seu navegador",
-      "sandboxLabel": "Sandbox {short}",
       "closing": "Isso é a Kalypso.",
+      "forYourCompany": "Faça isso na sua empresa",
       "readHow": "Leia como funciona"
     },
     "payslip": {
@@ -304,7 +304,133 @@
     "devPreparing": "Preparando uma carteira de desenvolvimento",
     "devFailed": "Não foi possível criar a carteira de desenvolvimento.",
     "devModuleFailed": "O módulo da carteira de desenvolvimento não carregou.",
-    "liveProof": "Ao vivo na testnet: {company} pagou {payments, plural, one {# funcionário} other {# funcionários}} em {runs, plural, one {# ciclo} other {# ciclos}}, todos os valores selados."
+    "liveProof": "Ao vivo na testnet: {company} pagou {payments, plural, one {# funcionário} other {# funcionários}} em {runs, plural, one {# ciclo} other {# ciclos}}, todos os valores selados.",
+    "before": {
+      "label": "Antes de começar",
+      "computer": "O Freighter funciona no navegador de um computador (Chrome, Firefox, Edge ou Brave), não no celular.",
+      "phone": "Está no celular? Experimente o sandbox agora e configure depois em um computador.",
+      "needLabel": "Você vai precisar de",
+      "need1": "Um computador com o Freighter, a carteira da Stellar.",
+      "need2": "Um lugar seguro para anotar a frase de recuperação do Freighter. O Freighter a mostra uma única vez quando você cria a carteira; é o único jeito de voltar a ela.",
+      "need3": "O endereço Kalypso de cada funcionário. Ele cria um na página Seu pagamento; começa com C.",
+      "need4": "Os valores a pagar, digitados ou em uma planilha salva como CSV (endereço, valor, nome).",
+      "need5": "Mais nada: o dinheiro de teste é grátis depois que você conecta.",
+      "step1": "Instale o Freighter, a carteira da Stellar para o seu navegador, em <site>freighter.app</site>.",
+      "step2": "Clique no ícone do Freighter na barra de ferramentas do seu navegador. No topo do Freighter, clique no nome da rede (está escrito Main Net) e escolha Test Net.",
+      "step3": "Volte aqui e escolha Conectar Freighter. Depois disso, o dinheiro de teste grátis está a um clique.",
+      "accountantFirst": "Vai cuidar dos seus próprios livros? Você escolhe isso durante a configuração, com esta mesma carteira. Vai usar um contador externo? Ele vai primeiro: abre a <accountant>página do contador</accountant>, registra a chave dele e envia a você um id de contador e um endereço. Só está explorando? <sandbox>Experimente o sandbox</sandbox>, que faz todos os papéis por você."
+    },
+    "testMoney": {
+      "label": "Dinheiro de teste grátis",
+      "employer": "Depois de conectar, um clique dá a você 100 XLM de teste e 100 USDC de teste do faucet da Kalypso. O dinheiro de teste não tem valor nenhum.",
+      "accountant": "Depois de conectar, um clique dá a você 100 XLM de teste do faucet da Kalypso. O dinheiro de teste não tem valor nenhum."
+    }
+  },
+  "testFunds": {
+    "open": "Precisa de dinheiro de teste grátis?",
+    "label": "Dinheiro de teste",
+    "title": "Pegue dinheiro de teste grátis",
+    "lead": "A Kalypso funciona na rede de teste da Stellar, onde o dinheiro é grátis e não tem valor nenhum. Pegue o que precisa com um clique.",
+    "sending": "Enviando o seu dinheiro de teste. Pode levar até um minuto.",
+    "confirming": "Aguardando a confirmação da rede",
+    "addingUsdc": "Adicionando USDC à sua carteira. Aprove no Freighter.",
+    "xlm": {
+      "title": "XLM de teste",
+      "sub": "Paga as pequenas taxas da rede.",
+      "button": "Pegar 100 XLM de teste",
+      "added": "Foram adicionados {amount} XLM de teste. Sua carteira agora tem {balance} XLM."
+    },
+    "usdc": {
+      "title": "USDC de teste",
+      "sub": "O que você usa para pagar sua equipe.",
+      "button": "Pegar 100 USDC de teste",
+      "addButton": "Adicione USDC à sua carteira",
+      "added": "Foram adicionados {amount} USDC de teste. Sua carteira agora tem {balance} USDC."
+    },
+    "errors": {
+      "rate_limited": "Muitos pedidos vindos desta rede. Espere uma hora e tente de novo.",
+      "already_claimed": "Esta carteira já recebeu os {asset} de teste de hoje. Volte amanhã.",
+      "network_limit": "Esta rede já usou o dinheiro de teste grátis de hoje. Tente de novo amanhã, ou use o botão Fund dentro do Freighter para pegar XLM de teste.",
+      "daily_limit": "O faucet já distribuiu todo o dinheiro de teste de hoje. Volte amanhã, ou use o botão Fund dentro do Freighter para pegar XLM de teste.",
+      "no_account": "Primeiro pegue XLM de teste. Isso também abre a sua conta.",
+      "no_trustline": "O Freighter pede que você aprove uma vez, para que a sua conta possa guardar USDC.",
+      "trustline_unauthorized": "O USDC não está habilitado nesta carteira. Remova o USDC no Freighter, adicione de novo e tente outra vez.",
+      "trustline_full": "O limite de USDC da sua carteira é baixo demais para 100 USDC. No Freighter, aumente o limite de USDC, ou remova e adicione o USDC de novo, e tente outra vez.",
+      "faucet_empty": "O faucet ficou sem fundos por enquanto e será reabastecido em breve. Enquanto isso, o botão Fund do Freighter dá XLM de teste grátis, e o Swap do Freighter troca XLM por USDC.",
+      "faucet_busy": "O faucet está atendendo outra pessoa. Tente de novo em alguns segundos.",
+      "not_configured": "O faucet não está ativado aqui. Use o botão Fund do Freighter e depois o Swap para trocar XLM por USDC.",
+      "rpc_unavailable": "Não foi possível alcançar a rede. Tente de novo em instantes.",
+      "payout_unconfirmed": "O seu dinheiro de teste foi enviado, mas a rede ainda não o confirmou. Ele ainda pode chegar em até um minuto; confira a sua carteira antes de pedir de novo.",
+      "payout_failed": "A rede recusou este pagamento, e ele ainda conta como o pedido de hoje. Volte amanhã, ou use o botão Fund dentro do Freighter para pegar XLM de teste.",
+      "network": "Não foi possível alcançar a rede. Tente de novo em instantes.",
+      "bad_address": "Este endereço de carteira não é um para o qual o faucet consiga pagar.",
+      "bad_request": "Algo deu errado. Tente de novo.",
+      "method_not_allowed": "Algo deu errado. Tente de novo.",
+      "no_client_ip": "Algo deu errado. Tente de novo.",
+      "internal_error": "Algo deu errado. Tente de novo.",
+      "bad_reply": "Algo deu errado. Tente de novo.",
+      "unknown": "Algo deu errado. Tente de novo."
+    }
+  },
+  "progress": {
+    "keys_treasury": "Assine a mensagem de chave da Kalypso duas vezes na sua carteira para abrir a tesouraria",
+    "keys_company": "Assine a mensagem de chave da Kalypso duas vezes na sua carteira para criar a chave privada da folha da empresa",
+    "keys_accountant": "Assine a mensagem de chave da Kalypso duas vezes na sua carteira para criar sua chave de contador",
+    "keys_books": "Assine a mensagem de chave da Kalypso duas vezes na sua carteira para abrir os livros com a sua chave",
+    "treasury_open": "A tesouraria está aberta neste navegador",
+    "balance_checking": "Conferindo os registros de tesouraria deste navegador com a cadeia",
+    "balance_rebuilt": "O saldo vem da última reconstrução e bate com a cadeia",
+    "balance_saved": "O saldo vem dos registros deste navegador e bate com a cadeia",
+    "balance_empty": "Esta tesouraria ainda não recebeu depósitos",
+    "trustline_ready": "Esta carteira pode guardar USDC da testnet",
+    "trustline_sending": "Permitindo que esta carteira guarde USDC da testnet; você aprova uma única vez",
+    "deposit_checking_earlier": "Conferindo o depósito que este navegador enviou da última vez",
+    "deposit_sending": "Depositando USDC da testnet na tesouraria privada",
+    "deposit_resumed": "Seu depósito anterior já tinha chegado, então nenhum novo foi enviado",
+    "deposit_incoming": "O depósito está no saldo de entrada da tesouraria",
+    "merge_sending": "Deixando o depósito disponível no saldo da tesouraria",
+    "merge_done": "O depósito já está disponível no saldo da tesouraria",
+    "rebuild_running": "Reconstruindo o saldo da tesouraria a partir do histórico da cadeia",
+    "rebuild_ready": "Este navegador pode pagar a partir do saldo da tesouraria que a cadeia mostra",
+    "rebuild_matches": "O histórico da cadeia bate com o que este navegador esperava",
+    "rebuild_differs": "Reconstruído a partir da cadeia. Compare com o que este navegador esperava antes de pagar",
+    "invite_already_active": "O funcionário {n} de {total} já está na empresa",
+    "invite_already_invited": "O funcionário {n} de {total} já tinha sido convidado",
+    "invite_sending": "Convidando o funcionário {n} de {total}",
+    "invite_done": "O funcionário {n} de {total} foi convidado",
+    "run_opening": "Abrindo o ciclo {label}",
+    "run_already_closed": "O ciclo {label} já estava pago e encerrado",
+    "run_open": "O ciclo {label} está aberto",
+    "pay_proving": "Pagamento {n} de {total} (linha {line}): provando no seu navegador",
+    "pay_submitted": "Pagamento {n} de {total} (linha {line}): enviado à rede",
+    "pay_landed": "Pagamento {n} de {total} (linha {line}): confirmado",
+    "pay_already_paid": "Pagamento {n} de {total} (linha {line}): já pago",
+    "pay_failed": "Pagamento {n} de {total} (linha {line}): não foi concluído",
+    "run_stays_open": "O ciclo {label} continua aberto: alguns pagamentos não foram concluídos",
+    "run_closing": "Encerrando o ciclo {label}",
+    "run_closed": "Todos os pagamentos chegaram e o ciclo {label} está encerrado",
+    "setup_checking_accountant": "Verificando o id do contador na cadeia",
+    "setup_accountant_ok": "O id do contador {id} pertence ao contador e guarda a chave que você confirmou",
+    "setup_treasury_ready": "A conta da empresa está inscrita para pagamentos privados em USDC",
+    "setup_company_exists": "A empresa {id} já existe no contrato de folha de pagamento",
+    "setup_looking": "Procurando uma empresa que esta carteira já criou",
+    "setup_proving": "Provando a inscrição da empresa no seu navegador",
+    "setup_registering": "Inscrevendo a conta da empresa para pagamentos privados em USDC",
+    "setup_registered": "A conta da empresa está inscrita com o id do contador",
+    "setup_creating": "Criando {label} no contrato de folha de pagamento",
+    "setup_created": "A empresa {id} existe no contrato de folha de pagamento",
+    "accountant_key_ready": "Sua chave de contador está pronta",
+    "accountant_id_held": "O id do contador {id} já guarda a sua chave",
+    "accountant_registering": "Registrando a sua chave de contador na cadeia",
+    "accountant_registered": "Seu id de contador é {id}",
+    "own_books_number": "Sua chave de contador é o número {id}",
+    "own_books_checking": "Verificando a sua chave de contador na cadeia",
+    "own_books_checked": "O id do contador {id} pertence a esta carteira e guarda a chave dela",
+    "books_key_holds": "Sua chave guarda o id do contador {id}, ao qual o pagamento desta empresa está selado",
+    "books_history_start": "Lendo o histórico da folha da empresa",
+    "books_history": "Lendo o histórico da folha: {done} de {total, plural, one {# pagamento} other {# pagamentos}}",
+    "books_opening": "Abrindo {total, plural, one {# pagamento} other {# pagamentos}} com a sua chave",
+    "books_opened": "Abertos {done} de {total, plural, one {# pagamento} other {# pagamentos}}"
   },
   "employer": {
     "gateHeading": "Pague sua equipe com privacidade.",
@@ -319,7 +445,14 @@
     "notAdmin": "Esta carteira não é a administradora da empresa #{id}.",
     "wizard": {
       "accountant": "Seu contador",
-      "accountantText": "Peça ao seu contador para abrir a página do contador, registrar a chave dele e enviar a você duas coisas: o id do contador e o endereço dele.",
+      "sharedKey": "Todas as empresas que você paga a partir desta carteira compartilham uma única chave de contador: a que você escolheu para a sua primeira empresa.",
+      "ownChoice": "Eu mesmo cuido dos meus livros",
+      "ownChoiceText": "Use esta mesma carteira como seu contador. O Freighter pede que você assine duas vezes para criar a chave e depois aprove uma transação.",
+      "ownTaken": "A conta de folha desta carteira já indica um contador externo, então todas as empresas que você paga a partir dela compartilham esse contador. Use outra carteira para cuidar dos seus próprios livros.",
+      "otherChoice": "Outra pessoa cuida dos livros",
+      "ownButton": "Criar minha chave de contador",
+      "ownDone": "Sua chave de contador é o número {id}. Você vai abrir os seus livros na página do contador com esta mesma carteira.",
+      "accountantText": "Peça ao seu contador para abrir a página do contador, registrar a chave dele e enviar a você duas coisas: o id do contador (o número que o registro dele gerou) e o endereço dele.",
       "idLabel": "Id do contador",
       "addressLabel": "Endereço do contador",
       "check": "Verificar",
@@ -331,7 +464,7 @@
       "nameError": "O nome da empresa deve ter de 1 a 64 bytes.",
       "counter": "{n}/{max}",
       "create": "Criar",
-      "createText": "O Freighter vai pedir que você aprove duas transações: registrar a tesouraria no token confidencial e criar a empresa.",
+      "createText": "O Freighter vai pedir que você assine duas vezes para criar a chave da empresa e depois aprove duas transações: inscrever a conta da empresa para pagamentos privados em USDC e criar a empresa.",
       "createButton": "Criar a empresa",
       "notChecked": "O contador ainda não foi verificado."
     },
@@ -339,6 +472,7 @@
       "eyebrow": "Empresa #{id}",
       "treasury": "Tesouraria {short}",
       "accountantId": "Id do contador {id}",
+      "ownBooks": "Você cuida dos seus próprios livros. Abra-os na <link>página do contador</link>.",
       "payrollContract": "Contrato de folha de pagamento {short}",
       "retry": "Ler a empresa de novo"
     },
@@ -347,6 +481,7 @@
       "title": "Tesouraria",
       "opening": "Abrindo a sua tesouraria com a sua chave",
       "sealedLabel": "USDC · selado na cadeia, aberto com a sua chave",
+      "noDeposits": "Ainda não há depósitos.",
       "readAgain": "Ler o saldo de novo",
       "addFunds": "Adicionar fundos",
       "amountLabel": "Valor (USDC)",
@@ -357,8 +492,8 @@
       "resumed": "Um depósito anterior terminou primeiro: {amount} USDC foram adicionados. Nada novo foi depositado.",
       "differs": "A cadeia tem {amount} USDC; este dispositivo esperava {expected}. O valor da cadeia agora está salvo.",
       "deposit": "Depositar",
-      "merge": "Mesclar",
-      "needUsdc": "Precisa de USDC de teste? Troque XLM de teste por USDC no <lab>Stellar Laboratory</lab> ou em qualquer DEX da testnet, e depois adicione aqui.",
+      "merge": "Mesclar (deixa o valor disponível para pagar)",
+      "needUsdc": "Precisa de USDC de teste? Pegue grátis em <card>Dinheiro de teste, acima</card>.",
       "tools": "Ferramentas da tesouraria"
     },
     "team": {
@@ -406,12 +541,12 @@
   },
   "accountant": {
     "gateHeading": "Cuide dos livros de uma folha de pagamento privada.",
-    "gateText": "Conecte o Freighter na Testnet. Sua chave é derivada da assinatura da sua carteira, então nunca sai deste navegador e a mesma carteira sempre a reconstrói.",
+    "gateText": "Conecte o Freighter na Testnet. Sua chave é criada a partir da assinatura da sua carteira, então nunca sai deste navegador e a mesma carteira sempre a reconstrói.",
     "srTitle": "Contador",
     "key": {
       "eyebrow": "01",
       "title": "Sua chave",
-      "derive": "Derivar minha chave",
+      "derive": "Criar minha chave",
       "deriveNote": "O Freighter pede que você assine a mesma mensagem duas vezes; isso prova que a sua carteira sempre reconstrói a mesma chave.",
       "code": "Código de confirmação",
       "register": "Registrar minha chave",
@@ -443,15 +578,21 @@
       "title": "Seu pagamento, selado para você.",
       "lead": "Entre com Face ID, impressão digital ou o PIN do dispositivo. Sua chave é criada neste dispositivo a partir da sua chave de acesso, então só você abre os seus holerites. Sem app, sem frase de recuperação, sem taxas.",
       "signIn": "Entrar com Face ID",
-      "create": "Primeira vez aqui? Crie sua chave de pagamento",
-      "useWallet": "Usar uma carteira",
+      "create": "Crie sua chave de pagamento",
+      "passkeyNote": "Sua chave de pagamento fica na chave de acesso que o seu dispositivo guarda: sem senha e sem frase de recuperação para lembrar.",
+      "useWallet": "Usar uma carteira Stellar (Freighter)",
+      "devices": "Funciona com Face ID ou impressão digital em um iPhone, celular Android ou Mac recente. No Windows, use o Chrome conectado à sua conta Google e salve a chave de acesso no Gerenciador de Senhas do Google, ou abra esta página no seu celular. O Windows Hello ainda não consegue fazer isso.",
+      "lostLabel": "Se você perder o celular",
+      "lostText": "O pagamento que você já tirou da Kalypso continua sendo seu. O pagamento ainda selado na Kalypso só abre com a sua chave de acesso, então mantenha-a sincronizada com as Chaves do iCloud ou o Gerenciador de Senhas do Google, e tire o seu pagamento depois de cada dia de pagamento. Se você perder todos os dispositivos, crie uma nova chave de pagamento e envie o novo endereço ao seu empregador; os próximos pagamentos vão para lá.",
       "waiting": "Aguardando seu dispositivo",
       "creating": "Aguardando seu dispositivo e depois configurando sua carteira",
       "prfHint": "Quando o navegador perguntar onde salvar a chave de acesso, escolha o Gerenciador de Senhas do Google ou as Chaves do iCloud, ou use o seu celular. Ou use uma carteira.",
       "fact1": "Seu empregador nunca vê a sua chave.",
       "fact2": "A Kalypso paga as taxas de rede por você.",
       "fact3": "Os holerites ficam selados na Stellar; só a sua chave os abre.",
-      "notLoaded": "O código da página do funcionário não carregou."
+      "notLoaded": "O código da página do funcionário não carregou.",
+      "haveKey": "Já tem uma chave de pagamento?",
+      "invite": "Seu empregador envia a você um link de convite. Abra-o e crie aqui a sua chave de pagamento. Ainda sem o link? Crie sua chave agora e envie o seu endereço ao seu empregador. Seu endereço começa com C. Ele aparece na próxima tela com um botão Copiar."
     },
     "srTitle": "Seu pagamento",
     "session": {
@@ -482,12 +623,13 @@
       "wallet_sending": "Configurando a sua carteira",
       "wallet_done": "Sua carteira está pronta",
       "wallet_skipped": "Sua carteira já está configurada",
-      "auditor_key_skipped": "A chave de auditoria {id} já é sua",
-      "auditor_key_sending": "Criando a sua própria chave de auditoria",
-      "auditor_key_done": "A chave de auditoria {id} é sua",
+      "auditor_key_skipped": "A sua chave para ler o seu pagamento (número {id}) já é sua",
+      "auditor_key_sending": "Criando a sua própria chave para ler o seu pagamento",
+      "auditor_key_done": "A sua chave para ler o seu pagamento (número {id}) agora é sua",
       "token_account_checking": "Conferindo a sua conta privada",
       "token_account_skipped": "Sua conta privada já está configurada",
       "token_account_sending": "Configurando a sua conta privada, com prova gerada neste navegador",
+      "token_account_registering": "Registrando a sua conta privada",
       "token_account_done": "Sua conta privada está configurada",
       "accept_skipped": "Você já faz parte desta empresa",
       "accept_sending": "Aceitando o convite",
@@ -523,6 +665,7 @@
     "chips": {
       "publiclyReadable": "Legível publicamente",
       "publicTitle": "Esta empresa usa a chave do contador de demonstração publicada, então qualquer pessoa pode ler os valores dela.",
+      "publicNote": "Esta é a empresa de demonstração pública da Kalypso, então qualquer pessoa pode ler os valores dela.",
       "readersUnknown": "Leitores desconhecidos",
       "unknownTitle": "As configurações desta empresa não carregaram da cadeia, então a Kalypso não sabe dizer se mais alguém pode ler este valor. Recarregue para verificar de novo."
     },
@@ -538,7 +681,7 @@
     "cashOut": {
       "label": "Saque",
       "title": "Leve o seu pagamento para o seu banco.",
-      "text": "Seu pagamento vai para a sua conta de saque como USDC comum, e depois a âncora de teste da Stellar paga o valor. Na testnet, nenhum dinheiro de verdade se move.",
+      "text": "Seu pagamento vai para a sua conta de saque como USDC comum, e depois a âncora de teste da Stellar (um banco de treino) paga o valor. Na testnet, nenhum dinheiro de verdade se move.",
       "step1": "Mover para a sua conta de saque",
       "step2": "Sacar na âncora",
       "amount": "Valor",
@@ -550,7 +693,8 @@
       "movingSelf": "Movendo o seu pagamento e pagando você mesmo a taxa de rede",
       "selfPayNote": "O patrocinador de taxas não pode pagar esta movimentação agora. Você pode pagar a pequena taxa de rede, com o XLM de teste da sua conta de saque.",
       "payFee": "Pagar a taxa você mesmo",
-      "moved": "Movido. Sua conta de saque {short} agora tem esse valor em USDC."
+      "moved": "Movido. Sua conta de saque {short} agora tem esse valor em USDC.",
+      "testChip": "Rede de teste: nenhum dinheiro de verdade se move"
     },
     "anchor": {
       "open": "Abrir a âncora",
@@ -581,7 +725,8 @@
         "too_small": "Este valor está abaixo do mínimo da âncora, então ela parou.",
         "too_large": "Este valor está acima do máximo da âncora, então ela parou.",
         "error": "A âncora interrompeu este saque."
-      }
+      },
+      "windowNote": "A âncora de teste da Stellar abre em uma janela pequena. É um banco de treino: qualquer dado inventado serve, e nenhum dinheiro de verdade se move."
     },
     "confirm": {
       "label": "O pagamento que a âncora pede",
@@ -611,7 +756,7 @@
       "STORAGE_UNAVAILABLE": "Este navegador não deixa a Kalypso guardar os registros da tesouraria de que ela precisa (a navegação privada pode bloquear isso), então nada foi enviado.",
       "STORAGE_FAILED": "Este navegador se recusou a salvar ou ler um registro da tesouraria, então nada foi enviado. Saia da navegação privada ou libere espaço em disco e tente de novo.",
       "BUSY": "Outra aba da Kalypso está usando esta carteira agora. Termine lá e tente de novo.",
-      "ACCOUNT_NOT_FOUND": "A conta desta carteira ainda não existe na testnet. Financie-a com XLM de teste do friendbot (o botão Fund do Freighter faz isso) e tente de novo.",
+      "ACCOUNT_NOT_FOUND": "A conta desta carteira ainda não existe na testnet. Pegue XLM de teste grátis no cartão Dinheiro de teste, ou com o botão Fund do Freighter, e tente de novo.",
       "KEY_NOT_DERIVED": "As assinaturas da carteira não geraram uma chave da Kalypso, então nada foi enviado.",
       "ACCOUNTANT_ID_INVALID": "O id do contador deve ser um número inteiro, exatamente como aparece na tela do próprio contador.",
       "ACCOUNTANT_ADDRESS_INVALID": "O endereço do contador não é um endereço Stellar válido.",
@@ -621,6 +766,7 @@
       "ACCOUNTANT_KEY_CHANGED": "A chave deste id de contador mudou desde que foi verificada. Confira de novo com o seu contador antes de seguir.",
       "ACCOUNTANT_ID_NOT_YOURS": "Este id não está registrado nesta carteira com a chave que ela gera aqui, então não foi usado. Registre a sua chave para obter o seu próprio id.",
       "DEMO_ACCOUNTANT": "Este id de contador é a chave de demonstração pública da Kalypso: qualquer pessoa pode ler a folha de pagamento registrada nele. Peça ao seu contador para registrar a própria chave e use esse id.",
+      "OWN_BOOKS_TAKEN": "A conta de folha desta carteira já indica um contador externo, então todas as empresas que você paga a partir dela compartilham esse contador. Use outra carteira para cuidar dos seus próprios livros.",
       "BOOKS_NOT_YOURS": "Os livros desta empresa estão selados para um id de contador que a chave desta carteira não possui, então não podem ser abertos com ela.",
       "BOOKS_INCOMPLETE": "Os livros estão incompletos, então nada foi exportado. Tente de novo em um minuto.",
       "LABEL_INVALID": "O nome da empresa deve ter de 1 a 64 bytes.",
@@ -632,7 +778,7 @@
       "TREASURY_KEYS_MISMATCH": "Esta carteira está registrada no token confidencial com chaves que a Kalypso não gerou aqui, então nada foi alterado.",
       "TREASURY_NOT_REGISTERED": "Configure primeiro a empresa: esta carteira ainda não está registrada no token confidencial.",
       "AMOUNT_INVALID": "O depósito deve ser maior que zero e não pode passar do que o token comporta.",
-      "USDC_SHORT": "Esta carteira tem menos USDC de testnet do que este depósito. Pegue USDC de testnet no Stellar Laboratory (lab.stellar.org) ou troque XLM de teste por USDC na DEX da testnet e tente de novo.",
+      "USDC_SHORT": "Esta carteira tem menos USDC de testnet do que este depósito. Pegue USDC de teste grátis no cartão Dinheiro de teste, no topo da página, e tente de novo.",
       "WORKERS_INVALID": "A lista de funcionários está vazia, é longa demais ou tem um endereço que não pode ser convidado.",
       "PERIOD_INVALID": "Escolha um mês de 1 a 12 e um ano de quatro dígitos.",
       "CSV_INVALID": "O arquivo da folha de pagamento tem problemas, então nada foi enviado. Corrija as linhas listadas e envie de novo.",
@@ -683,7 +829,7 @@
       "WALLET_REJECTED": "A carteira não aprovou o pedido.",
       "WALLET_NOT_REPRODUCIBLE": "Esta carteira deu duas assinaturas diferentes para a mesma mensagem, então não consegue reconstruir a sua chave da próxima vez. Use uma carteira que assine do mesmo jeito sempre, como o Freighter.",
       "WALLET_SIGNATURE_INVALID": "A assinatura da carteira não é a assinatura desta conta sobre a mensagem da chave da Kalypso. Assine de novo.",
-      "WALLET_ACCOUNT_MISSING": "A conta desta carteira ainda não está na rede de teste da Stellar. Financie-a com o friendbot e tente de novo.",
+      "WALLET_ACCOUNT_MISSING": "A conta desta carteira ainda não está na rede de teste da Stellar. Financie-a com o botão Fund do Freighter (XLM de teste grátis) e tente de novo.",
       "WALLET_CHANGED_TRANSACTION": "A carteira devolveu uma transação diferente da que foi pedida para assinar, então nada foi enviado.",
       "SIGNING_TOO_SLOW": "A aprovação levou mais do que o minuto que o relayer aceita. Tente de novo e aprove um pouco mais rápido.",
       "KEYS_MISMATCH": "Esta conta está registrada com chaves privadas diferentes das que este acesso gerou, então o pagamento dela não pode ser lido aqui.",
@@ -691,7 +837,7 @@
       "NOT_INVITED": "Esta empresa não convidou esta conta. Peça que convidem o endereço mostrado aqui.",
       "INVITE_WITHDRAWN": "Este convite foi cancelado, ou você foi removido da empresa. Peça que convidem você de novo.",
       "NOT_REGISTERED": "Esta conta ainda não está configurada para pagamento privado. Entre primeiro em uma empresa.",
-      "AUDITOR_ID_TAKEN": "O id da chave de auditoria não é seu, então a Kalypso não vai registrar nele.",
+      "AUDITOR_ID_TAKEN": "Esse número de chave não é seu, então a Kalypso não vai registrar nele.",
       "PROOF_REFUSED": "A rede recusou a prova deste navegador, então nada mudou. Tente de novo.",
       "SIMULATION_FAILED": "A rede não quis executar esta etapa, então nada foi enviado.",
       "FEE_TOO_HIGH": "A rede pediu uma taxa acima do limite da Kalypso, então nada foi assinado.",
@@ -711,7 +857,7 @@
       "ANCHOR_NOT_READY": "O serviço de saque ainda está esperando você terminar a página dele.",
       "ANCHOR_RECORD_INVALID": "O registro do serviço de saque sobre este saque não é um que a Kalypso possa pagar, então nada foi montado.",
       "ANCHOR_RECORD_CHANGED": "O serviço de saque mudou o pedido depois que você o viu, então nada foi enviado. Comece o saque de novo.",
-      "CASHOUT_NO_XLM": "Sua conta de saque não tem mais XLM para a taxa de rede, então nada foi enviado. Financie-a com o friendbot e tente de novo.",
+      "CASHOUT_NO_XLM": "Sua conta de saque não tem mais XLM para a taxa de rede, então nada foi enviado. Financie-a com o serviço gratuito de dinheiro de teste da Stellar e tente de novo.",
       "ANCHOR_ALREADY_PAID": "Este saque já foi pago a partir da sua conta, então não foi enviado de novo."
     },
     "sponsor": {
@@ -724,7 +870,7 @@
       "missing_soroban_data": "A transação não informa os seus limites de recursos, então o patrocinador de taxas não vai pagar por ela.",
       "wasm_upload": "O patrocinador de taxas nunca paga para enviar código de contrato.",
       "contract_creation": "O patrocinador de taxas só paga para criar uma carteira com chave de acesso configurada do jeito que a Kalypso configura.",
-      "root_contract_not_allowed": "O patrocinador de taxas só paga por chamadas aos contratos de folha de pagamento e de token da Kalypso, e pelo registro da sua própria chave de auditoria.",
+      "root_contract_not_allowed": "O patrocinador de taxas só paga por chamadas aos contratos de folha de pagamento e de token da Kalypso, e pelo registro da sua própria chave.",
       "nested_contract_not_allowed": "Esta chamada alcança um contrato pelo qual o patrocinador de taxas não paga.",
       "no_auth": "A chamada não traz nenhuma aprovação sua, então o patrocinador de taxas não vai pagar por ela.",
       "source_account_auth": "O patrocinador de taxas precisa da sua própria aprovação nesta chamada, não da do remetente.",
@@ -787,7 +933,7 @@
     },
     "sandbox": {
       "INVALID_AMOUNTS": "Estes salários são maiores do que o token comporta.",
-      "NOT_ENOUGH_XLM": "O friendbot não deu XLM de teste suficiente para rodar o sandbox. Tente de novo em um minuto.",
+      "NOT_ENOUGH_XLM": "Não chegou XLM de teste grátis suficiente para executar o sandbox. Tente de novo em um minuto.",
       "BUSY": "Outra aba está rodando este sandbox. Termine lá, ou feche essa aba e tente de novo.",
       "NO_SANDBOX": "Este navegador não tem nenhum sandbox salvo para retomar. Inicie um novo.",
       "SIMULATION_FAILED": "A rede não quis executar esta etapa, então nada foi enviado.",
@@ -834,7 +980,89 @@
     "run": {
       "paid": "Pago.",
       "alreadyPaid": "Já pago neste ciclo.",
-      "failed": "Este pagamento não foi concluído."
+      "failed": "Este pagamento não foi concluído.",
+      "PROOF_FAILED": "Não foi possível fazer a prova do pagamento neste navegador, mesmo relendo cada chave da cadeia.",
+      "SIMULATION_FAILED": "A rede não quis executar este pagamento, mesmo relendo cada chave da cadeia.",
+      "FEE_TOO_HIGH": "A rede pediu por um pagamento uma taxa acima do limite da Kalypso, então ele não foi assinado.",
+      "SUBMIT_REFUSED": "A rede recusou este pagamento, então o ciclo parou aqui.",
+      "TRANSACTION_FAILED": "Este pagamento falhou na cadeia, então o ciclo parou aqui.",
+      "TRANSACTION_EXPIRED": "Este pagamento expirou antes de chegar, então o ciclo parou aqui.",
+      "RUN_STOPPED": "Não enviado, porque o ciclo parou em um pagamento anterior."
+    }
+  },
+  "siteNav": {
+    "employers": "Para empregadores",
+    "workers": "Para funcionários",
+    "accountants": "Para contadores",
+    "docs": "Documentação",
+    "source": "Código",
+    "sandbox": "Experimente o sandbox",
+    "hintArrows": "As setas movem",
+    "hintEsc": "Esc fecha",
+    "open": "Abrir",
+    "menu": "Menu",
+    "close": "Fechar",
+    "items": {
+      "payTeam": {
+        "title": "Pague sua equipe",
+        "text": "Faça a folha de pagamento em USDC a partir de uma planilha. Cada valor fica selado na cadeia."
+      },
+      "setUpCompany": {
+        "title": "Configure sua empresa",
+        "text": "Conecte sua carteira, indique seu contador e crie a empresa."
+      },
+      "testFunds": {
+        "title": "Pegue fundos de teste",
+        "text": "XLM e USDC de teste grátis para experimentar a Kalypso na testnet."
+      },
+      "tryNoWallet": {
+        "title": "Experimente sem carteira",
+        "text": "Faça uma folha completa no seu navegador em cerca de quatro minutos."
+      },
+      "howPayrollWorks": {
+        "title": "Como a folha funciona",
+        "text": "O que o público vê, o que fica selado e quem pode abrir."
+      },
+      "getYourPay": {
+        "title": "Receba seu pagamento",
+        "text": "Entre com Face ID, leia seus holerites e saque. Sem app, sem taxas."
+      },
+      "joinCompany": {
+        "title": "Entre na sua empresa",
+        "text": "Abra o link de convite que o seu empregador enviar."
+      },
+      "cashOut": {
+        "title": "Saque",
+        "text": "Leve seu pagamento para o seu banco. Na testnet nenhum dinheiro de verdade se move."
+      },
+      "yourPasskey": {
+        "title": "Sua chave de acesso",
+        "text": "Quais celulares e navegadores funcionam, e o que fazer se o seu não funcionar."
+      },
+      "whoSeesPay": {
+        "title": "Quem vê seu pagamento",
+        "text": "Só você e o contador da sua empresa podem ler o valor."
+      },
+      "openBooks": {
+        "title": "Abra os livros",
+        "text": "Leia cada pagamento que uma empresa fez e exporte para os impostos."
+      },
+      "registerKey": {
+        "title": "Registre sua chave",
+        "text": "Uma chave, criada a partir da sua própria carteira, que só você controla."
+      },
+      "exportTax": {
+        "title": "Exporte para impostos e auditoria",
+        "text": "Um CSV completo, recusado quando falta algum pagamento."
+      },
+      "realBooks": {
+        "title": "Veja os livros de uma empresa real",
+        "text": "Abra a folha de pagamento da empresa de demonstração com a chave publicada dela."
+      },
+      "security": {
+        "title": "Segurança",
+        "text": "O modelo de ameaças e como cada afirmação é verificada."
+      }
     }
   }
 }

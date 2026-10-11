@@ -1,0 +1,82 @@
+---
+title: "Desenvolvedores"
+description: "Clone o repositório, rode todas as suítes de testes e confira cada afirmação contra os contratos ao vivo na testnet pelo terminal."
+---
+
+Você precisa do Git, do Node.js 24 (o servidor exige o 24; os scripts da testnet exigem o 22.9 ou superior), de uma toolchain Rust para os contratos (a CI usa o Rust 1.99.0) e da [stellar CLI](https://github.com/stellar/stellar-cli) 28.1.0 para a verificação da atestação de build.
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/Kalypso.git
+cd Kalypso
+```
+
+Cada bloco de comandos abaixo parte da raiz do repositório.
+
+## Rode os testes
+
+Em 11 de outubro, as suítes tinham 115 testes de folha de pagamento e 43 de auditor (`cargo test`), 560 testes do core com 98,47% de cobertura de linhas, 352 testes do servidor com 98,31%, 674 testes do app web e 11 testes dos scripts da testnet, 1755 no total. Os 352 do servidor também rodam uma segunda vez pelo driver Postgres de produção, com `npm run test:wire`.
+
+```bash
+cd packages/contracts && cargo test
+```
+
+```bash
+cd packages/core && npm install && npm test
+```
+
+```bash
+cd packages/server && npm install && npm test
+```
+
+```bash
+cd packages/server && npm run test:wire
+```
+
+```bash
+cd packages/web && npm install && npm test
+```
+
+```bash
+cd packages/contracts/scripts && npm ci && npm test
+```
+
+## Confira que o contrato de folha de pagamento ao vivo veio deste repositório
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+Ele responde com `.github/workflows/release.yml` na tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, compilado em um runner hospedado pelo GitHub.
+
+## Confira o conjunto pelo estado da cadeia [#check-the-stack-from-chain-state]
+
+`check:testnet` lê o estado da cadeia e roda 18 verificações: ninguém, nós incluídos, pode mudar quais provas o verificador aceita; nenhum dos nossos contratos tem administrador nem caminho de atualização; o código na cadeia é o código publicado; e todo contrato tem pelo menos 14 dias antes de ser arquivado. Ele precisa do contrato de folha de pagamento da versão v0.1.1 e do registro de auditores da versão v0.1.0, cada um na sua própria pasta:
+
+```bash
+mkdir -p release/v0.1.1 release/v0.1.0
+curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
+curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
+cd packages/contracts/scripts && npm ci
+npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
+```
+
+Os mesmos arquivos estão na [página de Releases](https://github.com/ramakrishnanhulk20/Kalypso/releases). Uma execução bem-sucedida termina com `18 of 18 checks passed. RESULT: PASS`.
+
+## Ataque a demonstração
+
+`prove:testnet` ataca as promessas da empresa de demonstração na testnet e imprime o que barrou cada ataque. Ele roda 13 verificações e não precisa de chaves.
+
+```bash
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
+```
+
+Sem o arquivo privado do seed, os valores são conferidos com a chave do contador de demonstração publicada e a metade do P10 que cobre o funcionário é pulada, então a execução de um desconhecido termina com 12 aprovadas e 1 pulada. As verificações de histórico leem o RPC, que guarda cerca de 7 dias. A flag `--archive` acima lê ledgers mais antigos do arquivo de eventos ao vivo da Kalypso, então as verificações de histórico continuam funcionando depois dessa janela; a saúde dele é pública em [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health). A última execução completa está em [Relatório do ataque](/docs/security/attack-run).
+
+## Mantenha o sistema vivo
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
+```
+
+Isso estende a vida de armazenamento dos quatro contratos e do código deles, 60 dias por padrão (`-- --days <n>` para mudar), para que nenhum seja arquivado enquanto você e outros visitantes o estão vendo. Qualquer pessoa pode pagar por uma extensão, e ela não muda mais nada. O pagamento sai da identidade da stellar CLI indicada por `DEPLOYER` (padrão `kalypso-deployer`) em `packages/contracts/.stellar`, que precisa existir e ter XLM da testnet. O `check:testnet` falha quando algum contrato tem menos de 14 dias restantes.

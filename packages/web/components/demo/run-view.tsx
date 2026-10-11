@@ -1,6 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
+import { InlineConfirm } from "@/components/app/employer/inline-confirm";
 import { ChainFeed } from "./chain-feed";
 import { LiveLine } from "./live-line";
 import { liveSentence, progressFraction, stepNumber, timeLeftLabel } from "./run-state";
@@ -50,9 +51,13 @@ export function RunView({ run, onResume, onTryAgain, onStartOver }: RunViewProps
           <button type="button" className="btn-seal" onClick={stopped ? onTryAgain : onResume}>
             {stopped ? common("tryAgain") : common("resume")}
           </button>
-          <button type="button" className="btn-ghost" onClick={onStartOver}>
-            {common("startOver")}
-          </button>
+          <InlineConfirm
+            label={common("startOver")}
+            question={t("startOverAsk")}
+            confirmLabel={common("startOver")}
+            cancelLabel={common("keepIt")}
+            onConfirm={onStartOver}
+          />
         </div>
       ) : null}
 

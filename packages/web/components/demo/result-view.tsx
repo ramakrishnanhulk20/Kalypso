@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { InlineConfirm } from "@/components/app/employer/inline-confirm";
 import { PageHeading } from "@/components/app/page-heading";
 import type { SandboxResult } from "@/lib/sandbox/engine";
+import { SANDBOX_COMPANY_LABEL } from "@/lib/sandbox/label";
 import { amountsFrom } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
 import { contracts } from "@/lib/stack";
@@ -21,12 +23,25 @@ const DEFAULT_KEY: KeyId = "accountant";
 type ResultViewProps = {
   result: SandboxResult;
   engine: Engine;
+  /** The result was saved by an earlier visit, so the page says so beside Start over. */
+  returning: boolean;
   onStartOver: () => void;
 };
 
-export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
+export function ResultView({ result, engine, returning, onStartOver }: ResultViewProps) {
   const t = useTranslations("sandbox.result");
+  const run = useTranslations("sandbox.run");
   const common = useTranslations("common");
+  const startOver = (triggerClassName: string) => (
+    <InlineConfirm
+      label={common("startOver")}
+      question={run("startOverAsk")}
+      confirmLabel={common("startOver")}
+      cancelLabel={common("keepIt")}
+      onConfirm={onStartOver}
+      triggerClassName={triggerClassName}
+    />
+  );
   const [selected, setSelected] = useState<KeyId>(DEFAULT_KEY);
 
   const accountant = useKeyRead(useCallback(() => engine.openAsAccountant(), [engine]));
@@ -54,7 +69,7 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
     pendingOpens.current.add(afterPaint(() => reads[id].open()));
   };
 
-  const label = t("sandboxLabel", { short: result.treasury.slice(0, 4) });
+  const label = SANDBOX_COMPANY_LABEL;
   const workerIndex = selected === "worker1" ? 1 : selected === "worker2" ? 2 : 3;
   const opening =
     selected === "accountant" ? t("openingAccountant") : selected === "stranger" ? t("openingStranger") : t("openingWorker", { n: workerIndex });
@@ -75,6 +90,12 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
 
   return (
     <section>
+      {returning ? (
+        <div className="mb-10 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-card border border-line bg-raised px-5 py-4">
+          <p className="font-sans text-[0.9375rem] text-fg">{t("earlier")}</p>
+          {startOver("btn-ghost")}
+        </div>
+      ) : null}
       <PageHeading eyebrow={t("eyebrow")} title={t("title")} lead={t("lead")} />
 
       <div className="mt-8 flex flex-wrap items-center gap-6">
@@ -94,12 +115,11 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
         >
           {t("payrollLink")}
         </a>
-        <button type="button" className="link-draw text-[0.9375rem]" onClick={onStartOver}>
-          {common("startOver")}
-        </button>
+        {returning ? null : startOver("link-draw text-[0.9375rem]")}
       </div>
 
-      <div className="mt-10">
+      <p className="mt-10 max-w-[40rem] font-sans text-base text-muted">{t("caption")}</p>
+      <div className="mt-5">
         <KeySwitcher value={selected} onChange={choose} />
       </div>
 
@@ -131,9 +151,14 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
         <p className="font-display text-[1.5rem] font-medium text-fg" style={{ fontVariationSettings: '"opsz" 36' }}>
           {t("closing")}
         </p>
-        <Link href="/docs/how-it-works" className="btn-ghost">
-          {t("readHow")}
-        </Link>
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
+          <Link href="/employer" className="btn-seal">
+            {t("forYourCompany")}
+          </Link>
+          <Link href="/docs/how-it-works" className="btn-ghost">
+            {t("readHow")}
+          </Link>
+        </div>
       </div>
     </section>
   );

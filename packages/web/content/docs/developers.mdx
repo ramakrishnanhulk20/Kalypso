@@ -1,0 +1,82 @@
+---
+title: "Developers"
+description: "Clone the repo, run every test suite, and check every claim against the live testnet contracts from your terminal."
+---
+
+You need Git, Node.js 24 (the server needs 24; the testnet scripts need 22.9 or later), a Rust toolchain for the contracts (CI uses Rust 1.99.0), and the [stellar CLI](https://github.com/stellar/stellar-cli) 28.1.0 for the build attestation check.
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/Kalypso.git
+cd Kalypso
+```
+
+Each command block below starts from the repo root.
+
+## Run the tests
+
+On 11 October the suites held 115 payroll and 43 auditor tests (`cargo test`), 560 core tests at 98.47% line coverage, 352 server tests at 98.31%, 674 web app tests and 11 tests for the testnet scripts, 1,755 in all. The server's 352 also run a second time through the production Postgres driver, with `npm run test:wire`.
+
+```bash
+cd packages/contracts && cargo test
+```
+
+```bash
+cd packages/core && npm install && npm test
+```
+
+```bash
+cd packages/server && npm install && npm test
+```
+
+```bash
+cd packages/server && npm run test:wire
+```
+
+```bash
+cd packages/web && npm install && npm test
+```
+
+```bash
+cd packages/contracts/scripts && npm ci && npm test
+```
+
+## Check that the live payroll came from this repo
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+It answers with `.github/workflows/release.yml` at tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, built on a GitHub-hosted runner.
+
+## Check the stack from chain state
+
+`check:testnet` reads chain state and runs 18 checks: nobody, including us, can change which proofs the verifier accepts; neither of our contracts has an admin or an upgrade path; the code on chain is the released code; and every contract has at least 14 days before it archives. It needs the payroll from release v0.1.1 and the auditor registry from release v0.1.0, each in its own folder:
+
+```bash
+mkdir -p release/v0.1.1 release/v0.1.0
+curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
+curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
+cd packages/contracts/scripts && npm ci
+npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
+```
+
+The same files are on the [Releases page](https://github.com/ramakrishnanhulk20/Kalypso/releases). A passing run ends with `18 of 18 checks passed. RESULT: PASS`.
+
+## Attack the showcase
+
+`prove:testnet` attacks the showcase company's promises on testnet and prints what stopped each attack. It runs 13 checks and needs no keys.
+
+```bash
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
+```
+
+Without the seed's private file, the amounts are checked with the published demo accountant key and the worker half of P10 is skipped, so a stranger's run ends with 12 passed and 1 skipped. The history checks read RPC, which keeps about the last 7 days. The `--archive` flag above reads older ledgers from Kalypso's live event archive, so the history checks keep working after that window; its health is public at [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health). The last full run is on [Attack run](/docs/security/attack-run).
+
+## Keep the stack alive
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
+```
+
+This extends the storage life of all four contracts and their code, 60 days by default (`-- --days <n>` to change it), so none archives while you and other visitors are looking at it. Anyone may pay for an extension and it changes nothing else. It pays from the stellar CLI identity named by `DEPLOYER` (default `kalypso-deployer`) in `packages/contracts/.stellar`, which must exist and hold testnet XLM. `check:testnet` fails once any contract has fewer than 14 days left.

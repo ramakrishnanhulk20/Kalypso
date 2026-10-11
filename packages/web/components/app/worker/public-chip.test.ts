@@ -2,9 +2,11 @@
 // registry is flagged, by the same id list core refuses runs under, and the chip reads "Publicly
 // readable" in the wait colour with its explaining title. Any other id, or the same id in another
 // registry, is not flagged. The invite strip and the Joined line carry the chip for such a company
-// and only for it. The payslip chip slot (ReadersChip) shows a pulsing placeholder while the company
-// is still being read, "Readers unknown" in the wait colour when it could not be read, the public
-// chip for a publicly readable company, and nothing for a private one.
+// and only for it, each with the visible sentence under it, and the payslip list says that sentence
+// once when any payslip comes from such a company. The payslip chip slot (ReadersChip) shows a
+// pulsing placeholder while the company is still being read, "Readers unknown" in the wait colour
+// when it could not be read, the public chip for a publicly readable company, and nothing for a
+// private one.
 // Does NOT cover: the chain read of the company (worker-lib reads it), the hook that marks a failed
 // read as unknown (use-payslips), the card layout around the slot, or how the chip looks.
 import { createElement, isValidElement } from "react";
@@ -15,7 +17,7 @@ import { workerConfig } from "../../../lib/worker/config";
 import { renderEnglish, textOf, titlesOf } from "../../../test/i18n";
 import { InviteStrip } from "./invite-strip";
 import { JoinedLine } from "./joined-line";
-import { PUBLIC_TITLE, PubliclyReadable, ReadersChip, UNKNOWN_TITLE, isPublishedAuditor } from "./public-chip";
+import { PUBLIC_NOTE, PUBLIC_TITLE, PublicNote, PubliclyReadable, ReadersChip, UNKNOWN_TITLE, anyPubliclyReadable, isPublishedAuditor } from "./public-chip";
 
 describe("the Publicly readable chip", () => {
   const registry = workerConfig().contracts.auditor;
@@ -81,5 +83,25 @@ describe("everywhere else a company is shown", () => {
   it("puts the chip on the Joined line only for a publicly readable company", () => {
     expect(renderEnglish(createElement(JoinedLine, { label: "Andes Studio (demo)", publiclyReadable: true }))).toContain("data-public-accountant");
     expect(renderEnglish(createElement(JoinedLine, { label: "Andes Studio (demo)", publiclyReadable: false }))).not.toContain("data-public-accountant");
+  });
+
+  it("writes the reason out under the chip, on the invite strip and the Joined line, and only there", () => {
+    expect(PUBLIC_NOTE).toBe("This is Kalypso's public demo company, so anyone can read its amounts.");
+    expect(textOf(renderEnglish(createElement(PublicNote)))).toBe(PUBLIC_NOTE);
+    expect(textOf(renderEnglish(createElement(InviteStrip, { invite: found(true), onRetry: () => undefined })))).toContain(PUBLIC_NOTE);
+    expect(textOf(renderEnglish(createElement(InviteStrip, { invite: found(false), onRetry: () => undefined })))).not.toContain(PUBLIC_NOTE);
+    expect(textOf(renderEnglish(createElement(JoinedLine, { label: "Andes Studio (demo)", publiclyReadable: true })))).toContain(PUBLIC_NOTE);
+    expect(textOf(renderEnglish(createElement(JoinedLine, { label: "Andes Studio (demo)", publiclyReadable: false })))).not.toContain(PUBLIC_NOTE);
+  });
+
+  it("says it once above the payslips when any of them comes from a publicly readable company", () => {
+    const companies = new Map<string, { label: string; publiclyReadable: boolean } | "unknown">([
+      ["0", { label: "Andes Studio (demo)", publiclyReadable: true }],
+      ["7", { label: "Private Co", publiclyReadable: false }],
+      ["8", "unknown"],
+    ]);
+    expect(anyPubliclyReadable(["7", "0", "7"], companies)).toBe(true);
+    expect(anyPubliclyReadable(["7", "8", "9"], companies)).toBe(false);
+    expect(anyPubliclyReadable([], companies)).toBe(false);
   });
 });

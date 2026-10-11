@@ -1,18 +1,18 @@
 ---
 title: Primeros pasos
-description: "Ejecuta una nómina en tu navegador sin billetera, lee la empresa de muestra en vivo, usa las tres pantallas reales con tu propia billetera, y luego clona el repositorio y comprueba cada afirmación desde tu terminal."
+description: "Ejecuta una nómina en tu navegador sin billetera, lee la empresa de muestra en vivo y usa las tres pantallas reales con tu propia billetera."
 ---
 
-Hay cuatro formas de entrar: un sandbox que no necesita nada instalado, la empresa de muestra en vivo en la página de inicio, las tres pantallas reales y el repositorio.
+Hay tres formas de entrar: un sandbox que no necesita nada instalado, la empresa de muestra en vivo en la página de inicio y las tres pantallas reales. Para trabajar desde el código, mira [Desarrolladores](/docs/developers).
 
 ## Pruébalo sin billetera: el sandbox
 
-El sandbox (un entorno de prueba) en [/demo](/demo) crea una pequeña empresa en Stellar testnet dentro de tu navegador y la paga con Kalypso usando pruebas de conocimiento cero reales. No necesita billetera ni registro, y toma unos 3 minutos en un computador portátil. Los teléfonos más lentos tardan más. Escribe tres sueldos en "La nómina de este mes" y elige **Iniciar el sandbox**. La página recorre diez pasos. Cada transacción que envían es real, y cada una se abre en stellar.expert:
+El sandbox (un entorno de prueba) en [/demo](/demo) crea una pequeña empresa en Stellar testnet dentro de tu navegador y la paga con Kalypso usando pruebas de conocimiento cero reales. No necesita billetera ni registro, y toma unos 4 minutos en un computador portátil. Los teléfonos más lentos tardan más. Escribe tres sueldos en "La nómina de este mes" y elige **Iniciar el sandbox**. La página recorre diez pasos. Cada transacción que envían es real, y cada una se abre en stellar.expert:
 
 1. Claves: tu navegador crea cinco cuentas desechables de testnet: el empleador (cuya cuenta es la tesorería), el contador y tres trabajadores.
-2. Dinero de prueba: friendbot carga las cinco con XLM de prueba.
-3. USDC: la tesorería abre una línea de confianza (trustline) de USDC, y las cinco cuentas compran USDC de prueba para ella en el DEX de Stellar: los tres sueldos más 2 por ciento, de modo que su depósito público nunca es el total exacto de la nómina.
-4. Contador: el contador registra su propia clave de auditoría en el registro de auditoría de Kalypso y recibe un id.
+2. Dinero de prueba: Stellar da XLM de prueba gratis a las cinco cuentas.
+3. USDC: la tesorería abre una línea de confianza (trustline) de USDC, para poder tener USDC, y las cinco cuentas compran USDC de prueba para ella en el DEX de Stellar: los tres sueldos más 2 por ciento, de modo que su depósito público nunca es el total exacto de la nómina.
+4. Contador: el contador registra su propia clave de auditoría (la clave que abre los montos) en el registro de auditoría de Kalypso y recibe un id.
 5. Tesorería: la tesorería se registra en el token confidencial con ese id, con una prueba creada en tu navegador. Antes de firmar, se comprueban en la cadena el dueño y la clave del id.
 6. Empresa: el contrato de nómina crea la empresa y nombra a su contador.
 7. Trabajadores: cada trabajador registra su propia clave de auditoría, se registra en el token, es invitado y acepta.
@@ -40,90 +40,10 @@ Nada sale de la página. Cada fila enlaza a su transacción en Stellar Expert, d
 
 ## Usa las tres pantallas reales
 
-El sandbox hace todos los papeles por ti. Las pantallas reales reparten la misma nómina entre tres personas, cada una con su propia clave:
+El sandbox hace todos los papeles por ti. Las pantallas reales reparten la misma nómina entre tres personas, cada una con su propia clave, y un empleador puede llevar sus propios libros con la misma billetera. Ve en este orden: primero el contador si otra persona lleva los libros, luego el empleador y después los trabajadores.
 
-- [Guía del empleador](/docs/guides/employer): crea una empresa en /employer, carga fondos en su tesorería, invita al equipo y paga un mes desde un CSV.
-- [Guía del trabajador](/docs/guides/worker): únete desde el enlace de invitación en /worker con Face ID o Freighter, lee tus comprobantes de pago y retira en el anchor de prueba.
-- [Guía del contador](/docs/guides/accountant): registra tu clave en /accountant, entrega tu id al empleador, y luego abre y exporta los libros.
+1. [Guía del contador](/docs/guides/accountant): registra tu clave en /accountant y entrega tu id de contador y tu dirección al empleador. Un empleador que lleva sus propios libros se salta este paso.
+2. [Guía del empleador](/docs/guides/employer): crea una empresa en /employer, carga fondos en su tesorería, invita al equipo y paga un mes desde un CSV.
+3. [Guía del trabajador](/docs/guides/worker): únete desde el enlace de invitación en /worker con Face ID o Freighter, lee tus comprobantes de pago y retira en el banco de práctica.
 
-El empleador y el contador necesitan cada uno Freighter configurado en Testnet, con una cuenta cargada por friendbot. Un trabajador que inicia sesión con Face ID no necesita cargar nada.
-
-## Ruta para desarrolladores [#developer-path]
-
-Necesitas Git, Node.js 24 (el servidor necesita 24; los scripts de testnet necesitan 22.9 o posterior), una cadena de herramientas de Rust para los contratos (CI usa Rust 1.99.0) y la [stellar CLI](https://github.com/stellar/stellar-cli) 28.1.0 para la comprobación de la atestación de compilación.
-
-```bash
-git clone https://github.com/ramakrishnanhulk20/Kalypso.git
-cd Kalypso
-```
-
-Cada bloque de comandos de abajo parte desde la raíz del repositorio.
-
-### Ejecuta los tests
-
-El 11 de octubre las suites tenían 115 tests de nómina y 43 de auditoría (`cargo test`), 560 tests del core con 98,47 % de cobertura de líneas, 316 tests del servidor con 97,99 %, 505 tests de la app web y 11 tests de los scripts de testnet, 1550 en total. Los 316 del servidor también se ejecutan una segunda vez con el driver de Postgres de producción, con `npm run test:wire`.
-
-```bash
-cd packages/contracts && cargo test
-```
-
-```bash
-cd packages/core && npm install && npm test
-```
-
-```bash
-cd packages/server && npm install && npm test
-```
-
-```bash
-cd packages/server && npm run test:wire
-```
-
-```bash
-cd packages/web && npm install && npm test
-```
-
-```bash
-cd packages/contracts/scripts && npm ci && npm test
-```
-
-### Comprueba que la nómina en vivo salió de este repositorio
-
-```bash
-stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
-```
-
-Responde con `.github/workflows/release.yml` en la etiqueta `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, compilado en un runner alojado por GitHub.
-
-### Comprueba el stack desde el estado de la cadena
-
-`check:testnet` lee el estado de la cadena y ejecuta 18 comprobaciones: nadie, nosotros incluidos, puede cambiar qué pruebas acepta el verificador; ninguno de nuestros contratos tiene administrador ni vía de actualización; el código en la cadena es el código publicado; y cada contrato tiene al menos 14 días antes de archivarse. Necesita el contrato de nómina de la versión v0.1.1 y el registro de auditoría de la versión v0.1.0, cada uno en su propia carpeta:
-
-```bash
-mkdir -p release/v0.1.1 release/v0.1.0
-curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
-curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
-cd packages/contracts/scripts && npm ci
-npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
-```
-
-Los mismos archivos están en la [página de Releases](https://github.com/ramakrishnanhulk20/Kalypso/releases). Una ejecución que pasa termina con `18 of 18 checks passed. RESULT: PASS`.
-
-### Ataca la empresa de muestra
-
-`prove:testnet` ataca las promesas de la empresa de muestra en testnet e imprime qué detuvo cada ataque. Ejecuta 13 comprobaciones y no necesita claves.
-
-```bash
-cd packages/core && npm ci && npm run build
-cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
-```
-
-Sin el archivo privado de la semilla, los montos se comprueban con la clave de contador de demostración publicada y se omite la mitad del trabajador de P10, así que la ejecución de un desconocido termina con 12 aprobadas y 1 omitida. Las comprobaciones de historial leen RPC, que conserva cerca de los últimos 7 días. La opción `--archive` de arriba lee ledgers más antiguos del archivo de eventos en vivo de Kalypso, así que las comprobaciones de historial siguen funcionando después de esa ventana; su estado es público en [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health). La última ejecución completa está en [Informe del ataque](/docs/security/attack-run).
-
-### Mantén el stack vivo
-
-```bash
-cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
-```
-
-Esto extiende la vida de almacenamiento de los cuatro contratos y de su código, 60 días por defecto (`-- --days <n>` para cambiarlo), para que ninguno se archive mientras se evalúa. Cualquiera puede pagar una extensión y no cambia nada más. Paga desde la identidad de la stellar CLI que nombra `DEPLOYER` (por defecto `kalypso-deployer`) en `packages/contracts/.stellar`, que debe existir y tener XLM de testnet. `check:testnet` falla cuando a algún contrato le quedan menos de 14 días.
+El contador y el empleador necesitan cada uno Freighter configurado en Test Net y algo de XLM de prueba gratis. Cada guía empieza con una sección **Antes de empezar**, y la tarjeta **Consigue dinero de prueba gratis** de la página da el dinero de prueba con un clic. Un trabajador que inicia sesión con Face ID no necesita cargar nada.

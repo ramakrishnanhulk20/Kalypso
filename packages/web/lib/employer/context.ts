@@ -8,6 +8,7 @@ import { sandboxConfig, type SandboxConfig } from "../sandbox/config";
 import { loadCircuits } from "../sandbox/sdk";
 import { ConsoleError } from "./errors";
 import { browserOpeningStore, browserTextStore, type TextStore } from "./opening-store";
+import type { ConsoleProgress, OnProgress, ProgressStep, ProgressValues } from "./progress";
 
 /**
  * Every history read starts at the token's deploy ledger, which is at or before any account's
@@ -19,14 +20,7 @@ export const HISTORY_FROM_LEDGER: number = deployment.contracts.token.deployTx.l
 /** The payroll contract's own deploy ledger: no company_created event can be older. */
 export const PAYROLL_FROM_LEDGER: number = deployment.contracts.payroll.deployTx.ledger;
 
-/** One progress message for the screen. The sentence never carries an amount. */
-export interface ConsoleProgress {
-  sentence: string;
-  done: number;
-  total: number;
-  txHash?: string;
-}
-export type OnProgress = (p: ConsoleProgress) => void;
+export type { ConsoleProgress, OnProgress, ProgressStep, ProgressValues } from "./progress";
 
 export interface ConsoleContext {
   config: SandboxConfig;
@@ -80,21 +74,27 @@ export async function releaseProver(): Promise<void> {
   if (held) await held.then((p) => p.destroy()).catch(() => undefined);
 }
 
-/** Calls onProgress, ignoring a display callback that throws so a step in flight is never abandoned. */
+/**
+ * Calls onProgress with a step's id and the values its sentence names, ignoring a display callback
+ * that throws so a step in flight is never abandoned. The screen turns the id into a sentence.
+ */
 export function reporter(onProgress: OnProgress | undefined, total: number) {
   let done = 0;
-  const send = (sentence: string, txHash?: string) => {
+  const send = (step: ProgressStep, values?: ProgressValues, txHash?: string) => {
+    const p: ConsoleProgress = { step, done, total };
+    if (values !== undefined) p.values = values;
+    if (txHash !== undefined) p.txHash = txHash;
     try {
-      onProgress?.(txHash === undefined ? { sentence, done, total } : { sentence, done, total, txHash });
+      onProgress?.(p);
     } catch {
       /* ignored on purpose */
     }
   };
   return {
-    say: (sentence: string, txHash?: string) => send(sentence, txHash),
-    tick: (sentence: string, txHash?: string) => {
+    say: (step: ProgressStep, values?: ProgressValues, txHash?: string) => send(step, values, txHash),
+    tick: (step: ProgressStep, values?: ProgressValues, txHash?: string) => {
       done = Math.min(total, done + 1);
-      send(sentence, txHash);
+      send(step, values, txHash);
     },
   };
 }

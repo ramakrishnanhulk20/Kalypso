@@ -70,12 +70,16 @@ export function SignedOut({ kit, onSignedIn }: { kit: WorkerKit | null; onSigned
         titleStyle={TITLE_STYLE}
       />
 
-      <div className="mt-9 flex w-full max-w-[420px] flex-col gap-3">
-        <StepButton action={signIn} className="w-full" disabled={kit === null || busy} onClick={() => start(signIn, signIn.start)}>
-          {t("signIn")}
-        </StepButton>
-        <StepButton variant="ghost" action={create} className="w-full" disabled={kit === null || busy} onClick={() => start(create, create.start)}>
+      <p className="mt-7 max-w-[34rem] font-sans text-[0.9375rem] text-muted">{t("invite")}</p>
+
+      <div className="mt-6 flex w-full max-w-[420px] flex-col gap-3">
+        <StepButton action={create} className="w-full" disabled={kit === null || busy} onClick={() => start(create, create.start)}>
           {t("create")}
+        </StepButton>
+        <p className="font-sans text-[0.875rem] text-muted">{t("passkeyNote")}</p>
+        <p className="t-label mt-3">{t("haveKey")}</p>
+        <StepButton variant="ghost" action={signIn} className="w-full" disabled={kit === null || busy} onClick={() => start(signIn, signIn.start)}>
+          {t("signIn")}
         </StepButton>
         <button
           type="button"
@@ -92,6 +96,7 @@ export function SignedOut({ kit, onSignedIn }: { kit: WorkerKit | null; onSigned
             </StepButton>
           </Rise>
         ) : null}
+        <p className="font-sans text-[0.875rem] text-muted">{t("devices")}</p>
       </div>
 
       {error ? (
@@ -106,6 +111,11 @@ export function SignedOut({ kit, onSignedIn }: { kit: WorkerKit | null; onSigned
           ) : null}
         </div>
       ) : null}
+
+      <section aria-label={t("lostLabel")} className="mt-8 max-w-[420px]">
+        <p className="t-label">{t("lostLabel")}</p>
+        <p className="mt-2 font-sans text-[0.9375rem] text-muted">{t("lostText")}</p>
+      </section>
 
       <ul className="mt-10 space-y-3">
         {facts.map((fact) => (

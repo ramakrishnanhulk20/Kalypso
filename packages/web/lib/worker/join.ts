@@ -23,11 +23,38 @@ import { readWorkerRecord, updateWorkerRecord, withCompany } from "./storage";
 
 export type JoinStep = "invite" | "wallet" | "auditor_key" | "token_account" | "accept";
 
-/** One step of joining, for the screen. label is plain words and never carries an amount. */
+/**
+ * Every sentence a join reports, by id. The screen shows worker.joinSteps.<id> from messages in the
+ * page's language; the messages test fails if an id has no sentence.
+ */
+export const JOIN_STEP_KEYS = [
+  "invite_checking",
+  "invite_done",
+  "wallet_checking",
+  "wallet_sending",
+  "wallet_done",
+  "wallet_skipped",
+  "auditor_key_skipped",
+  "auditor_key_sending",
+  "auditor_key_done",
+  "token_account_checking",
+  "token_account_skipped",
+  "token_account_sending",
+  "token_account_registering",
+  "token_account_done",
+  "accept_skipped",
+  "accept_sending",
+  "accept_done",
+] as const;
+
+export type JoinStepKey = (typeof JOIN_STEP_KEYS)[number];
+
+/** One step of joining, for the screen: the sentence's id and the values it names, never an amount. */
 export interface JoinProgress {
   step: JoinStep;
   state: "checking" | "sending" | "done" | "skipped";
-  label: string;
+  key: JoinStepKey;
+  values?: Record<string, string>;
   txHash?: string;
   /** The worker's own auditor id, shown before they approve the token registration (C10, C33). */
   auditorId?: number;
@@ -49,15 +76,15 @@ const U64_MAX = (1n << 64n) - 1n;
  */
 async function ensureWallet(rt: WorkerRuntime, worker: WorkerSession, sponsor: SponsorPort, report: (p: JoinProgress) => void, sent: string[]): Promise<void> {
   if (heldBy(worker).kind !== "passkey") return;
-  report({ step: "wallet", state: "checking", label: "Checking your wallet" });
+  report({ step: "wallet", state: "checking", key: "wallet_checking" });
   let sending = false;
   const { hash } = await setUpWallet(rt, worker, sponsor, () => {
     sending = true;
-    report({ step: "wallet", state: "sending", label: "Setting up your wallet" });
+    report({ step: "wallet", state: "sending", key: "wallet_sending" });
   });
   if (hash !== null) sent.push(hash);
-  if (sending) report({ step: "wallet", state: "done", label: "Your wallet is ready", ...(hash === null ? {} : { txHash: hash }) });
-  else report({ step: "wallet", state: "skipped", label: "Your wallet is already set up" });
+  if (sending) report({ step: "wallet", state: "done", key: "wallet_done", ...(hash === null ? {} : { txHash: hash }) });
+  else report({ step: "wallet", state: "skipped", key: "wallet_skipped" });
 }
 
 /** True when the registry says this worker owns the id. An unknown id reads false; an outage throws. */
@@ -116,11 +143,11 @@ async function ownAuditor(
       r.auditorId = id;
       r.auditorKeyRelay = null;
     });
-    report({ step: "auditor_key", state: "skipped", label: `Audit key ${id} already belongs to you`, auditorId: id });
+    report({ step: "auditor_key", state: "skipped", key: "auditor_key_skipped", values: { id: String(id) }, auditorId: id });
     return { id, key: await getAuditorKey(rt.port, registry, id) };
   }
   const key = scalarMul(randomAuditorSecret(), H);
-  report({ step: "auditor_key", state: "sending", label: "Creating your own audit key" });
+  report({ step: "auditor_key", state: "sending", key: "auditor_key_sending" });
   const landed = await sendCall(
     rt,
     worker,
@@ -138,7 +165,7 @@ async function ownAuditor(
     r.auditorId = newId;
     r.auditorKeyRelay = null;
   });
-  report({ step: "auditor_key", state: "done", label: `Audit key ${newId} belongs to you`, txHash: landed.hash, auditorId: newId });
+  report({ step: "auditor_key", state: "done", key: "auditor_key_done", values: { id: String(newId) }, txHash: landed.hash, auditorId: newId });
   return { id: newId, key };
 }
 
@@ -149,17 +176,17 @@ async function ownAuditor(
  */
 async function ensureTokenAccount(rt: WorkerRuntime, worker: WorkerSession, sponsor: SponsorPort, report: (p: JoinProgress) => void, sent: string[]): Promise<number> {
   const { token, auditor: registry } = rt.config.contracts;
-  report({ step: "token_account", state: "checking", label: "Checking your private account" });
+  report({ step: "token_account", state: "checking", key: "token_account_checking" });
   const existing = await confidentialBalance(rt.port, token, worker.address);
   if (existing !== null) {
     if (!existing.pvk.equals(worker.keys.PVK)) throw new WorkerError("KEYS_MISMATCH");
-    report({ step: "token_account", state: "skipped", label: "Your private account is already set up", auditorId: existing.auditorId });
+    report({ step: "token_account", state: "skipped", key: "token_account_skipped", auditorId: existing.auditorId });
     return existing.auditorId;
   }
   const own = await ownAuditor(rt, worker, sponsor, report, sent);
-  report({ step: "token_account", state: "sending", label: "Proving your private account in this browser", auditorId: own.id });
+  report({ step: "token_account", state: "sending", key: "token_account_sending", auditorId: own.id });
   const proof = await (await rt.prover()).proveRegister(worker.keys);
-  report({ step: "token_account", state: "sending", label: "Registering your private account", auditorId: own.id });
+  report({ step: "token_account", state: "sending", key: "token_account_registering", auditorId: own.id });
   const landed = await sendCall(rt, worker, sponsor, {
     contractId: token,
     build: (base) =>
@@ -171,7 +198,7 @@ async function ensureTokenAccount(rt: WorkerRuntime, worker: WorkerSession, spon
   updateWorkerRecord(rt.storage, worker.address, (r) => {
     if (landed.ledger !== undefined) r.registeredLedger = landed.ledger;
   });
-  report({ step: "token_account", state: "done", label: "Your private account is set up", txHash: landed.hash, auditorId: own.id });
+  report({ step: "token_account", state: "done", key: "token_account_done", txHash: landed.hash, auditorId: own.id });
   return own.id;
 }
 
@@ -201,7 +228,7 @@ export async function join(
   return rt.exclusive(`kalypso/worker/v1/join/${worker.address}`, async () => {
     const sent: string[] = [];
     try {
-      report({ step: "invite", state: "checking", label: "Checking the invite" });
+      report({ step: "invite", state: "checking", key: "invite_checking" });
       try {
         await getCompany(rt.port, payroll, companyId);
       } catch (err) {
@@ -221,16 +248,16 @@ export async function join(
         const account = await confidentialBalance(rt.port, rt.config.contracts.token, worker.address);
         if (account === null) throw new WorkerError("CHAIN_DISAGREES");
         auditorId = account.auditorId;
-        report({ step: "accept", state: "skipped", label: "You are already part of this company" });
+        report({ step: "accept", state: "skipped", key: "accept_skipped" });
       } else {
-        report({ step: "invite", state: "done", label: "The invite is waiting for you" });
+        report({ step: "invite", state: "done", key: "invite_done" });
         await ensureWallet(rt, worker, sponsor, report, sent);
         auditorId = await ensureTokenAccount(rt, worker, sponsor, report, sent);
-        report({ step: "accept", state: "sending", label: "Accepting the invite" });
+        report({ step: "accept", state: "sending", key: "accept_sending" });
         const landed = await sendCall(rt, worker, sponsor, { contractId: payroll, build: (base) => buildAcceptInvite(base, { companyId, worker: worker.address }) });
         sent.push(landed.hash);
         if ((await workerStatus(rt.port, payroll, companyId, worker.address)) !== "Active") throw new WorkerError("CHAIN_DISAGREES", { hash: landed.hash });
-        report({ step: "accept", state: "done", label: "You joined the company", txHash: landed.hash });
+        report({ step: "accept", state: "done", key: "accept_done", txHash: landed.hash });
       }
       worker.auditorId = auditorId;
       if (!updateWorkerRecord(rt.storage, worker.address, (r) => withCompany(r, companyId))) throw new WorkerError("STORAGE_FAILED");

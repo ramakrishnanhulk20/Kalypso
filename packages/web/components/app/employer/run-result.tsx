@@ -1,4 +1,4 @@
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import type { PayrollRun } from "@/lib/employer";
 import { RowChip } from "@/components/app/row-chip";
 import type { ChipTone } from "@/components/app/row-chip";
@@ -18,15 +18,10 @@ const HEAD = "t-label px-4 py-3 text-left font-normal";
 export function RunResult({ run }: { run: PayrollRun }) {
   const t = useTranslations("employer.payroll");
   const errors = useTranslations("errors.run");
-  const locale = useLocale();
   const chipText = { paid: t("paid"), "already-paid": t("alreadyPaid"), failed: t("failed") };
 
-  // The lib's sentence in English; by the row's reason, when it names one, elsewhere.
-  const failedText = (row: PayrollRun["rows"][number]): string => {
-    if (locale === "en") return row.sentence;
-    const reason = (row as { reason?: unknown }).reason;
-    return typeof reason === "string" && errors.has(reason) ? errors(reason) : errors("failed");
-  };
+  // The lib names why a row failed by its reason; the sentence comes from messages in the page's language.
+  const failedText = (row: PayrollRun["rows"][number]): string => (row.reason !== undefined ? errors(row.reason) : errors("failed"));
 
   return (
     <div className="mt-8">

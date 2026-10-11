@@ -3,7 +3,7 @@ title: Security overview
 description: "What an attacker would want from Kalypso, what stops each attempt, and how to check each claim yourself."
 ---
 
-Kalypso holds other people's salaries and moves real money on their behalf, so its security story starts from the attacker. The [threat model](/docs/security/threat-model) was written before any contract code. It names the attackers (an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys), what each one wants, and 56 invariants the code must uphold. This page is the short version.
+Kalypso holds other people's salaries and moves real money on their behalf, so its security story starts from the attacker. The [threat model](/docs/security/threat-model) was written before any contract code. It names the attackers (an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys), what each one wants, and 57 invariants the code must uphold. This page is the short version.
 
 ## What an attacker would want, and what stops them
 
@@ -24,7 +24,9 @@ Kalypso holds other people's salaries and moves real money on their behalf, so i
 | Use our fee sponsor as a free relay | It pays only when every contract the call can run is Kalypso's, USDC's, the verifier or the pinned passkey wallet, under a fixed fee cap, with limits per IP, per address and per day. The only contract it pays to create is a passkey wallet built the way Kalypso builds one, at most three a day per IP. | server tests |
 | Lock a company's treasury | A pay the chain may have applied is never forgotten, and the treasury's opening can be rebuilt from chain history. | core tests |
 
-"prove P1" means check P1 in `npm run prove:testnet`. Its last full output, all 13 checks passing, is on [Attack run](/docs/security/attack-run). The commands are in [Getting started](/docs/getting-started#developer-path).
+"prove P1" means check P1 in `npm run prove:testnet`. Its last full output, all 13 checks passing, is on [Attack run](/docs/security/attack-run). The commands are in [For developers](/docs/developers).
+
+Two invariants came last. C56: every status, step and reason a library can emit has a message in all five languages, so a refusal never shows as nothing. C57: the testnet faucet's key signs only a faucet payout, once per wallet per asset per day, with limits per IP and for the whole service.
 
 ## Check it yourself
 
@@ -34,7 +36,7 @@ You do not need to trust any of this. Three commands check the live system, and 
 - `npm run check:testnet` reads chain state and runs 18 checks: the verifier's locked keys, no admin or upgrade path on our contracts, the released code on chain, and storage life.
 - `npm run prove:testnet` attacks the showcase company's promises on testnet and prints what stopped each attack.
 
-The test suites back the rest: 115 payroll and 43 auditor tests, 560 core tests at 98.47% line coverage, 316 server tests at 97.99% (run again through the production Postgres driver), 505 web app tests and 11 for the testnet scripts, 1,550 in all as of 11 October. [Audits](/docs/security/audits) lists every review the code went through.
+The test suites back the rest: 115 payroll and 43 auditor tests, 560 core tests at 98.47% line coverage, 352 server tests at 98.31% (run again through the production Postgres driver), 674 web app tests and 11 for the testnet scripts, 1,755 in all as of 11 October. [Audits](/docs/security/audits) lists every review the code went through.
 
 ## What Kalypso does not defend
 
@@ -50,6 +52,7 @@ Naming these is part of the security story, so nobody assumes otherwise.
 - The hosting platform's request logs record the caller's IP next to the archive path, which names the account or company asked about. Kalypso's own logs never join the two.
 - Browser storage has no atomic compare-and-delete, so two tabs racing can remove each other's in-flight record or drop an entry from the list of saved openings. Recovery goes through that list when it holds the right entry, and otherwise through rebuilding the treasury from chain history.
 - The sponsor's per-IP counter holds raw IPs for up to two hours, never logged, so it can enforce the limit.
+- The testnet faucet can be drained by someone with many IP addresses. That costs only free test funds, which Kalypso tops up, and it never touches any other key or account.
 - The sponsor's creation limits are per IP (IPv6 per /48 site), so an office behind one address can create at most three Face ID wallets a day, and the whole service sixty. More workers there can join with a wallet, or the next day.
 - Someone who learns a passkey's credential id before its wallet exists can create a wallet at that address first, from code of their own, and switch it to ours later. Kalypso shows an address only once the wallet's creation, read from chain, ran our code with this passkey's signer alone, so a taken address is never handed to an employer and the worker makes a new pay key. What the squatter gains is an address nobody pays.
 - A wallet's creation is found through this browser's record or the sponsor's records. If none holds it and the relayer no longer knows the relay, the address stays hidden on every device, though its pay can still be read and withdrawn, and the worker can make a new pay key. If the sponsor's database is lost, every wallet with no birth saved in this browser reads the same way: addresses hide and workers are told to make a new pay key, while pay already received can still be read and withdrawn.

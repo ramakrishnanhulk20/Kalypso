@@ -9,6 +9,7 @@ import { StepButton } from "@/components/app/step-button";
 import { useAction } from "@/components/app/use-action";
 import { loadAccountant } from "@/components/app/loaders";
 import { useWallet } from "@/components/app/wallet-session";
+import { useProgressText } from "@/components/app/employer/progress-text";
 import { readAccountantId, saveAccountantId } from "./accountant-store";
 
 function CodeBox({ code }: { code: string }) {
@@ -36,6 +37,7 @@ function ShareRow({ label, value, what, mono = false }: { label: string; value: 
 export function KeyPanel() {
   const t = useTranslations("accountant.key");
   const wallet = useWallet();
+  const progressText = useProgressText();
   const [knownId, setKnownId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
@@ -44,12 +46,12 @@ export function KeyPanel() {
 
   const derive = useAction(async (onProgress) => {
     const lib = await loadAccountant();
-    return lib.deriveAccountantKey(wallet, onProgress);
+    return lib.deriveAccountantKey(wallet, progressText(onProgress));
   });
 
   const register = useAction(async (onProgress) => {
     const lib = await loadAccountant();
-    const registered = await lib.registerAccountantKey(wallet, knownId === undefined ? {} : { knownId }, onProgress);
+    const registered = await lib.registerAccountantKey(wallet, knownId === undefined ? {} : { knownId }, progressText(onProgress));
     saveAccountantId(wallet.address, registered.accountantId);
     setKnownId(registered.accountantId);
     return registered;

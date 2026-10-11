@@ -57,7 +57,7 @@ function Skeleton() {
 }
 
 type PayslipViewProps = {
-  /** One-based, as the judge sees it. */
+  /** One-based, as the person sees it. */
   worker: number;
   companyLabel: string;
   runId: bigint;

@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { Company } from "@kalypso/core";
 import type { RebuiltTreasury } from "@/lib/employer";
-import { ErrorNote } from "@/components/app/error-note";
 import { describeError } from "@/components/app/errors";
 import type { ShownError } from "@/components/app/errors";
 import { PageHeading } from "@/components/app/page-heading";
@@ -14,8 +14,9 @@ import { shortId } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
 import { contracts } from "@/lib/stack";
 import { AccountantFact } from "./accountant-fact";
-import { publiclyReadable, readAdminCompany } from "./company-read";
+import { keepsOwnBooks, publiclyReadable, readAdminCompany } from "./company-read";
 import type { SavedCompany } from "./company-store";
+import { ConsoleErrorNote } from "./console-error-note";
 import { PayrollPanel } from "./payroll-panel";
 import { TeamPanel } from "./team-panel";
 import { TreasuryPanel } from "./treasury-panel";
@@ -27,7 +28,7 @@ function short4(address: string): string {
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
 
-type Read = { phase: "loading" } | { phase: "done"; company: Company; publiclyReadable: boolean } | { phase: "failed"; error: ShownError };
+type Read = { phase: "loading" } | { phase: "done"; company: Company; publiclyReadable: boolean; ownBooks: boolean } | { phase: "failed"; error: ShownError };
 
 function Facts({ treasury, accountantId, readable }: { treasury: string; accountantId: number | null; readable: boolean }) {
   const t = useTranslations("employer.dashboard");
@@ -42,6 +43,21 @@ function Facts({ treasury, accountantId, readable }: { treasury: string; account
         {t("payrollContract", { short: shortId(contracts.payroll) })}
       </a>
     </div>
+  );
+}
+
+export function OwnBooksLine() {
+  const t = useTranslations("employer.dashboard");
+  return (
+    <p className="mt-4 font-sans text-[0.9375rem] text-muted">
+      {t.rich("ownBooks", {
+        link: (chunks) => (
+          <Link href="/accountant" className="link-draw text-[0.9375rem] text-fg">
+            {chunks}
+          </Link>
+        ),
+      })}
+    </p>
   );
 }
 
@@ -69,9 +85,9 @@ export function Dashboard({ company }: { company: SavedCompany }) {
     let current = true;
     setRead({ phase: "loading" });
     readAdminCompany(wallet, companyId)
-      .then(async (found) => ({ found, open: await publiclyReadable(found) }))
+      .then(async (found) => ({ found, open: await publiclyReadable(found), own: await keepsOwnBooks(wallet, found) }))
       .then(
-        ({ found, open }) => current && setRead({ phase: "done", company: found, publiclyReadable: open }),
+        ({ found, open, own }) => current && setRead({ phase: "done", company: found, publiclyReadable: open, ownBooks: own }),
         (err: unknown) => current && setRead({ phase: "failed", error: describeError(err) }),
       );
     return () => {
@@ -89,18 +105,21 @@ export function Dashboard({ company }: { company: SavedCompany }) {
         titleClassName="t-h2 mt-4 [overflow-wrap:anywhere]"
         titleStyle={TITLE_SIZE}
         lead={
-          <Facts
-            treasury={wallet.address}
-            accountantId={read.phase === "done" ? read.company.auditorId : null}
-            readable={read.phase === "done" && read.publiclyReadable}
-          />
+          <>
+            <Facts
+              treasury={wallet.address}
+              accountantId={read.phase === "done" ? read.company.auditorId : null}
+              readable={read.phase === "done" && read.publiclyReadable}
+            />
+            {read.phase === "done" && read.ownBooks ? <OwnBooksLine /> : null}
+          </>
         }
         leadClassName=""
         className="pb-[6vh]"
       />
       {read.phase === "failed" ? (
         <div>
-          <ErrorNote error={read.error} />
+          <ConsoleErrorNote error={read.error} />
           <button type="button" className="btn-ghost mt-4" onClick={() => setAttempt((n) => n + 1)}>
             {t("retry")}
           </button>

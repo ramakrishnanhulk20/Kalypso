@@ -260,29 +260,29 @@ export async function setUpCompany(
     const transactions: CompanySetUp["transactions"] = [];
     const done = (companyId: bigint): CompanySetUp => ({ companyId, treasury, label, accountantId, accountant, transactions });
 
-    p.say("Checking the accountant id on chain");
+    p.say("setup_checking_accountant");
     const key = await readAccountant(ctx, accountantId, accountant);
     if (!key.equals(confirmed)) throw new ConsoleError("ACCOUNTANT_KEY_CHANGED");
-    p.tick(`Accountant id ${accountantId} belongs to the accountant and holds the key you confirmed`);
+    p.tick("setup_accountant_ok", { id: String(accountantId) });
 
     if (known !== undefined) {
       const company = await companyOrNull(ctx, known);
       if (company === null) throw new ConsoleError("COMPANY_NOT_FOUND");
       if (!sameCompany(company, expected)) throw new ConsoleError("COMPANY_MISMATCH");
-      p.tick("The company's wallet is registered with the confidential token");
-      p.tick(`Company ${known} already exists on the payroll contract`);
+      p.tick("setup_treasury_ready");
+      p.tick("setup_company_exists", { id: known.toString() });
       return done(known);
     }
-    p.say("Looking for a company this wallet already set up");
+    p.say("setup_looking");
     const found = await findCreatedCompany(ctx, expected);
     if (found !== null) {
-      p.tick("The company's wallet is registered with the confidential token");
-      p.tick(`Company ${found} already exists on the payroll contract`);
+      p.tick("setup_treasury_ready");
+      p.tick("setup_company_exists", { id: found.toString() });
       return done(found);
     }
 
     if ((await ctx.ledger.xlmBalance(treasury)) === null) throw new ConsoleError("ACCOUNT_NOT_FOUND");
-    p.say("Sign the Kalypso key message twice in your wallet to make the company's private payroll key");
+    p.say("keys_company");
     const keys = await walletKeys(wallet, { domain: config.keyDomain, token: config.contracts.token });
 
     if (!(await treasuryRegistered(ctx, treasury, keys, accountantId))) {
@@ -290,9 +290,9 @@ export async function setUpCompany(
         what: "token registration",
         contractId: config.contracts.token,
         build: async (base) => {
-          p.say("Proving the company's registration in your browser");
+          p.say("setup_proving");
           const envelope = await (await ctx.prover()).proveRegister(keys);
-          p.say("Registering the company's wallet with the confidential token");
+          p.say("setup_registering");
           return buildCheckedRegister(ctx.port, base, {
             account: treasury,
             auditorId: accountantId,
@@ -305,12 +305,12 @@ export async function setUpCompany(
       });
       transactions.push({ what: "token registration", hash: sent.hash });
       await confirmOnChain(ctx, "The company's token registration", () => treasuryRegistered(ctx, treasury, keys, accountantId));
-      p.tick("The company's wallet is registered under the accountant's id", sent.hash);
+      p.tick("setup_registered", undefined, sent.hash);
     } else {
-      p.tick("The company's wallet is registered with the confidential token");
+      p.tick("setup_treasury_ready");
     }
 
-    p.say(`Creating ${label} on the payroll contract`);
+    p.say("setup_creating", { label });
     const created = await sendCall(ctx, wallet, {
       what: "create_company",
       contractId: config.contracts.payroll,
@@ -322,7 +322,7 @@ export async function setUpCompany(
       const company = await companyOrNull(ctx, companyId);
       return company !== null && sameCompany(company, expected);
     });
-    p.tick(`Company ${companyId} exists on the payroll contract`, created.hash);
+    p.tick("setup_created", { id: companyId.toString() }, created.hash);
     return done(companyId);
   });
 }

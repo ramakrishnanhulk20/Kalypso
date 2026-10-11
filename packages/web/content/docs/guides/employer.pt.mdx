@@ -1,32 +1,93 @@
 ---
 title: Empregador
-description: "Crie uma empresa, financie a tesouraria selada, convide a equipe e pague um mês a partir de uma planilha em /employer."
+description: "Crie uma empresa, cuide dos livros dela ou indique um contador, adicione USDC, convide a equipe e pague um mês a partir de uma planilha em /employer."
 ---
 
-O console do empregador em [/employer](/employer) funciona com o Freighter configurado na Testnet. A conta da sua carteira vira a tesouraria da empresa e paga todas as taxas desta tela, então financie-a primeiro com XLM de teste: o botão Fund do Freighter pede ao friendbot. Pegue antes o id e o endereço do seu contador: o [guia do contador](/docs/guides/accountant) mostra onde ele os encontra.
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+<Callout title="O que você vai fazer" style={{ "--callout-color": "var(--color-seal)" }}>
+1. Instale o Freighter e troque-o para a Test Net.
+2. Conecte e pegue dinheiro de teste grátis.
+3. Cuide dos seus próprios livros, ou adicione o seu contador.
+4. Crie a empresa e adicione USDC.
+5. Convide a sua equipe e pague-a.
+</Callout>
+
+Sua carteira é a conta bancária da empresa: a Kalypso paga dela os salários e todas as taxas de rede.
+
+## Antes de começar
+
+1. Instale o Freighter, a carteira da Stellar para o seu navegador, em [freighter.app](https://www.freighter.app).
+2. Clique no ícone do Freighter na barra de ferramentas do seu navegador. No topo do Freighter, clique no nome da rede (está escrito Main Net) e escolha Test Net.
+3. Volte para [/employer](/employer) e escolha **Conectar Freighter**.
+
+## Pegue dinheiro de teste grátis
+
+Depois de conectar, o cartão **Pegue dinheiro de teste grátis** dá a você 100 XLM de teste e 100 USDC de teste do faucet da Kalypso, com um clique cada. Pegue os XLM primeiro: eles também abrem a sua conta. Antes do primeiro USDC, o Freighter pede uma vez que você permita que a sua conta guarde USDC. O dinheiro de teste não tem valor nenhum. O botão Fund do Freighter também dá XLM de teste grátis.
+
+## Cuide dos seus próprios livros, ou adicione o seu contador
+
+A chave do seu contador é a que abre todos os valores que a empresa paga, para os impostos e o fechamento do ano. Em **Seu contador**, escolha um dos dois cartões:
+
+- **Eu mesmo cuido dos meus livros**, já escolhido no início. Esta mesma carteira vira o contador da empresa. Escolha **Criar minha chave de contador**, assine duas vezes no Freighter e depois aprove mais uma transação. A página diz "Sua chave de contador é o número" e o número. Depois você abre os seus livros na [página do contador](/accountant) com esta mesma carteira.
+- **Outra pessoa cuida dos livros**. O seu contador vai primeiro: ele abre a [página do contador](/accountant), registra a chave dele e envia a você o id do contador (o número que o registro dele gerou) e o endereço dele. O [guia do contador](/docs/guides/accountant) mostra onde ele encontra os dois. Digite o **Id do contador** e o **Endereço do contador**, depois escolha **Verificar**. Aparece um **Código de confirmação** de 16 caracteres em quatro grupos. Peça ao seu contador para ler o código na tela dele, e marque **O código confere** só se todos os caracteres forem iguais. Um código diferente significa que a chave de outra pessoa está sob esse id.
+
+Ainda sem contador e sem carteira? O [sandbox](/demo) faz todos os papéis por você.
+
+<Accordions>
+<Accordion title="Detalhes: como a chave do contador é verificada">
+A chave do contador fica no registro de auditores da Kalypso, a lista pública das chaves dos contadores, sob um número que é o id dela. As suas duas assinaturas são da mensagem de chave da Kalypso, e elas geram a chave; duas assinaturas idênticas provam que a sua carteira gera a mesma chave sempre, então a página do contador a reconstrói com a mesma carteira.
+
+Quando você cuida dos seus próprios livros, a Kalypso primeiro procura um número que este navegador viu a sua carteira registrar. Ela o reutiliza só se o registro disser que a sua carteira é a dona dele e que ele guarda a sua chave. Se não, ela registra a sua chave com a sua carteira como dona e pega o número da transação confirmada. Nos dois casos, ela então lê da cadeia o dono e a chave desse número, e só segue se os dois forem seus. Não há código de confirmação para marcar, porque você estaria comparando a sua própria tela com ela mesma.
+
+Com o id de outra pessoa, **Verificar** lê do registro o mesmo dono e a mesma chave, e o código são os primeiros 16 caracteres dessa chave. Antes que a conta da empresa seja registrada, a Kalypso lê os dois da cadeia de novo e recusa se algum tiver mudado.
+</Accordion>
+</Accordions>
 
 ## Crie a empresa
 
-1. Escolha **Conectar Freighter**.
-2. Em **Seu contador**, digite o **Id do contador** e o **Endereço do contador**, depois escolha **Verificar**. A Kalypso lê o registro de auditores e mostra um **Código de confirmação**: 16 caracteres em quatro grupos.
-3. Peça ao seu contador para ler o código que aparece na tela dele. Marque **O código confere** só se todos os caracteres forem iguais. Um código diferente significa que a chave de outra pessoa está sob esse id.
-4. Digite o **Nome mostrado nos holerites**, de 1 a 64 bytes. Qualquer pessoa pode lê-lo na cadeia.
-5. Escolha **Criar a empresa**. O Freighter pede que você assine a mensagem de chave da Kalypso duas vezes, o que gera a chave privada da tesouraria, e depois que aprove duas transações: o registro da tesouraria no token confidencial, provado no seu navegador, e a própria empresa. O painel abre com o id da empresa no topo.
+1. Digite o **Nome mostrado nos holerites**. Qualquer pessoa pode lê-lo.
+2. Escolha **Criar a empresa**. O Freighter pede que você assine duas vezes e depois aprove duas transações. O painel abre com o id da empresa no topo. Se você cuida dos seus próprios livros, ele também diz "Você cuida dos seus próprios livros. Abra-os na página do contador."
 
-## Financie a tesouraria
+<Accordions>
+<Accordion title="Detalhes: o que Criar a empresa faz">
+O nome pode ter de 1 a 64 bytes. Em letras e dígitos simples, um byte é um caractere, e o contador abaixo da caixa conta bytes.
 
-6. Em **Tesouraria**, em **Adicionar fundos**, digite um **Valor (USDC)** e escolha **Adicionar à tesouraria**. O Freighter aprova uma trustline de USDC na primeira vez, depois um depósito e uma mesclagem. O saldo selado então aparece, aberto no seu navegador com a sua chave. O valor do depósito é público, então ele mostra mais ou menos quanto a folha custa.
+As duas assinaturas são de novo da mensagem de chave da Kalypso, desta vez para a tesouraria. Elas geram a chave privada da tesouraria, e duas assinaturas idênticas provam que a sua carteira reconstrói a mesma chave sempre. A primeira transação registra a tesouraria no token confidencial sob o id do contador, com uma prova feita no seu navegador. Esse registro nunca pode passar para outro id. A segunda cria a empresa no contrato de folha de pagamento, indicando o contador dela.
+</Accordion>
+</Accordions>
 
-## Convide a equipe
+## Adicione USDC
 
-7. Em **Equipe**, cole os **Endereços dos funcionários, um por linha**, até 50, e escolha **Convidar**. Cada endereço é uma transação própria, e cada linha termina como convidado, já convidado, já entrou, recusado ou não enviado.
-8. Envie a cada funcionário o **Link do convite**. Um funcionário que se cadastra com Face ID recebe um endereço novo na tela dele: convide esse endereço, e ele entra pelo mesmo link. Só funcionários que já entraram podem ser pagos.
+3. Em **Tesouraria**, em **Adicionar fundos**, digite um **Valor (USDC)** e escolha **Adicionar à tesouraria**. O Freighter pede que você aprove cada etapa. O saldo então aparece, aberto no seu navegador com a sua chave. O valor que você adiciona é público, então ele mostra mais ou menos quanto a folha custa.
 
-## Pague um mês
+   Ainda sem USDC? Use o cartão **Pegue dinheiro de teste grátis** no topo da página.
 
-9. Em **Rodar a folha**, escolha o **Mês** e o **Ano**.
-10. Solte o CSV na caixa ou escolha **Colar em vez disso**. Cada linha tem um endereço, um valor e um nome opcional, até 500 linhas mais uma linha de cabeçalho. Os valores no arquivo sempre usam ponto como separador decimal e nenhum separador de milhar (1250.50, nunca 1.250,50), seja qual for o idioma da página. Os problemas são listados por linha, e a prévia mostra cada valor e o total.
-11. Escolha **Aprovar e pagar**. O Freighter aprova uma transação para abrir o ciclo, uma a cada dois funcionários e uma para encerrá-lo. Seu navegador prova cada pagamento antes. Cada linha termina como pago, já pago ou falhou, e "Ciclo encerrado" aparece quando todas estão pagas.
+<Accordions>
+<Accordion title="Detalhes: trustline, depósito e mesclagem">
+- Uma trustline permite que a sua conta guarde USDC. Você a aprova uma única vez, na primeira.
+- O depósito leva USDC da sua conta para a tesouraria selada.
+- A mesclagem deixa o depósito disponível para uso.
+- As assinaturas da chave são as duas assinaturas idênticas da mensagem de chave da Kalypso. Com elas nasce a chave privada da sua tesouraria.
+</Accordion>
+</Accordions>
+
+## Convide a sua equipe
+
+4. Em **Equipe**, cole os **Endereços dos funcionários, um por linha**, até 50, e escolha **Convidar**. Cada endereço é uma transação própria, e cada linha termina como convidado, já convidado, já entrou, recusado ou não enviado.
+5. A caixa **Link do convite** fica em **Equipe**, abaixo da lista. Envie esse link a cada funcionário. Um funcionário que se cadastra com Face ID recebe um endereço novo na tela dele: convide esse endereço, e ele entra pelo mesmo link. Só funcionários que já entraram podem ser pagos.
+
+## Pague-os
+
+6. Em **Rodar a folha**, escolha o **Mês** e o **Ano**.
+7. Solte o CSV na caixa ou escolha **Colar em vez disso**. Cada linha tem um endereço, um valor e um nome opcional, até 500 linhas mais uma linha de cabeçalho. Os valores no arquivo sempre usam ponto como separador decimal e nenhum separador de milhar (1250.50, nunca 1.250,50), seja qual for o idioma da página. Os problemas são listados por linha, e a prévia mostra cada valor e o total.
+8. Escolha **Aprovar e pagar**. Cada linha termina como pago, já pago ou falhou, e "Ciclo encerrado" aparece quando todas estão pagas.
+
+<Accordions>
+<Accordion title="Detalhes: o que Aprovar e pagar envia">
+O Freighter aprova uma transação para abrir o ciclo, uma a cada dois funcionários e uma para encerrá-lo. Seu navegador prova cada pagamento antes, então o valor é verificado sem ser mostrado. O contrato guarda uma marca de pagamento por funcionário e por ciclo, então ninguém é pago duas vezes.
+</Accordion>
+</Accordions>
 
 ## Em outro navegador
 
@@ -36,7 +97,7 @@ Sua lista de empresas fica neste navegador. Em um novo, digite o id em **Abrir u
 
 As mensagens que você mais provavelmente vai encontrar:
 
-- "A conta desta carteira ainda não existe na testnet." Financie-a com o friendbot.
+- "A conta desta carteira ainda não existe na testnet." Pegue XLM de teste grátis com o cartão **Pegue dinheiro de teste grátis**, ou com o botão Fund do Freighter.
 - "Este id de contador pertence a um endereço diferente do informado." Confira os dois com o seu contador.
 - "Esta carteira já está registrada no token confidencial com outro id de contador, e isso nunca pode mudar." Use uma carteira nova.
 - "O arquivo lista mais funcionários do que os que entraram na empresa." Espere até que cada um tenha entrado.
@@ -45,4 +106,4 @@ As mensagens que você mais provavelmente vai encontrar:
 
 ## O que você vê e o que não vê
 
-Você vê o saldo selado da tesouraria e os valores do seu próprio arquivo, nunca o saldo de um funcionário. A chave do seu contador abre todos os valores que você paga e o saldo da tesouraria depois de cada pagamento, e não consegue mover dinheiro. Desconhecidos veem que a sua tesouraria pagou cada funcionário e quando, nunca quanto. A Kalypso nunca guarda as suas chaves.
+Você vê o saldo selado da tesouraria e os valores do seu próprio arquivo, nunca o saldo de um funcionário. A chave do seu contador abre todos os valores que você paga e o saldo da tesouraria depois de cada pagamento, e não consegue mover dinheiro. Quando você cuida dos seus próprios livros, essa chave é sua. Desconhecidos veem que a sua tesouraria pagou cada funcionário e quando, nunca quanto. A Kalypso nunca guarda as suas chaves.

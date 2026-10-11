@@ -1,5 +1,5 @@
 import type { Company } from "@kalypso/core";
-import { getCompany, isPayrollError, PayrollErrorCode } from "@kalypso/core";
+import { getCompany, getOwnerOf, isPayrollError, PayrollErrorCode } from "@kalypso/core";
 import { ShownMessage } from "@/components/app/errors";
 import { loadEmployer } from "@/components/app/loaders";
 import type { WalletPort } from "@/lib/wallet/port";
@@ -35,4 +35,19 @@ export async function readAdminCompany(wallet: WalletPort, companyId: bigint): P
 export async function publiclyReadable(company: Company): Promise<boolean> {
   const lib = await loadEmployer();
   return lib.isPublishedDemoAccountant(lib.consoleContext().config.contracts.auditor, company.auditorId);
+}
+
+/**
+ * True when the registry, read now, names this wallet as the owner of the company's accountant id,
+ * so this wallet keeps the books (C47). The company's recorded accountant is not enough: an id can
+ * change hands after the company was created. A read that fails answers false, so nothing is claimed.
+ */
+export async function keepsOwnBooks(wallet: WalletPort, company: Company): Promise<boolean> {
+  try {
+    const lib = await loadEmployer();
+    const { port, config } = lib.consoleContext();
+    return (await getOwnerOf(port, config.contracts.auditor, company.auditorId)) === wallet.address;
+  } catch {
+    return false;
+  }
 }

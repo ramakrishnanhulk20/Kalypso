@@ -26,6 +26,8 @@ export function DemoApp() {
   const locale = useLocale();
   const [view, setView] = useState<View>("boot");
   const [result, setResult] = useState<SandboxResult | null>(null);
+  // True when the result on screen was saved by an earlier visit, not run just now.
+  const [returning, setReturning] = useState(false);
   const [engine, setEngine] = useState<Engine | null>(null);
   const [run, dispatch] = useReducer(reduceRun, FRESH_RUN);
   const salaries = useRef<Salaries | null>(null);
@@ -58,6 +60,7 @@ export function DemoApp() {
         setEngine(loaded);
         if (finished !== null) {
           setResult(finished);
+          setReturning(true);
           setView("result");
           return;
         }
@@ -102,6 +105,7 @@ export function DemoApp() {
         if (!mounted.current || stop.signal.aborted) return;
         setEngine(loaded);
         dispatch({ type: "stop" });
+        setReturning(false);
         setResult(finished);
         setView("result");
       } catch (err) {
@@ -126,8 +130,8 @@ export function DemoApp() {
     if (salaries.current) void runWith(salaries.current);
   }, [runWith]);
 
+  // The Start over buttons ask in the page first, so this runs only once the person has said yes.
   const startOver = useCallback(async () => {
-    if (!window.confirm(t("confirmStartOver"))) return;
     controller.current?.abort();
     try {
       (await loadEngine()).reset();
@@ -137,14 +141,15 @@ export function DemoApp() {
     salaries.current = null;
     dispatch({ type: "clear" });
     setResult(null);
+    setReturning(false);
     setView("intro");
-  }, [t]);
+  }, []);
 
   return (
     <div className="mx-auto w-full max-w-[1240px]" style={{ minHeight: "60vh" }}>
       {view === "intro" ? <Intro onStart={start} /> : null}
       {view === "run" ? <RunView run={run} onResume={again} onTryAgain={again} onStartOver={startOver} /> : null}
-      {view === "result" && result && engine ? <ResultView result={result} engine={engine} onStartOver={startOver} /> : null}
+      {view === "result" && result && engine ? <ResultView result={result} engine={engine} returning={returning} onStartOver={startOver} /> : null}
     </div>
   );
 }

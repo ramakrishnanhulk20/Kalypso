@@ -36,7 +36,7 @@ Both of our contracts were built by GitHub Actions from a release tag, and each 
 stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
 ```
 
-It answers with `.github/workflows/release.yml` at tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, built on a GitHub-hosted runner. The question it answers: which GitHub Actions run, in which repository, at which tag and commit, built the exact code running at this address. It does not judge the source itself, which is public at that commit.
+It answers with `.github/workflows/release.yml` at tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, built on a GitHub-hosted runner. The question it answers: which GitHub Actions run, in which repository, at which tag and commit, built the exact code running at this address. It does not assess the source itself, which is public at that commit.
 
 The same command with the registry's id looks up the attestation by the registry's code hash. Run on 9 October 2026, it named tag `v0.1.1`, because release v0.1.1 built the same bytes as v0.1.0.
 
@@ -61,7 +61,7 @@ After the last step the verifier holds no admin, no manager and no role at all. 
 | withdraw (1) | `d800122c23d7216ead4f3d7c70c84fd39db37d4f7743659b7d6bf05674ce5c09` |
 | transfer (2) | `b9c6d437368efc5343d33be20b3455840b0b66ae7ad430bebc75c93a172b173c` |
 
-`npm run check:testnet` reads all of this from ledger entries, not from events, and simulates the deployer trying to register or update a key: both fail with `Error(Contract, #2000)`. It also reads the token's code on chain and confirms it has no setter for its verifier, registry or asset and cannot replace itself, and that neither of our contracts has an admin or upgrade function. The command is in [Getting started](/docs/getting-started#check-the-stack-from-chain-state).
+`npm run check:testnet` reads all of this from ledger entries, not from events, and simulates the deployer trying to register or update a key: both fail with `Error(Contract, #2000)`. It also reads the token's code on chain and confirms it has no setter for its verifier, registry or asset and cannot replace itself, and that neither of our contracts has an admin or upgrade function. The command is on [Developers](/docs/developers#check-the-stack-from-chain-state).
 
 ## Public interface
 
@@ -126,7 +126,7 @@ A failed call shows up as `Error(Contract, #n)`. Any failure undoes the whole ca
 
 ### Server
 
-`POST /api/sponsor` and `GET /api/sponsor/status` (fees for workers' own transactions, never an open relay), `POST /api/sponsor/birth` and `POST /api/sponsor/birth/lookup` (where a passkey wallet's creation transaction can be found; the browser checks it on chain itself), and the archive under `/api/archive`: its health check at `/api/archive/v1/health` and its `/v1/...` endpoints, compatible with the confidential SDK's indexer clients. Two of them serve the payroll contract's events: `GET /api/archive/v1/payroll/{contract}/companies/{companyId}/events` for one company, and `GET /api/archive/v1/payroll/{contract}/accounts/{account}/events` for the events that name one worker, which is how a worker on a new device finds the companies they joined. Both run as routes of the same Next.js app as the screens.
+`POST /api/sponsor` and `GET /api/sponsor/status` (fees for workers' own transactions, never an open relay), `POST /api/sponsor/birth` and `POST /api/sponsor/birth/lookup` (where a passkey wallet's creation transaction can be found; the browser checks it on chain itself), `POST /api/faucet` (the testnet faucet: 100 test XLM or 100 test USDC to a wallet, once per wallet per asset per day, at most six claims a day per IP and 500 a day in all), and the archive under `/api/archive`: its health check at `/api/archive/v1/health` and its `/v1/...` endpoints, compatible with the confidential SDK's indexer clients. Two of them serve the payroll contract's events: `GET /api/archive/v1/payroll/{contract}/companies/{companyId}/events` for one company, and `GET /api/archive/v1/payroll/{contract}/accounts/{account}/events` for the events that name one worker, which is how a worker on a new device finds the companies they joined. Both run as routes of the same Next.js app as the screens.
 
 ## What each action costs
 

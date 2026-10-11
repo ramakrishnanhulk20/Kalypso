@@ -6,6 +6,7 @@ import {
   type ArchiveContext,
   type Config,
   type Db,
+  type FaucetContext,
   type IngestCronContext,
   type SponsorContext,
   type SponsorStatusContext,
@@ -20,6 +21,7 @@ export interface ServerContexts {
   sponsorStatus: SponsorStatusContext;
   sponsorBirth: WalletBirthRecordContext;
   sponsorBirthLookup: WalletBirthLookupContext;
+  faucet: FaucetContext;
   archive: ArchiveContext;
   ingest: IngestCronContext;
 }
@@ -39,7 +41,7 @@ const bootLog = createLogger([]);
  * One connection pool per role, opened lazily by the driver on first query.
  * The archive reads through the read-only API role, and the session is
  * read-only on top of that; every write (ingest, the archive's catch-up, the
- * sponsor's counters) goes through the ingest role.
+ * sponsor's and the faucet's counters) goes through the ingest role.
  */
 async function databases(cfg: Config, memoryDb: boolean): Promise<{ ingest: Db; api: Db }> {
   // Literal process.env.NODE_ENV on purpose: a production build folds the
@@ -64,6 +66,7 @@ async function wire(cfg: Config, memoryDb: boolean): Promise<ServerContexts> {
     sponsorStatus: { cfg, db: ingest, log },
     sponsorBirth: { cfg, db: ingest, rpc, log },
     sponsorBirthLookup: { cfg, db: ingest, log },
+    faucet: { cfg, db: ingest, rpc, log },
     archive: { cfg, db: { ingest, api }, rpc, log, basePath: ARCHIVE_BASE_PATH },
     ingest: { cfg, db: ingest, rpc, log },
   };

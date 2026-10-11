@@ -1,0 +1,82 @@
+---
+title: "开发者"
+description: "克隆仓库，运行所有测试套件，并在终端里对照 testnet 上的线上合约检查每一项说法。"
+---
+
+你需要 Git、Node.js 24（服务器需要 24；testnet 脚本需要 22.9 或更高版本）、用于合约的 Rust 工具链（CI 使用 Rust 1.99.0），以及用于构建证明检查的 [stellar CLI](https://github.com/stellar/stellar-cli) 28.1.0。
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/Kalypso.git
+cd Kalypso
+```
+
+下面每个命令块都从仓库根目录开始。
+
+## 运行测试
+
+10 月 11 日，测试套件共有 115 个薪酬合约测试和 43 个审计密钥登记表测试（`cargo test`）、560 个 core 测试（行覆盖率 98.47%）、352 个服务器测试（98.31%）、674 个网页应用测试和 11 个 testnet 脚本测试，总计 1,755 个。服务器的 352 个测试还会通过生产环境的 Postgres 驱动再运行一遍，命令是 `npm run test:wire`。
+
+```bash
+cd packages/contracts && cargo test
+```
+
+```bash
+cd packages/core && npm install && npm test
+```
+
+```bash
+cd packages/server && npm install && npm test
+```
+
+```bash
+cd packages/server && npm run test:wire
+```
+
+```bash
+cd packages/web && npm install && npm test
+```
+
+```bash
+cd packages/contracts/scripts && npm ci && npm test
+```
+
+## 检查线上的薪酬合约是否来自这个仓库
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+它的回答是：`.github/workflows/release.yml`，标签 `v0.1.1`，提交 `03dea9094ce7225fbe15845d2e265561c67b562c`，构建于 GitHub 托管的运行器上。
+
+## 从链上状态检查整套系统 [#check-the-stack-from-chain-state]
+
+`check:testnet` 读取链上状态并运行 18 项检查：没有人（包括我们）能改变验证器接受哪些证明；我们的两份合约都没有管理员或升级路径；链上的代码就是已发布的代码；每份合约在归档之前至少还有 14 天。它需要 v0.1.1 版本的薪酬合约和 v0.1.0 版本的审计密钥登记表，各放在自己的文件夹里：
+
+```bash
+mkdir -p release/v0.1.1 release/v0.1.0
+curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
+curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
+cd packages/contracts/scripts && npm ci
+npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
+```
+
+同样的文件在[发布页面](https://github.com/ramakrishnanhulk20/Kalypso/releases)。通过的运行会以 `18 of 18 checks passed. RESULT: PASS` 结束。
+
+## 攻击示例公司
+
+`prove:testnet` 在 testnet 上攻击示例公司的各项承诺，并打印出每次攻击是被什么挡下的。它运行 13 项检查，不需要任何密钥。
+
+```bash
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
+```
+
+没有种子的私有文件时，金额用已公布的演示会计密钥来检查，P10 的员工部分会被跳过，所以陌生人的运行以 12 项通过、1 项跳过结束。历史检查读取 RPC，而 RPC 只保留大约最近 7 天。上面的 `--archive` 参数从 Kalypso 的线上事件归档读取更早的账本，所以过了这个窗口，历史检查仍然有效；它的健康状况公开在 [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health)。最近一次完整运行在[攻击测试](/docs/security/attack-run)。
+
+## 让整套系统保持存活
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
+```
+
+这会延长全部四份合约及其代码的存储寿命，默认 60 天（用 `-- --days <n>` 修改），这样在你和其他访客查看它期间没有一份会被归档。任何人都可以为延长付费，它不会改变其他任何东西。它从 `packages/contracts/.stellar` 里由 `DEPLOYER`（默认 `kalypso-deployer`）指定的 stellar CLI 身份付费，这个身份必须存在并持有 testnet XLM。任何一份合约剩余不足 14 天，`check:testnet` 就会失败。

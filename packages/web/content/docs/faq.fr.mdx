@@ -1,6 +1,6 @@
 ---
 title: "FAQ"
-description: "Des réponses directes aux questions que les entreprises et les jurys posent d'abord sur Kalypso."
+description: "Des réponses directes aux questions que les entreprises et les visiteurs posent d'abord sur Kalypso."
 ---
 
 ## Qui peut voir les salaires ?
@@ -17,7 +17,7 @@ Celui qui la détient peut lire chaque montant jamais chiffré pour elle, pour t
 
 ## Et si un salarié perd sa clé ?
 
-La clé d'un salarié n'est pas un fichier qu'il peut perdre. Avec Freighter, elle est dérivée de la signature par le portefeuille du message de clé de Kalypso, donc le même portefeuille reconstruit la même clé sur n'importe quel appareil. Avec Face ID, elle est dérivée de la clé d'accès, donc tout appareil qui détient la même clé d'accès la reconstruit. Si le salarié perd le portefeuille ou la clé d'accès elle-même, personne ne peut récupérer l'argent, car Kalypso n'a pas d'administrateur qui pourrait le déplacer ou le réémettre. La paie reste sur la chaîne, liée à ce compte.
+La clé d'un salarié n'est pas un fichier qu'il peut perdre. Avec Freighter, elle est créée à partir de la signature par le portefeuille du message de clé de Kalypso, donc le même portefeuille reconstruit la même clé sur n'importe quel appareil. Avec Face ID, elle est créée à partir de la clé d'accès, donc tout appareil qui détient la même clé d'accès la reconstruit. Si le salarié perd le portefeuille ou la clé d'accès elle-même, personne ne peut récupérer l'argent, car Kalypso n'a pas d'administrateur qui pourrait le déplacer ou le réémettre. La paie reste sur la chaîne, liée à ce compte.
 
 ## Kalypso peut-il geler ou déplacer de l'argent ?
 
@@ -25,11 +25,11 @@ Non. Ni le contrat de paie ni le registre d'audit n'ont d'administrateur ni de m
 
 ## Pourquoi Stellar ?
 
-Le jeton confidentiel d'OpenZeppelin, qui cache les soldes et les montants derrière des preuves à divulgation nulle de connaissance tout en laissant un auditeur les lire, est conçu pour Stellar, et la Stellar Development Foundation cite la paie comme un usage. L'USDC est émis nativement sur Stellar, un paiement coûte une fraction de XLM, et les ancres permettent de retirer des USDC en monnaie locale. Le contrat de paie de Kalypso est bâti autour de ce jeton : sans lui, l'appel de paie n'a rien à garder privé.
+Le jeton confidentiel d'OpenZeppelin, qui cache les soldes et les montants derrière des preuves à divulgation nulle de connaissance tout en laissant un auditeur les lire, est conçu pour Stellar, et la Stellar Development Foundation cite la paie comme un usage. L'USDC est émis nativement sur Stellar, un paiement coûte une fraction de XLM, et les ancres (des sociétés qui changent les USDC en monnaie locale) permettent de les retirer. Le contrat de paie de Kalypso est bâti autour de ce jeton : sans lui, l'appel de paie n'a rien à garder privé.
 
 ## Pourquoi seulement le testnet ?
 
-Le jeton confidentiel, ses circuits et son vérificateur viennent d'une révision récente d'OpenZeppelin qui n'a pas été auditée, et Kalypso lui-même est auto-audité, non audité par un cabinet de sécurité. Les vrais salaires devraient attendre les deux. Tout le reste sur testnet est réel : de vrais contrats, de vraies preuves et de vrais paiements chiffrés, en USDC de test.
+Le jeton confidentiel, ses circuits et son vérificateur viennent d'une révision récente d'OpenZeppelin qui n'a pas été auditée, et Kalypso lui-même est auto-audité, non audité par un cabinet de sécurité. Kalypso fonctionne aujourd'hui sur le réseau de test de Stellar. Les vrais salaires attendent le réseau principal et un audit de sécurité externe. Tout le reste sur testnet est réel : de vrais contrats, de vraies preuves et de vrais paiements chiffrés, en USDC de test.
 
 ## Combien coûte un cycle ?
 
@@ -41,12 +41,12 @@ Personne n'est payé deux fois et rien n'est perdu. Le contrat garde un indicate
 
 ## Comment les salariés retirent-ils leur argent ?
 
-En deux étapes sur le portail salarié. D'abord le salarié déplace sa paie de son solde scellé vers son compte de retrait, sous forme d'USDC en clair. Ensuite il retire l'argent auprès de l'ancre de test de la SDF, sur sa propre page, ouverte dans une fenêtre contextuelle. Kalypso ne construit le paiement USDC de l'ancre qu'à partir de l'enregistrement de l'ancre elle-même, et affiche le montant, la destination et le mémo avant que le salarié l'approuve. Le montant du retrait est public, donc un salarié qui retire exactement une fiche de paie révèle cette fiche de paie, et l'ancre voit ce qui est retiré. Sur testnet, aucun argent réel ne bouge. Retirer vers une vraie banque exigerait une ancre sur le mainnet, et Kalypso ne tourne que sur testnet.
+En deux étapes sur le portail salarié. D'abord le salarié déplace sa paie de son solde scellé vers son compte de retrait, sous forme d'USDC en clair. Ensuite il retire l'argent auprès de l'ancre de test de Stellar, une banque d'entraînement où des informations inventées suffisent, sur sa propre page, ouverte dans une fenêtre contextuelle. Kalypso ne construit le paiement USDC de l'ancre qu'à partir de l'enregistrement de l'ancre elle-même, et affiche le montant, la destination et le mémo avant que le salarié l'approuve. Le montant du retrait est public, donc un salarié qui retire exactement une fiche de paie révèle cette fiche de paie, et l'ancre voit ce qui est retiré. Sur testnet, aucun argent réel ne bouge. Retirer vers une vraie banque exigerait une ancre sur le mainnet, et Kalypso ne tourne que sur testnet.
 
 ## Les salariés ont-ils besoin d'un portefeuille crypto ?
 
-Non. Un salarié peut se connecter avec Face ID, une empreinte ou le code de l'appareil. Kalypso crée pour lui un portefeuille intelligent à clé d'accès, et le sponsor des frais paie sa création et tous les frais d'adhésion, donc le portefeuille n'a jamais besoin de XLM. La clé du salarié vient de la sortie PRF de la clé d'accès, et une clé d'accès qui ne peut pas en fournir est refusée, jamais affaiblie. La prise en charge de PRF varie selon les téléphones, les ordinateurs et les fournisseurs de clés d'accès. Kalypso a fait tourner le chemin par clé d'accès de bout en bout dans Chrome avec un authentificateur virtuel qui prend en charge PRF, et ne l'a pas vérifié sur chaque marque d'appareil. Un salarié peut utiliser Freighter à la place.
+Non. Un salarié peut se connecter avec Face ID, une empreinte ou le code de l'appareil. Kalypso crée pour lui un portefeuille intelligent à clé d'accès, et le sponsor des frais paie sa création et tous les frais d'adhésion, donc le portefeuille n'a jamais besoin de XLM. Si la clé d'accès d'un salarié ne peut pas créer sa clé, il doit l'enregistrer dans le Gestionnaire de mots de passe de Google ou le trousseau iCloud, utiliser son téléphone ou utiliser Freighter à la place. Kalypso refuse une telle clé d'accès plutôt que de l'affaiblir (la capacité manquante s'appelle PRF). La prise en charge varie selon les téléphones, les ordinateurs et les fournisseurs de clés d'accès. Kalypso a fait tourner le chemin par clé d'accès de bout en bout dans Chrome avec un authentificateur virtuel qui a cette capacité, et ne l'a pas vérifié sur chaque marque d'appareil.
 
 ## Puis-je vérifier tout cela moi-même ?
 
-Oui, avec trois commandes et sans clé Kalypso : l'une montre quelle version a construit le code sur la chaîne, l'une lit l'état de la chaîne pour confirmer que personne ne peut changer les règles, et l'une attaque la démonstration en direct et affiche ce qui a arrêté chaque attaque. Elles sont dans [Prise en main](/docs/getting-started#developer-path), et la [vue d'ensemble de la sécurité](/docs/security/overview) relie chaque affirmation au contrôle qui la prouve.
+Oui, avec trois commandes et sans clé Kalypso : l'une montre quelle version a construit le code sur la chaîne, l'une lit l'état de la chaîne pour confirmer que personne ne peut changer les règles, et l'une attaque la démonstration en direct et affiche ce qui a arrêté chaque attaque. Elles sont sur [Développeurs](/docs/developers), et la [vue d'ensemble de la sécurité](/docs/security/overview) relie chaque affirmation au contrôle qui la prouve.

@@ -1,6 +1,6 @@
 ---
 title: Perguntas frequentes
-description: "Respostas diretas às perguntas que empresas e jurados fazem primeiro sobre a Kalypso."
+description: "Respostas diretas às perguntas que empresas e visitantes fazem primeiro sobre a Kalypso."
 ---
 
 ## Quem pode ver os salários?
@@ -17,7 +17,7 @@ Quem a tiver pode ler para sempre todos os valores já criptografados para ela, 
 
 ## E se um funcionário perder a chave?
 
-A chave de um funcionário não é um arquivo que ele possa perder. Com o Freighter, ela é derivada da assinatura da mensagem de chave da Kalypso pela carteira, então a mesma carteira reconstrói a mesma chave em qualquer dispositivo. Com Face ID, ela é derivada da chave de acesso, então qualquer dispositivo que tenha a mesma chave de acesso a reconstrói. Se o funcionário perder a carteira ou a própria chave de acesso, ninguém consegue recuperar o dinheiro, porque a Kalypso não tem administrador que possa movê-lo ou reemiti-lo. O pagamento fica na cadeia, preso àquela conta.
+A chave de um funcionário não é um arquivo que ele possa perder. Com o Freighter, ela é criada a partir da assinatura da mensagem de chave da Kalypso pela carteira, então a mesma carteira reconstrói a mesma chave em qualquer dispositivo. Com Face ID, ela é criada a partir da chave de acesso, então qualquer dispositivo que tenha a mesma chave de acesso a reconstrói. Se o funcionário perder a carteira ou a própria chave de acesso, ninguém consegue recuperar o dinheiro, porque a Kalypso não tem administrador que possa movê-lo ou reemiti-lo. O pagamento fica na cadeia, preso àquela conta.
 
 ## A Kalypso pode congelar ou mover dinheiro?
 
@@ -25,11 +25,11 @@ Não. Nem o contrato de folha de pagamento nem o registro de auditores têm admi
 
 ## Por que a Stellar?
 
-O token confidencial da OpenZeppelin, que esconde saldos e valores atrás de provas de conhecimento zero e ainda deixa um auditor lê-los, foi feito para a Stellar, e a Stellar Development Foundation lista a folha de pagamento como um uso dele. O USDC é emitido nativamente na Stellar, um pagamento custa uma fração de um XLM, e as âncoras permitem sacar USDC para a moeda local. O contrato de folha de pagamento da Kalypso é construído em torno desse token: sem ele, a chamada de pagamento não tem nada a manter privado.
+O token confidencial da OpenZeppelin, que esconde saldos e valores atrás de provas de conhecimento zero e ainda deixa um auditor lê-los, foi feito para a Stellar, e a Stellar Development Foundation lista a folha de pagamento como um uso dele. O USDC é emitido nativamente na Stellar, um pagamento custa uma fração de um XLM, e as âncoras (empresas que transformam USDC em moeda local) permitem sacá-lo. O contrato de folha de pagamento da Kalypso é construído em torno desse token: sem ele, a chamada de pagamento não tem nada a manter privado.
 
 ## Por que só na testnet?
 
-O token confidencial, seus circuitos e seu verificador vêm de uma revisão nova da OpenZeppelin que não foi auditada, e a própria Kalypso foi autoauditada, não auditada por uma empresa de segurança. Salários reais devem esperar pelas duas coisas. De resto, tudo na testnet é real: contratos reais, provas reais e pagamentos criptografados reais, em USDC de teste.
+O token confidencial, seus circuitos e seu verificador vêm de uma revisão nova da OpenZeppelin que não foi auditada, e a própria Kalypso foi autoauditada, não auditada por uma empresa de segurança. A Kalypso roda hoje na rede de teste da Stellar. Salários reais esperam pela rede principal e por uma auditoria de segurança externa. De resto, tudo na testnet é real: contratos reais, provas reais e pagamentos criptografados reais, em USDC de teste.
 
 ## Quanto custa um ciclo?
 
@@ -41,12 +41,12 @@ Ninguém é pago duas vezes e nada se perde. O contrato guarda uma marca de paga
 
 ## Como os funcionários sacam?
 
-Em dois passos no portal do funcionário. Primeiro o funcionário move o pagamento do saldo selado para a conta de saque, como USDC comum. Depois saca na âncora de teste da SDF, na própria página dela, aberta em um popup. A Kalypso monta o pagamento em USDC para a âncora apenas a partir do registro da própria âncora, e mostra o valor, o destino e o memo antes de o funcionário aprovar. O valor da retirada é público, então um funcionário que retira exatamente um holerite revela esse holerite, e a âncora vê o que é sacado. Na testnet, nenhum dinheiro de verdade se move. Sacar para um banco de verdade exigiria uma âncora na mainnet, e a Kalypso roda só na testnet.
+Em dois passos no portal do funcionário. Primeiro o funcionário move o pagamento do saldo selado para a conta de saque, como USDC comum. Depois saca na âncora de teste da Stellar, um banco de treino em que qualquer dado inventado serve, na própria página dela, aberta em um popup. A Kalypso monta o pagamento em USDC para a âncora apenas a partir do registro da própria âncora, e mostra o valor, o destino e o memo antes de o funcionário aprovar. O valor da retirada é público, então um funcionário que retira exatamente um holerite revela esse holerite, e a âncora vê o que é sacado. Na testnet, nenhum dinheiro de verdade se move. Sacar para um banco de verdade exigiria uma âncora na mainnet, e a Kalypso roda só na testnet.
 
 ## Os funcionários precisam de uma carteira cripto?
 
-Não. Um funcionário pode entrar com Face ID, impressão digital ou o PIN do dispositivo. A Kalypso cria uma carteira inteligente com chave de acesso para ele, e o patrocinador de taxas paga a criação e todas as taxas da entrada, então a carteira nunca precisa de XLM. A chave do funcionário vem da saída PRF da chave de acesso, e uma chave de acesso que não consegue fornecer uma é recusada, nunca enfraquecida. O suporte a PRF muda entre celulares, notebooks e provedores de chave de acesso. A Kalypso rodou o caminho da chave de acesso de ponta a ponta no Chrome com um autenticador virtual que tem suporte a PRF, e não foi testada em todas as marcas de dispositivo. Um funcionário pode usar o Freighter no lugar.
+Não. Um funcionário pode entrar com Face ID, impressão digital ou o PIN do dispositivo. A Kalypso cria uma carteira inteligente com chave de acesso para ele, e o patrocinador de taxas paga a criação e todas as taxas da entrada, então a carteira nunca precisa de XLM. Se a chave de acesso de um funcionário não consegue criar a chave dele, ele deve salvá-la no Gerenciador de Senhas do Google ou nas Chaves do iCloud, usar o celular ou usar o Freighter no lugar. A Kalypso recusa uma chave de acesso assim em vez de enfraquecê-la (a capacidade que falta se chama PRF). O suporte muda entre celulares, notebooks e provedores de chave de acesso. A Kalypso rodou o caminho da chave de acesso de ponta a ponta no Chrome com um autenticador virtual que tem essa capacidade, e não foi testada em todas as marcas de dispositivo.
 
 ## Posso conferir isso por conta própria?
 
-Sim, com três comandos e nenhuma chave da Kalypso: um mostra qual versão compilou o código na cadeia, um lê o estado da cadeia para confirmar que ninguém pode mudar as regras, e um ataca a demonstração ao vivo e imprime o que barrou cada ataque. Eles estão em [Primeiros passos](/docs/getting-started#developer-path), e a [visão geral de segurança](/docs/security/overview) liga cada afirmação à verificação que a comprova.
+Sim, com três comandos e nenhuma chave da Kalypso: um mostra qual versão compilou o código na cadeia, um lê o estado da cadeia para confirmar que ninguém pode mudar as regras, e um ataca a demonstração ao vivo e imprime o que barrou cada ataque. Eles estão em [Desenvolvedores](/docs/developers), e a [visão geral de segurança](/docs/security/overview) liga cada afirmação à verificação que a comprova.

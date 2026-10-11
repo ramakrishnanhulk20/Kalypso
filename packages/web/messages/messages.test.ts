@@ -1,16 +1,21 @@
 // Covers the four translations against the English file: every key exists with the same ICU
 // placeholders and plural branches, no value is left in English except the brand terms, and no
 // file carries the long dash (U+2014) or the doubled Chinese dash. Also covers the English file
-// against the libs' own lists of anchor statuses, worker error codes, sandbox steps and history
-// gaps (C56), and each anchor status against the anchor lib's own English sentence. Does NOT judge
-// the wording, or cover codes from libs that publish no list.
+// against the libs' own lists of anchor statuses, worker error codes, sandbox steps, history gaps,
+// faucet codes, console progress steps, join steps and failed-row reasons (C56), and each anchor
+// status against the anchor lib's own English sentence.
+// Does NOT assess the wording, or cover codes from libs that publish no list.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { HISTORY_GAP_REASONS } from "../lib/accountant/books";
+import { PROGRESS_STEPS } from "../lib/employer/progress";
+import { ROW_FAILURE_REASONS } from "../lib/employer/runs";
+import { FAUCET_CODES } from "../lib/faucet";
 import { SANDBOX_STEPS } from "../lib/sandbox/storage";
 import { CASH_OUT_STATUSES, STATUS_SENTENCES } from "../lib/worker/anchor";
 import { WORKER_ERROR_CODES } from "../lib/worker/errors";
+import { JOIN_STEP_KEYS } from "../lib/worker/join";
 import en from "./en.json";
 
 const LOCALES = ["es", "pt", "fr", "zh"] as const;
@@ -44,12 +49,13 @@ function languageNeutral(value: string): boolean {
 
 // Keys whose translation is, correctly, the English word: "Total", "Memo", "tx" and "s" read the
 // same in Spanish, Portuguese and French; French also keeps "Invitation" and the "open source"
-// loanword, and Brazilian Portuguese says "Status".
-const TOTALS = ["common.nav.docsShort", "landing.ledger.total", "landing.ledger.tx", "sandbox.card.total", "sandbox.run.seconds", "employer.payroll.total", "accountant.books.total"];
+// loanword, and Brazilian Portuguese says "Status". French and Portuguese both say "Menu". Spanish,
+// Portuguese and French say "Test" on the short testnet badge, where a longer word does not fit a phone.
+const TOTALS = ["landing.ledger.total", "landing.ledger.tx", "sandbox.card.total", "sandbox.run.seconds", "employer.payroll.total", "accountant.books.total"];
 const SAME_AS_ENGLISH: Record<(typeof LOCALES)[number], ReadonlySet<string>> = {
-  es: new Set([...TOTALS, "worker.confirm.memo"]),
-  pt: new Set([...TOTALS, "worker.confirm.memo", "employer.payroll.status"]),
-  fr: new Set([...TOTALS, "landing.hero.credit4", "worker.invite.label"]),
+  es: new Set([...TOTALS, "worker.confirm.memo", "common.testShort"]),
+  pt: new Set([...TOTALS, "worker.confirm.memo", "employer.payroll.status", "siteNav.menu", "common.testShort"]),
+  fr: new Set([...TOTALS, "landing.hero.credit4", "worker.invite.label", "siteNav.menu", "common.testShort"]),
   zh: new Set(),
 };
 
@@ -97,6 +103,10 @@ describe("messages/en.json", () => {
     ["errors.worker", WORKER_ERROR_CODES],
     ["sandbox.progress", SANDBOX_STEPS],
     ["worker.gaps", HISTORY_GAP_REASONS],
+    ["testFunds.errors", FAUCET_CODES],
+    ["progress", PROGRESS_STEPS],
+    ["worker.joinSteps", JOIN_STEP_KEYS],
+    ["errors.run", ROW_FAILURE_REASONS],
   ] as const)("has a sentence under %s for every entry in the lib's own list", (namespace, list) => {
     expect(list.length).toBeGreaterThan(0);
     expect(list.filter((entry) => !english.has(`${namespace}.${entry}`))).toEqual([]);

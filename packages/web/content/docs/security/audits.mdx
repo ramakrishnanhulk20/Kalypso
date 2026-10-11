@@ -9,22 +9,22 @@ Kalypso has not been audited by a security firm. It is self-audited. Everything 
 
 ### A threat model before the code
 
-The [threat model](/docs/security/threat-model) was written at the architecture gate on 7 October 2026, before any contract code. Its section C is the definition of done: a piece of the system is finished only when every invariant in C that applies to it is upheld and a test shows it. It started with 28 invariants (C1 to C28). Four later reviews added 28 more, so it now holds 56 (C1 to C56).
+The [threat model](/docs/security/threat-model) was written at the architecture gate on 7 October 2026, before any contract code. Its section C is the definition of done: a piece of the system is finished only when every invariant in C that applies to it is upheld and a test shows it. It started with 28 invariants (C1 to C28). Four later reviews added 28 more, and the testnet faucet added one, so it now holds 57 (C1 to C57).
 
 ### Attack tests for every claim
 
 Every claim in the threat model has a test that tries to break it. Thirteen of them run against the live showcase company on testnet in one command, `npm run prove:testnet`. The last full run, on 10 October 2026 at ledger 5119392 and commit 65155fe, read its history from the live archive and passed 13 of 13. Its output is on [Attack run](/docs/security/attack-run).
 
-The test suites on 11 October, every one passing, 1,550 tests in all:
+The test suites on 11 October, every one passing, 1,755 tests in all:
 
 | Suite | Tests | Line coverage |
 |---|---|---|
 | Payroll contract (`cargo test`) | 115 | |
 | Auditor registry (`cargo test`) | 43 | |
 | Core library | 560 | 98.47% |
-| Server | 316 | 97.99% |
-| Server, production driver (`npm run test:wire`) | the same 316 again | |
-| Web app | 505 | |
+| Server | 352 | 98.31% |
+| Server, production driver (`npm run test:wire`) | the same 352 again | |
+| Web app | 674 | |
 | Testnet scripts | 11 | |
 
 ### Static analysis
@@ -55,6 +55,10 @@ On 9 October 2026 a last review attacked the built screens, the server and the t
 - **No payslips on a new device.** A worker on a new device saw no payslips, because their companies came from the browser's notes. They now come from the payroll contract's own join events, and only companies the chain's roster confirms are kept.
 - **Smaller fixes.** A payslip whose company could not be read shows "Readers unknown". Totals are withheld over incomplete history (C53). One strict parser reads typed amounts, so "1,5" is refused (C54). Success messages come only from chain reads (C55).
 - **The production walk.** A production build behind local https, with a real Postgres-protocol database, ran the sandbox, Face ID sign-up, joining, payslips, cash-out at the anchor, a sign-in after cleared storage, and the employer and accountant pages. It raised no policy violations except one refused `eval` probe from bb.js, the proving library.
+
+### The testnet faucet
+
+On 11 October 2026 the testnet faucet (`POST /api/faucet`) added invariant C57. Its key signs only a faucet payout: one operation, from the faucet account, on testnet, with no memo and a capped fee, rebuilt from the transaction's bytes before it is signed. Each address may claim each asset once a day, each IP six times a day and the whole service 500 times a day, and a claim is called paid only after a chain read of its transaction. Its tests show the signer refusing a second operation, another destination, another amount, a memo or another network, and a second claim on the same day refused. A focused review then attacked the faucet itself. It found that an unconfirmed payout told people to try again, that one message covered four different limits (so people sharing an office connection could be told they had been paid when they had not), that the page stopped waiting before the server did, and that one request could log both a hash and an IP tag. All four were fixed, the signer now signs only a copy rebuilt from the transaction's bytes, and checks on the destination run before the faucet's lock. What it does not defend is someone with many IP addresses draining it, which costs only free test funds.
 
 ### Attested release builds
 

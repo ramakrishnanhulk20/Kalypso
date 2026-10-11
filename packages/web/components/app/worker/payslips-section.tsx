@@ -8,7 +8,7 @@ import { TxLink } from "@/components/app/tx-link";
 import { useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { StatusChip } from "@/components/key-lens/status";
 import { displayUsdc } from "@/lib/money";
-import { ReadersChip } from "./public-chip";
+import { PublicNote, ReadersChip, anyPubliclyReadable } from "./public-chip";
 import { RISE_HIDDEN, RiseList } from "./rise";
 import { cleanChainText, gapSentences } from "./text";
 import type { PayslipsState } from "./use-payslips";
@@ -158,6 +158,9 @@ export function PayslipsSection({ state, companies, onRetry }: { state: Payslips
           </div>
         ) : null}
 
+        {view !== null && slips.length > 0 && anyPubliclyReadable(slips.map((slip) => slip.companyId.toString()), companies) ? (
+          <PublicNote className="mb-4" />
+        ) : null}
         {view !== null && slips.length > 0 ? (
           <RiseList key={slips.map((slip) => slip.txHash).join()} className="grid gap-4 lg:grid-cols-2">
             {slips.map((slip) => (

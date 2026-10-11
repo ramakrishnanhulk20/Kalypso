@@ -118,7 +118,7 @@ describe("the worker's own audit key id", () => {
     const seen: JoinProgress[] = [];
     await expect(join(rt, worker, 3n, sponsor, (p) => seen.push(p))).rejects.toMatchObject({ code: "CHAIN_DISAGREES", hash: HASH });
     expect(readWorkerRecord(rt.storage, worker.address).auditorId).toBeNull();
-    expect(seen.some((p) => p.label.includes("belongs to you") || p.auditorId === 9)).toBe(false);
+    expect(seen.some((p) => p.key === "auditor_key_done" || p.key === "auditor_key_skipped" || p.auditorId === 9)).toBe(false);
   });
 
   it("is saved and reported once the registry says the worker owns it", async () => {
@@ -128,7 +128,7 @@ describe("the worker's own audit key id", () => {
     const seen: JoinProgress[] = [];
     await join(rt, worker, 3n, sponsor, (p) => seen.push(p)).catch(() => undefined);
     expect(readWorkerRecord(rt.storage, worker.address).auditorId).toBe(9);
-    expect(seen).toContainEqual(expect.objectContaining({ step: "auditor_key", state: "done", label: "Audit key 9 belongs to you", auditorId: 9 }));
+    expect(seen).toContainEqual(expect.objectContaining({ step: "auditor_key", state: "done", key: "auditor_key_done", values: { id: "9" }, auditorId: 9 }));
   });
 });
 

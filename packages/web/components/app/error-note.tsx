@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/i18n/errors";
 import { loadEmployer } from "./loaders";
 import { RebuildResult, useRecovery } from "./recovery";
 import { StepButton } from "./step-button";
 import { useAction } from "./use-action";
+import { ConfirmAsk } from "@/components/app/employer/inline-confirm";
+import { useProgressText } from "@/components/app/employer/progress-text";
 import type { ShownError } from "./errors";
 
 // The error's own message, and the way out when there is one: rebuild the treasury from the chain,
@@ -13,13 +16,16 @@ import type { ShownError } from "./errors";
 // only inside the dashboard.
 export function ErrorNote({ error }: { error: ShownError }) {
   const t = useTranslations("app");
+  const common = useTranslations("common");
+  const [askingClear, setAskingClear] = useState(false);
   const errorText = useErrorText();
   const recovery = useRecovery();
+  const progressText = useProgressText();
 
   const rebuild = useAction(async (onProgress) => {
     if (!recovery) throw new Error(t("noCompanyOpen"));
     const lib = await loadEmployer();
-    const result = await lib.rebuildTreasury(recovery.wallet, recovery.companyId, onProgress);
+    const result = await lib.rebuildTreasury(recovery.wallet, recovery.companyId, progressText(onProgress));
     recovery.onRebuilt(result);
     return result;
   });
@@ -29,10 +35,6 @@ export function ErrorNote({ error }: { error: ShownError }) {
     const lib = await loadEmployer();
     return lib.clearDamagedRecord(recovery.wallet, recovery.companyId);
   });
-
-  const askToClear = () => {
-    if (window.confirm(t("confirmClear"))) void clear.start();
-  };
 
   return (
     <div role="alert" data-error={error.code ?? error.kind} className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-3">
@@ -44,9 +46,23 @@ export function ErrorNote({ error }: { error: ShownError }) {
         </StepButton>
       ) : null}
       {recovery && error.damaged && clear.value === undefined ? (
-        <StepButton variant="ghost" action={clear} onClick={askToClear}>
-          {t("clearRecord")}
-        </StepButton>
+        askingClear ? (
+          <ConfirmAsk
+            question={t("confirmClear")}
+            confirmLabel={t("clearRecord")}
+            cancelLabel={common("keepIt")}
+            cancelRef={(node) => node?.focus()}
+            onConfirm={() => {
+              setAskingClear(false);
+              void clear.start();
+            }}
+            onCancel={() => setAskingClear(false)}
+          />
+        ) : (
+          <StepButton variant="ghost" action={clear} onClick={() => setAskingClear(true)}>
+            {t("clearRecord")}
+          </StepButton>
+        )
       ) : null}
 
       {rebuild.value ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import type { JoinProgress, JoinStep, WorkerSession } from "@/lib/worker";
 import { CopyButton } from "@/components/app/copy-button";
 import { ErrorNote } from "@/components/app/error-note";
@@ -78,18 +78,12 @@ export function JoinCard({
 }) {
   const t = useTranslations("worker.join");
   const steps = useTranslations("worker.joinSteps");
-  const locale = useLocale();
   const headingId = useId();
   const [rows, setRows] = useState<Row[]>([]);
   const [latest, setLatest] = useState<JoinStep | null>(null);
 
-  // The lib's own sentence in English; by step and state elsewhere, with the lib's words as the fallback.
-  const labelOf = (p: JoinProgress): string => {
-    const key = `${p.step}_${p.state}`;
-    if (locale === "en" || !steps.has(key)) return p.label;
-    const id = (p as { auditorId?: number }).auditorId;
-    return steps(key, id === undefined ? {} : { id });
-  };
+  // The lib names the step by id; its sentence comes from messages in the page's language.
+  const labelOf = (p: JoinProgress): string => steps(p.key, p.values ?? {});
 
   const join = useAction(async (onProgress) => {
     setRows([]);

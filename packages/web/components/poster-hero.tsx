@@ -1,20 +1,31 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { LocaleSwitcher } from "@/components/locale-switcher";
 import { NightSea } from "@/components/night-sea";
 import type { SeaUniforms } from "@/components/night-sea";
-import { SealMark } from "@/components/seal-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { scrollToLens } from "@/lib/lenis-instance";
-import { ATTACK_RUN_URL, REPO_URL } from "@/lib/links";
+import { SiteNav } from "@/components/site-nav/site-nav";
+import { getLenis, scrollToLens } from "@/lib/lenis-instance";
 
 gsap.registerPlugin(ScrollTrigger);
+
+// Lenis runs only when motion is allowed, so with it the jump glides on the page's own scroll.
+// Without it the browser scrolls: smoothly, or at once for a reader who asked for less motion.
+function seeItWork(event: MouseEvent<HTMLAnchorElement>) {
+  if (getLenis()) {
+    scrollToLens(event);
+    return;
+  }
+  const lens = document.getElementById("lens");
+  if (!lens) return;
+  event.preventDefault();
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  lens.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "start" });
+}
 
 // Entrance targets start invisible in the markup, so the server HTML never
 // flashes before the timeline takes over.
@@ -27,7 +38,6 @@ const EXPO_OUT = "expo.out";
 
 export function PosterHero() {
   const t = useTranslations("landing.hero");
-  const nav = useTranslations("common");
   const sectionRef = useRef<HTMLElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -35,7 +45,11 @@ export function PosterHero() {
   const eyebrowRef = useRef<HTMLParagraphElement>(null);
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const leadRef = useRef<HTMLParagraphElement>(null);
+  const usdcRef = useRef<HTMLParagraphElement>(null);
   const buttonsRef = useRef<HTMLDivElement>(null);
+  const seeRef = useRef<HTMLAnchorElement>(null);
+  const testRef = useRef<HTMLParagraphElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLParagraphElement>(null);
   const creditsRef = useRef<HTMLDivElement>(null);
   const cueRef = useRef<HTMLDivElement>(null);
@@ -48,7 +62,7 @@ export function PosterHero() {
     const letters = titleRef.current?.querySelectorAll("[data-letter]");
     if (!section || !letters) return;
 
-    const copyLines = [eyebrowRef.current, headlineRef.current, leadRef.current];
+    const copyLines = [eyebrowRef.current, headlineRef.current, leadRef.current, usdcRef.current];
     const reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
@@ -62,6 +76,9 @@ export function PosterHero() {
             ...letters,
             ...copyLines,
             buttonsRef.current,
+            seeRef.current,
+            testRef.current,
+            scrimRef.current,
             creditsRef.current,
             cueRef.current,
           ],
@@ -92,6 +109,7 @@ export function PosterHero() {
           },
           0.5,
         )
+        .to(scrimRef.current, { opacity: 1, duration: 0.9, ease: EXPO_OUT }, 1.0)
         .to(
           copyLines,
           { y: 0, opacity: 1, duration: 0.9, ease: EXPO_OUT, stagger: 0.08 },
@@ -102,6 +120,7 @@ export function PosterHero() {
           { y: 0, opacity: 1, duration: 0.9, ease: EXPO_OUT },
           1.25,
         )
+        .to([seeRef.current, testRef.current], { opacity: 1, duration: 0.9, ease: EXPO_OUT }, 1.33)
         .to([creditsRef.current, cueRef.current], { opacity: 1, duration: 0.8 }, 1.5);
 
       gsap
@@ -157,72 +176,23 @@ export function PosterHero() {
         }}
       />
 
-      <nav
-        ref={navRef}
-        aria-label={nav("nav.label")}
-        className="relative z-10 flex items-center justify-between px-[4vw] py-7"
-        style={HIDDEN}
-      >
-        <Link
-          href="/"
-          aria-label={nav("home")}
-          className="logo-link flex items-center gap-[10px]"
-        >
-          <SealMark size={28} />
-          <span
-            className="font-display text-[1.375rem] font-medium text-fg"
-            style={{
-              fontVariationSettings: '"opsz" 36',
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Kalypso
-          </span>
-        </Link>
-
-        <div className="hidden items-center gap-7 md:flex">
-          <a href="#lens" onClick={scrollToLens} className="link-draw text-[0.9375rem]">
-            {nav("nav.tryIt")}
-          </a>
-          <Link href="/demo" className="link-draw text-[0.9375rem]">
-            {nav("nav.sandbox")}
-          </Link>
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener"
-            className="link-draw text-[0.9375rem]"
-          >
-            {nav("nav.source")}
-          </a>
-          <a
-            href={ATTACK_RUN_URL}
-            target="_blank"
-            rel="noopener"
-            className="btn-ghost"
-            style={{ padding: "0.5rem 0.9rem", fontSize: "0.875rem" }}
-          >
-            {nav("nav.attackRun")}
-          </a>
-          <span className="flex items-center gap-1">
-            <LocaleSwitcher />
-            <ThemeToggle />
-          </span>
-        </div>
-
-        {/* On a phone the two switches take the nav's right side; the hero's own button below
-            carries the same "try it" action. */}
-        <span className="flex items-center gap-1 md:hidden">
-          <LocaleSwitcher />
-          <ThemeToggle />
-        </span>
-      </nav>
+      {/* The bar floats over the hero, so this empty row keeps the copy where it sat below the old nav. */}
+      <SiteNav overHero hiddenAtStart headerRef={navRef} />
+      <div aria-hidden="true" className="h-[72px]" />
 
       <div
         ref={copyRef}
         className="relative z-10 self-start px-[4vw] pt-[9svh]"
       >
-        <div className="max-w-[34rem]">
+        <div className="relative max-w-[34rem]">
+          {/* On a phone the copy sits over the sun, so it gets a soft backing there; wider screens put the sun beside it. */}
+          <div
+            ref={scrimRef}
+            aria-hidden="true"
+            data-hero-scrim
+            className="pointer-events-none absolute -inset-x-6 -inset-y-5 -z-10 md:hidden"
+            style={{ ...HIDDEN, background: "color-mix(in srgb, var(--color-canvas) 70%, transparent)", filter: "blur(24px)" }}
+          />
           <p ref={eyebrowRef} className="t-label" style={HIDDEN}>
             {t("eyebrow")}
           </p>
@@ -246,18 +216,28 @@ export function PosterHero() {
           >
             {t("lead")}
           </p>
-          <div
-            ref={buttonsRef}
-            className="mt-[30px] flex flex-wrap gap-3"
+          <p
+            ref={usdcRef}
+            className="mt-3 font-sans text-[0.9375rem] text-muted"
             style={HIDDEN}
           >
-            <a href="#lens" onClick={scrollToLens} className="btn-seal">
-              {t("ctaLens")}
-            </a>
-            <a href={REPO_URL} target="_blank" rel="noopener" className="btn-ghost">
-              {t("ctaCode")}
+            {t("usdc")}
+          </p>
+          <div
+            ref={buttonsRef}
+            className="mt-[30px] flex flex-col gap-3 md:flex-row md:flex-wrap"
+            style={HIDDEN}
+          >
+            <Link href="/employer" className="btn-seal">
+              {t("ctaPay")}
+            </Link>
+            <a ref={seeRef} href="#lens" onClick={seeItWork} className="btn-ghost" style={HIDDEN}>
+              {t("ctaSee")}
             </a>
           </div>
+          <p ref={testRef} className="mt-4 font-sans text-[0.875rem] text-muted" style={HIDDEN}>
+            {t("testNote")}
+          </p>
         </div>
       </div>
 

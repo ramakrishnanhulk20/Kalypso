@@ -12,6 +12,7 @@ import { Block, Panel } from "@/components/app/panel";
 import { StepButton } from "@/components/app/step-button";
 import { useAction } from "@/components/app/use-action";
 import { useWallet } from "@/components/app/wallet-session";
+import { useProgressText } from "@/components/app/employer/progress-text";
 import { NoKeyFits, WithheldTotal, totalOf, useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { amountsFrom } from "@/lib/ledger";
 import { displayUsdc } from "@/lib/money";
@@ -34,6 +35,7 @@ export function BooksPanel() {
   const t = useTranslations("accountant.books");
   const locale = useMoneyLocale();
   const wallet = useWallet();
+  const progressText = useProgressText();
   const [text, setText] = useState("");
   const [asked, setAsked] = useState<string | null>(null);
 
@@ -41,7 +43,7 @@ export function BooksPanel() {
     const lib = await loadAccountant();
     const companyId = await companyIdFrom(text);
     setAsked(companyId.toString());
-    return lib.openBooks(wallet, { companyId }, onProgress);
+    return lib.openBooks(wallet, { companyId }, progressText(onProgress));
   });
 
   const books = open.value;

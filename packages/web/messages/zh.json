@@ -25,17 +25,13 @@
   "common": {
     "home": "Kalypso 首页",
     "testnet": "testnet",
+    "testShort": "测试",
     "nav": {
-      "label": "主导航",
-      "tryIt": "试一试",
-      "sandbox": "沙盒",
-      "docs": "文档",
-      "docsShort": "文档",
-      "source": "源码",
-      "attackRun": "阅读攻击测试报告"
+      "label": "主导航"
     },
     "tryAgain": "重试",
     "startOver": "重新开始",
+    "keepIt": "保留",
     "resume": "继续",
     "done": "完成",
     "copy": "复制",
@@ -62,8 +58,10 @@
       "eyebrow": "Stellar 上的私密薪酬",
       "title": "用 USDC 给团队发薪。其他人谁也读不到薪⁠水。",
       "lead": "每一笔付款都公开证明它发生过。金额被密封，只有每位员工和你的会计持有能打开它的密钥。",
-      "ctaLens": "试着读一读薪水",
-      "ctaCode": "阅读代码",
+      "usdc": "USDC 是一种数字美元：1 USDC 等于 1 美元。",
+      "ctaPay": "给团队发薪",
+      "ctaSee": "看看它如何运作",
+      "testNote": "测试网络：目前不会有真钱流动。",
       "credit1": "机密 USDC",
       "credit2": "零知识证明",
       "credit3": "Stellar testnet",
@@ -93,7 +91,7 @@
       "worker": "员工",
       "payment": "付款",
       "amount": "金额",
-      "noKeyFits": "没有匹配的密钥",
+      "noKeyFits": "已密封，这把密钥打不开。",
       "withheld": "总额未显示",
       "withheldTitle": "有些付款无法读取，所以不显示总额。",
       "sealed": "已密封",
@@ -184,17 +182,17 @@
       "attackRun": "攻击测试",
       "threatModel": "威胁模型",
       "license": "许可证：MIT",
-      "note": "仅限 Stellar testnet。未经安全公司审计。为 Find Your Way 黑客松而作。"
+      "note": "Stellar testnet。尚未经过安全公司审计。"
     }
   },
   "sandbox": {
     "intro": {
       "eyebrow": "沙盒 · Stellar testnet",
-      "title": "三分钟，跑一次真实的薪酬发放。",
+      "title": "四分钟，跑一次真实的薪酬发放。",
       "lead": "你的浏览器会在 Stellar testnet 上创建一家公司、它的会计和三位员工，用测试币为他们充值，并通过 Kalypso 用真实的零知识证明给团队发薪。不需要钱包，不需要注册。然后你分别以他们每个人的身份，打开这份薪酬。",
       "promise1": "每一步都是真实的 testnet 交易，你可以在 stellar.expert 上打开。",
       "promise2": "密钥只存在这个浏览器里。关掉标签页，回来时可以继续。",
-      "promise3": "免费的测试 XLM 来自 Stellar 的 friendbot；这里的一切都不花真钱。"
+      "promise3": "Stellar 免费发放测试 XLM；这里的一切都不花真钱。"
     },
     "card": {
       "title": "本月薪酬",
@@ -202,7 +200,7 @@
       "invalid": "请输入大于零的金额，例如 {plain} 或 {grouped}。",
       "total": "合计",
       "start": "开始沙盒",
-      "takes": "在笔记本电脑上大约需要 3 分钟，较慢的手机需要更久。"
+      "takes": "在笔记本电脑上大约需要 4 分钟，较慢的手机需要更久。"
     },
     "run": {
       "srTitle": "沙盒",
@@ -219,38 +217,38 @@
       "feedLabel": "链上",
       "feedEmpty": "交易上链后会出现在这里。",
       "unexpected": "出现了意外，沙盒已停止。你的进度已保存；请重试。",
-      "confirmStartOver": "要重新开始吗？这个沙盒的公司仍会留在 testnet 上，但这个浏览器会忘掉它。"
+      "startOverAsk": "要开始一个新的沙盒吗？之前运行的那个会被忘掉。"
     },
     "shots": {
       "keysTitle": "密钥",
-      "keysText": "在这个浏览器里创建五个账户。",
+      "keysText": "你的浏览器创建五个测试账户：公司、它的会计和三位员工。",
       "fundTitle": "测试币",
-      "fundText": "Friendbot 给这五个账户都充入测试 XLM。",
+      "fundText": "Stellar 测试网络免费给每个账户发放测试 XLM，用来支付小额网络手续费。",
       "usdcTitle": "USDC",
-      "usdcText": "公司在 Stellar 交易所购买测试 USDC。",
+      "usdcText": "公司在 Stellar 自带的交易所购买测试 USDC，这是一种数字美元。",
       "accountantTitle": "会计",
-      "accountantText": "会计登记自己的密钥，并拿到一个编号。",
+      "accountantText": "会计登记能打开公司账簿的密钥，并拿到一个密钥编号。",
       "treasuryTitle": "金库",
-      "treasuryText": "公司的账户用这个编号加入机密代币。",
+      "treasuryText": "公司账户用这个密钥编号开通私密 USDC 付款，这样会计就能读取这些付款。",
       "companyTitle": "公司",
-      "companyText": "薪酬合约创建公司，并指定它的会计。",
+      "companyText": "Kalypso 在 Stellar 上的薪酬程序创建公司，并指定它的会计。",
       "workersTitle": "员工",
-      "workersText": "每位员工登记一把密钥，加入代币，并接受邀请。",
+      "workersText": "每位员工生成自己读取薪水用的密钥，开通私密付款，并接受公司的邀请。",
       "depositTitle": "充值",
-      "depositText": "USDC 进入金库的密封余额。",
+      "depositText": "公司把 USDC 转入自己的私密薪酬账户，别人看不到其中的余额。",
       "runTitle": "批次",
-      "runText": "本月的批次为三位员工开启。",
+      "runText": "公司为三位员工开启本月的薪酬发放。",
       "payTitle": "工资发放",
-      "payText": "每笔付款都在你的浏览器里生成证明，然后支付。"
+      "payText": "你的浏览器证明每笔付款有效，但不公开金额，然后把它发出。"
     },
     "progress": {
       "keys": "正在你的浏览器里创建五个一次性的 testnet 账户",
-      "fund": "正在向 friendbot 申请测试 XLM，第 {done} 个账户，共 {total} 个",
-      "usdc": "正在 Stellar DEX 上为金库购买测试 USDC",
-      "accountant": "正在登记会计的审计密钥",
+      "fund": "正在领取免费测试 XLM，第 {done} 个账户，共 {total} 个",
+      "usdc": "正在 Stellar 交易所为金库购买测试 USDC",
+      "accountant": "正在登记会计的密钥",
       "treasury": "正在把金库登记到机密代币，证明在你的浏览器里生成",
       "company": "正在薪酬合约上创建公司",
-      "workers": "正在设置第 {done} 位员工，共 {total} 位：审计密钥、代币账户、邀请和接受",
+      "workers": "正在设置第 {done} 位员工，共 {total} 位：读取薪水用的密钥、代币账户、邀请和接受",
       "deposit": "正在把测试 USDC 存入机密金库",
       "run": "正在开启本月的发薪批次",
       "pay": "正在你的浏览器里生成并发送第 {done} 笔付款，共 {total} 笔",
@@ -258,10 +256,12 @@
     },
     "result": {
       "eyebrow": "完成 · 在 Stellar testnet 上",
+      "earlier": "这是你之前运行的沙盒。",
       "title": "你的薪酬已上链。",
       "lead": "任何人都能看到有三个人收到了付款。只有下面这些密钥能打开具体金额。这里的每把密钥都存在这个浏览器里，也只在这里用过。",
       "treasuryLink": "stellar.expert 上的公司金库",
       "payrollLink": "薪酬合约",
+      "caption": "同一份薪酬，在每把密钥眼中的样子。员工只能看到自己的薪水，会计能看到所有人的，陌生人什么也看不到。",
       "keysLabel": "选择密钥",
       "keyWorker": "员工 {n}",
       "keyAccountant": "会计",
@@ -269,8 +269,8 @@
       "openingWorker": "正在你的浏览器里用员工 {n} 的密钥打开",
       "openingAccountant": "正在你的浏览器里用会计的密钥打开",
       "openingStranger": "正在你的浏览器里用陌生人的密钥打开",
-      "sandboxLabel": "沙盒 {short}",
       "closing": "这就是 Kalypso。",
+      "forYourCompany": "为你的公司也这样做",
       "readHow": "了解它如何运作"
     },
     "payslip": {
@@ -304,7 +304,133 @@
     "devPreparing": "正在准备开发钱包",
     "devFailed": "无法创建开发钱包。",
     "devModuleFailed": "开发钱包模块没有加载。",
-    "liveProof": "testnet 实时数据：{company} 已在 {runs, plural, one {# 个批次} other {# 个批次}}中完成 {payments, plural, one {# 笔付款} other {# 笔付款}}，每笔金额都已密封。"
+    "liveProof": "testnet 实时数据：{company} 已在 {runs, plural, one {# 个批次} other {# 个批次}}中完成 {payments, plural, one {# 笔付款} other {# 笔付款}}，每笔金额都已密封。",
+    "before": {
+      "label": "开始之前",
+      "computer": "Freighter 运行在电脑浏览器里（Chrome、Firefox、Edge 或 Brave），不能在手机上使用。",
+      "phone": "在用手机？现在先试试沙盒，之后再用电脑设置。",
+      "needLabel": "你需要",
+      "need1": "一台装有 Freighter（Stellar 的钱包）的电脑。",
+      "need2": "一个安全的地方，用来记下 Freighter 的恢复短语。Freighter 只在你创建钱包时显示一次；这是重新进入钱包的唯一方法。",
+      "need3": "每位员工的 Kalypso 地址。他们在“你的薪水”页面创建，以 C 开头。",
+      "need4": "要发放的金额，可以直接输入，也可以用另存为 CSV 的电子表格（地址、金额、姓名）。",
+      "need5": "别的都不需要：连接之后测试币是免费的。",
+      "step1": "从 <site>freighter.app</site> 安装 Freighter，这是 Stellar 的浏览器钱包。",
+      "step2": "点击浏览器工具栏里的 Freighter 图标。在 Freighter 顶部点击网络名称（显示为 Main Net），然后选择 Test Net。",
+      "step3": "回到这里，选择“连接 Freighter”。之后只需一键就能领到免费测试币。",
+      "accountantFirst": "自己记账？在设置时用这同一个钱包选择即可。请外部会计？他们先行：打开<accountant>会计页面</accountant>，登记自己的密钥，然后把一个会计编号和一个地址发给你。只是随便看看？<sandbox>试试沙盒</sandbox>，它会替你扮演所有角色。"
+    },
+    "testMoney": {
+      "label": "免费测试币",
+      "employer": "连接之后，点一下就能从 Kalypso 的水龙头领到 100 测试 XLM 和 100 测试 USDC。测试币没有任何价值。",
+      "accountant": "连接之后，点一下就能从 Kalypso 的水龙头领到 100 测试 XLM。测试币没有任何价值。"
+    }
+  },
+  "testFunds": {
+    "open": "需要免费的测试币吗？",
+    "label": "测试币",
+    "title": "领取免费测试币",
+    "lead": "Kalypso 运行在 Stellar 的测试网络上，那里的钱是免费的，也没有任何价值。一键领取你需要的部分。",
+    "sending": "正在发送你的测试币，最多可能需要一分钟。",
+    "confirming": "正在等待网络确认",
+    "addingUsdc": "正在把 USDC 加入你的钱包。请在 Freighter 中批准。",
+    "xlm": {
+      "title": "测试 XLM",
+      "sub": "用来支付网络的微小手续费。",
+      "button": "领取 100 测试 XLM",
+      "added": "已添加 {amount} 测试 XLM。你的钱包现在有 {balance} XLM。"
+    },
+    "usdc": {
+      "title": "测试 USDC",
+      "sub": "用来给你的团队发薪。",
+      "button": "领取 100 测试 USDC",
+      "addButton": "把 USDC 加入你的钱包",
+      "added": "已添加 {amount} 测试 USDC。你的钱包现在有 {balance} USDC。"
+    },
+    "errors": {
+      "rate_limited": "来自这个网络的请求太多了。请等一个小时再试。",
+      "already_claimed": "这个钱包今天已经领过测试 {asset} 了。明天再来吧。",
+      "network_limit": "这个网络今天的免费测试币已经用完了。明天再试，或者用 Freighter 里的 Fund 按钮领取测试 XLM。",
+      "daily_limit": "水龙头今天的测试币已经全部发完了。明天再来，或者用 Freighter 里的 Fund 按钮领取测试 XLM。",
+      "no_account": "请先领取测试 XLM，这也会开通你的账户。",
+      "no_trustline": "Freighter 会请你批准一次，这样你的账户才能持有 USDC。",
+      "trustline_unauthorized": "这个钱包还没有启用 USDC。请在 Freighter 里移除 USDC 并重新添加，然后再试一次。",
+      "trustline_full": "你钱包的 USDC 额度太低，收不下 100 USDC。请在 Freighter 里提高 USDC 的额度，或者移除 USDC 后重新添加，然后再试一次。",
+      "faucet_empty": "水龙头暂时没有余额了，很快会补充。在此期间，Freighter 的 Fund 按钮可以免费领取测试 XLM，Freighter 的 Swap 可以把 XLM 换成 USDC。",
+      "faucet_busy": "水龙头正在为别人发放。请几秒钟后再试。",
+      "not_configured": "这里没有开启水龙头。请用 Freighter 的 Fund 按钮，再用 Swap 把 XLM 换成 USDC。",
+      "rpc_unavailable": "无法连接到网络，请稍后再试。",
+      "payout_unconfirmed": "你的测试币已经发出，但网络还没有确认。它可能会在一分钟内到账；再次申请前请先查看你的钱包。",
+      "payout_failed": "网络拒绝了这笔付款，它仍然算作你今天的领取。明天再来，或者用 Freighter 里的 Fund 按钮领取测试 XLM。",
+      "network": "无法连接到网络，请稍后再试。",
+      "bad_address": "水龙头无法向这个钱包地址发放。",
+      "bad_request": "出了点问题，请再试一次。",
+      "method_not_allowed": "出了点问题，请再试一次。",
+      "no_client_ip": "出了点问题，请再试一次。",
+      "internal_error": "出了点问题，请再试一次。",
+      "bad_reply": "出了点问题，请再试一次。",
+      "unknown": "出了点问题，请再试一次。"
+    }
+  },
+  "progress": {
+    "keys_treasury": "请在钱包里对 Kalypso 密钥消息签名两次，以打开金库",
+    "keys_company": "请在钱包里对 Kalypso 密钥消息签名两次，以生成公司的私密薪酬密钥",
+    "keys_accountant": "请在钱包里对 Kalypso 密钥消息签名两次，以生成你的会计密钥",
+    "keys_books": "请在钱包里对 Kalypso 密钥消息签名两次，以用你的密钥打开账簿",
+    "treasury_open": "金库已在这个浏览器中打开",
+    "balance_checking": "正在用链上数据核对这个浏览器的金库记录",
+    "balance_rebuilt": "余额来自上一次重建，并与链上一致",
+    "balance_saved": "余额来自这个浏览器的记录，并与链上一致",
+    "balance_empty": "这个金库还没有任何存款",
+    "trustline_ready": "这个钱包可以持有 testnet USDC",
+    "trustline_sending": "正在让这个钱包可以持有 testnet USDC；只需批准一次",
+    "deposit_checking_earlier": "正在检查这个浏览器上次发送的存款",
+    "deposit_sending": "正在把 testnet USDC 存入私密金库",
+    "deposit_resumed": "你之前的存款已经到账，所以没有再发送新的存款",
+    "deposit_incoming": "存款已进入金库的待入账余额",
+    "merge_sending": "正在让存款可以在金库余额中使用",
+    "merge_done": "存款现在已可在金库余额中使用",
+    "rebuild_running": "正在根据链上历史重建金库余额",
+    "rebuild_ready": "这个浏览器可以用链上显示的金库余额付款",
+    "rebuild_matches": "链上历史与这个浏览器的预期一致",
+    "rebuild_differs": "已根据链上数据重建。付款前请与这个浏览器的预期值对比",
+    "invite_already_active": "第 {n} 位员工（共 {total} 位）已在公司中",
+    "invite_already_invited": "第 {n} 位员工（共 {total} 位）之前已被邀请",
+    "invite_sending": "正在邀请第 {n} 位员工（共 {total} 位）",
+    "invite_done": "第 {n} 位员工（共 {total} 位）已邀请成功",
+    "run_opening": "正在开启 {label} 批次",
+    "run_already_closed": "{label} 批次已付完并已关闭",
+    "run_open": "{label} 批次已开启",
+    "pay_proving": "第 {n} 笔付款（共 {total} 笔，第 {line} 行）：正在你的浏览器里生成证明",
+    "pay_submitted": "第 {n} 笔付款（共 {total} 笔，第 {line} 行）：已发送到网络",
+    "pay_landed": "第 {n} 笔付款（共 {total} 笔，第 {line} 行）：已到账",
+    "pay_already_paid": "第 {n} 笔付款（共 {total} 笔，第 {line} 行）：此前已付",
+    "pay_failed": "第 {n} 笔付款（共 {total} 笔，第 {line} 行）：未能完成",
+    "run_stays_open": "{label} 批次仍然开启：有些付款未能完成",
+    "run_closing": "正在关闭 {label} 批次",
+    "run_closed": "所有付款均已到账，{label} 批次已关闭",
+    "setup_checking_accountant": "正在链上检查会计编号",
+    "setup_accountant_ok": "会计编号 {id} 属于这位会计，并持有你确认过的密钥",
+    "setup_treasury_ready": "公司账户已开通私密 USDC 付款",
+    "setup_company_exists": "公司 {id} 已存在于薪酬合约上",
+    "setup_looking": "正在查找这个钱包之前设立的公司",
+    "setup_proving": "正在你的浏览器里为公司的开通生成证明",
+    "setup_registering": "正在为公司账户开通私密 USDC 付款",
+    "setup_registered": "公司账户已在会计编号下开通",
+    "setup_creating": "正在薪酬合约上创建 {label}",
+    "setup_created": "公司 {id} 已在薪酬合约上创建",
+    "accountant_key_ready": "你的会计密钥已准备好",
+    "accountant_id_held": "会计编号 {id} 已持有你的密钥",
+    "accountant_registering": "正在链上登记你的会计密钥",
+    "accountant_registered": "你的会计编号是 {id}",
+    "own_books_number": "你的会计密钥编号是 {id}",
+    "own_books_checking": "正在链上检查你的会计密钥",
+    "own_books_checked": "会计编号 {id} 属于这个钱包，并持有它的密钥",
+    "books_key_holds": "你的密钥持有会计编号 {id}，这家公司的薪水就密封给这个编号",
+    "books_history_start": "正在读取公司的薪酬历史",
+    "books_history": "正在读取薪酬历史：{done} / {total, plural, one {# 笔付款} other {# 笔付款}}",
+    "books_opening": "正在用你的密钥打开 {total, plural, one {# 笔付款} other {# 笔付款}}",
+    "books_opened": "已打开 {done} / {total, plural, one {# 笔付款} other {# 笔付款}}"
   },
   "employer": {
     "gateHeading": "私密地给团队发薪。",
@@ -319,7 +445,14 @@
     "notAdmin": "这个钱包不是公司 #{id} 的管理员。",
     "wizard": {
       "accountant": "你的会计",
-      "accountantText": "请你的会计打开会计页面，登记他们的密钥，并把两样东西发给你：他们的会计编号和他们的地址。",
+      "sharedKey": "你用这个钱包付款的每家公司都共用一把会计密钥：就是你为第一家公司选的那一把。",
+      "ownChoice": "我自己记账",
+      "ownChoiceText": "用这同一个钱包作为你的会计。Freighter 会请你签名两次来生成密钥，然后批准一笔交易。",
+      "ownTaken": "这个钱包的薪酬账户已经指定了一位外部会计，所以你用它付款的每家公司都共用这位会计。要自己记账，请换一个钱包。",
+      "otherChoice": "由别人记账",
+      "ownButton": "生成我的会计密钥",
+      "ownDone": "你的会计密钥编号是 {id}。之后用这同一个钱包在会计页面打开你的账簿。",
+      "accountantText": "请你的会计打开会计页面，登记他们的密钥，并把两样东西发给你：他们的会计编号（登记后得到的那个数字）和他们的地址。",
       "idLabel": "会计编号",
       "addressLabel": "会计地址",
       "check": "检查",
@@ -331,7 +464,7 @@
       "nameError": "公司名称必须是 1 到 64 字节。",
       "counter": "{n}/{max}",
       "create": "创建",
-      "createText": "Freighter 会请你批准两笔交易：把金库登记到机密代币，以及创建公司。",
+      "createText": "Freighter 会先请你签名两次来生成公司的密钥，然后批准两笔交易：为公司账户开通私密 USDC 付款，以及创建公司。",
       "createButton": "创建公司",
       "notChecked": "尚未检查会计。"
     },
@@ -339,6 +472,7 @@
       "eyebrow": "公司 #{id}",
       "treasury": "金库 {short}",
       "accountantId": "会计编号 {id}",
+      "ownBooks": "你自己记账。请在<link>会计页面</link>打开你的账簿。",
       "payrollContract": "薪酬合约 {short}",
       "retry": "重新读取公司信息"
     },
@@ -347,6 +481,7 @@
       "title": "金库",
       "opening": "正在用你的密钥打开金库",
       "sealedLabel": "USDC · 在链上密封，用你的密钥打开",
+      "noDeposits": "还没有存款。",
       "readAgain": "重新读取余额",
       "addFunds": "充值",
       "amountLabel": "金额（USDC）",
@@ -357,8 +492,8 @@
       "resumed": "之前的一笔存款已先完成：已存入 {amount} USDC。这次没有新的存款。",
       "differs": "链上有 {amount} USDC；这台设备预期是 {expected}。现已保存链上的数值。",
       "deposit": "存款",
-      "merge": "合并",
-      "needUsdc": "需要测试 USDC？在 <lab>Stellar Laboratory</lab> 或任何 testnet DEX 上把测试 XLM 换成 USDC，然后在这里存入。",
+      "merge": "合并（让这笔钱可以使用）",
+      "needUsdc": "需要测试 USDC？在上方的<card>测试币</card>中免费领取。",
       "tools": "金库工具"
     },
     "team": {
@@ -406,12 +541,12 @@
   },
   "accountant": {
     "gateHeading": "为私密薪酬记账。",
-    "gateText": "在 Testnet 上连接 Freighter。你的密钥由钱包的签名推导而来，所以它不会离开这个浏览器，同一个钱包也总能重新生成它。",
+    "gateText": "在 Testnet 上连接 Freighter。你的密钥由钱包的签名生成，所以它不会离开这个浏览器，同一个钱包也总能重新生成它。",
     "srTitle": "会计",
     "key": {
       "eyebrow": "01",
       "title": "你的密钥",
-      "derive": "推导我的密钥",
+      "derive": "生成我的密钥",
       "deriveNote": "Freighter 会请你对同一条消息签名两次；这证明你的钱包总能重新生成同一把密钥。",
       "code": "确认码",
       "register": "登记我的密钥",
@@ -443,15 +578,21 @@
       "title": "你的薪水，为你密封。",
       "lead": "用 Face ID、指纹或设备 PIN 登录。你的密钥由通行密钥在这台设备上生成，所以只有你能打开自己的工资条。无需应用，无需助记词，没有手续费。",
       "signIn": "使用 Face ID 登录",
-      "create": "第一次来？创建你的薪资密钥",
-      "useWallet": "改用钱包",
+      "create": "创建你的薪资密钥",
+      "passkeyNote": "你的薪资密钥存在设备保存的通行密钥里：不用记密码，也没有助记词。",
+      "useWallet": "改用 Stellar 钱包（Freighter）",
+      "devices": "支持较新的 iPhone、Android 手机或 Mac 上的 Face ID 或指纹。在 Windows 上，请使用已登录 Google 账号的 Chrome，并把通行密钥保存在 Google 密码管理工具里，或者在手机上打开这个页面。Windows Hello 暂时还不行。",
+      "lostLabel": "如果你丢了手机",
+      "lostText": "你已经从 Kalypso 转出的薪水仍然属于你。仍密封在 Kalypso 里的薪水只能用你的通行密钥打开，所以请用 iCloud 钥匙串或 Google 密码管理工具保持同步，并在每个发薪日之后把薪水转出。如果你所有的设备都丢了，请创建一把新的薪资密钥，把新地址发给雇主；以后的薪水会发到那里。",
       "waiting": "正在等待你的设备",
       "creating": "正在等待你的设备，然后设置你的钱包",
       "prfHint": "当浏览器询问通行密钥要保存在哪里时，请选择 Google 密码管理工具或 iCloud 钥匙串，或者使用你的手机。也可以改用钱包。",
       "fact1": "你的雇主永远看不到你的密钥。",
       "fact2": "Kalypso 替你支付网络手续费。",
       "fact3": "工资条在 Stellar 上是密封的，只有你的密钥能打开。",
-      "notLoaded": "员工端代码尚未加载。"
+      "notLoaded": "员工端代码尚未加载。",
+      "haveKey": "已经有薪资密钥了？",
+      "invite": "你的雇主会给你发一个邀请链接。打开它，然后在这里创建你的薪资密钥。还没有链接？现在就创建密钥，并把你的地址发给雇主。你的地址以 C 开头，会和“复制”按钮一起显示在下一个页面上。"
     },
     "srTitle": "你的薪水",
     "session": {
@@ -482,12 +623,13 @@
       "wallet_sending": "正在设置你的钱包",
       "wallet_done": "你的钱包已就绪",
       "wallet_skipped": "你的钱包早已设置好",
-      "auditor_key_skipped": "审计密钥 {id} 已经属于你",
-      "auditor_key_sending": "正在创建你自己的审计密钥",
-      "auditor_key_done": "审计密钥 {id} 属于你",
+      "auditor_key_skipped": "你用来读取薪水的密钥（编号 {id}）已经属于你",
+      "auditor_key_sending": "正在创建你自己用来读取薪水的密钥",
+      "auditor_key_done": "你用来读取薪水的密钥（编号 {id}）现在属于你了",
       "token_account_checking": "正在检查你的私密账户",
       "token_account_skipped": "你的私密账户早已设置好",
       "token_account_sending": "正在设置你的私密账户，证明在这个浏览器里生成",
+      "token_account_registering": "正在登记你的私密账户",
       "token_account_done": "你的私密账户已设置好",
       "accept_skipped": "你已经是这家公司的一员",
       "accept_sending": "正在接受邀请",
@@ -523,6 +665,7 @@
     "chips": {
       "publiclyReadable": "公开可读",
       "publicTitle": "这家公司使用已公布的演示会计密钥，所以任何人都能读到它的金额。",
+      "publicNote": "这是 Kalypso 公开的演示公司，所以任何人都能读到它的金额。",
       "readersUnknown": "读者未知",
       "unknownTitle": "这家公司的设置没能从链上加载，所以 Kalypso 无法判断是否还有别人能读到这笔金额。请重新加载再检查。"
     },
@@ -538,7 +681,7 @@
     "cashOut": {
       "label": "提现",
       "title": "把你的薪水转到银行。",
-      "text": "你的薪水先以普通 USDC 转到你的提现账户，再由 Stellar 的测试锚点付出。在 testnet 上不会有真钱流动。",
+      "text": "你的薪水先以普通 USDC 转到你的提现账户，再由 Stellar 的测试锚点（一家练习用的银行）付出。在 testnet 上不会有真钱流动。",
       "step1": "转到你的提现账户",
       "step2": "通过锚点提现",
       "amount": "金额",
@@ -550,7 +693,8 @@
       "movingSelf": "正在转出你的薪水，并由你自己支付网络手续费",
       "selfPayNote": "手续费赞助方目前无法为这次转出付费。你可以自己支付少量网络手续费，从你的提现账户里的测试 XLM 中扣。",
       "payFee": "自己支付手续费",
-      "moved": "已转出。你的提现账户 {short} 现在以 USDC 持有这笔钱。"
+      "moved": "已转出。你的提现账户 {short} 现在以 USDC 持有这笔钱。",
+      "testChip": "测试网络：不会有真钱流动"
     },
     "anchor": {
       "open": "打开锚点",
@@ -581,7 +725,8 @@
         "too_small": "这个金额低于锚点的最低限额，所以已停止。",
         "too_large": "这个金额高于锚点的最高限额，所以已停止。",
         "error": "锚点终止了这次提现。"
-      }
+      },
+      "windowNote": "Stellar 的测试锚点会在一个小窗口中打开。它是一家练习用的银行：随便编造的资料都可以，也不会有真钱流动。"
     },
     "confirm": {
       "label": "锚点要求的付款",
@@ -611,7 +756,7 @@
       "STORAGE_UNAVAILABLE": "这个浏览器不允许 Kalypso 保存它需要的金库记录（无痕浏览模式可能会阻止），所以没有发送任何内容。",
       "STORAGE_FAILED": "这个浏览器拒绝保存或读取一条金库记录，所以没有发送任何内容。请退出无痕浏览模式或释放一些磁盘空间，然后重试。",
       "BUSY": "另一个 Kalypso 标签页正在使用这个钱包。请先在那边完成，然后重试。",
-      "ACCOUNT_NOT_FOUND": "这个钱包的账户在 testnet 上还不存在。请从 friendbot 为它领取测试 XLM（Freighter 的 Fund 按钮可以做到），然后重试。",
+      "ACCOUNT_NOT_FOUND": "这个钱包的账户在 testnet 上还不存在。请用“测试币”卡片或 Freighter 的 Fund 按钮领取免费测试 XLM，然后重试。",
       "KEY_NOT_DERIVED": "钱包的签名无法生成 Kalypso 密钥，所以没有发送任何内容。",
       "ACCOUNTANT_ID_INVALID": "会计编号必须是整数，与会计自己屏幕上显示的完全一致。",
       "ACCOUNTANT_ADDRESS_INVALID": "会计的地址不是有效的 Stellar 地址。",
@@ -621,6 +766,7 @@
       "ACCOUNTANT_KEY_CHANGED": "这个会计编号下的密钥在检查之后发生了变化。继续之前，请再向你的会计核对一次。",
       "ACCOUNTANT_ID_NOT_YOURS": "这个编号没有以这里生成的密钥登记在这个钱包名下，所以没有使用。请登记你的密钥，拿到属于你自己的编号。",
       "DEMO_ACCOUNTANT": "这个会计编号是 Kalypso 公开的演示密钥：任何人都能读到它名下的薪酬。请让你的会计登记自己的密钥，并使用那个编号。",
+      "OWN_BOOKS_TAKEN": "这个钱包的薪酬账户已经指定了一位外部会计，所以你用它付款的每家公司都共用这位会计。要自己记账，请换一个钱包。",
       "BOOKS_NOT_YOURS": "这家公司的账簿密封给了一个会计编号，而这个钱包的密钥不持有该编号，所以无法用它打开。",
       "BOOKS_INCOMPLETE": "账簿不完整，所以没有导出任何内容。请一分钟后重试。",
       "LABEL_INVALID": "公司名称必须是 1 到 64 字节。",
@@ -632,7 +778,7 @@
       "TREASURY_KEYS_MISMATCH": "这个钱包登记到机密代币时用的密钥不是 Kalypso 在这里生成的，所以没有做任何更改。",
       "TREASURY_NOT_REGISTERED": "请先设立公司：这个钱包还没有登记到机密代币。",
       "AMOUNT_INVALID": "存款必须大于零，且不能超过代币能容纳的上限。",
-      "USDC_SHORT": "这个钱包持有的 testnet USDC 少于这笔存款。请从 Stellar Laboratory（lab.stellar.org）获取 testnet USDC，或在 testnet DEX 上把测试 XLM 换成 USDC，然后重试。",
+      "USDC_SHORT": "这个钱包持有的 testnet USDC 少于这笔存款。请用页面顶部的“测试币”卡片领取免费测试 USDC，然后重试。",
       "WORKERS_INVALID": "员工名单为空、太长，或者包含无法邀请的地址。",
       "PERIOD_INVALID": "请选择 1 到 12 的月份和四位数的年份。",
       "CSV_INVALID": "工资文件有问题，所以没有发送任何内容。请修正列出的行，再重新上传。",
@@ -683,7 +829,7 @@
       "WALLET_REJECTED": "钱包没有批准这个请求。",
       "WALLET_NOT_REPRODUCIBLE": "这个钱包对同一条消息给出了两个不同的签名，所以下次无法重新生成你的密钥。请使用每次签名都相同的钱包，例如 Freighter。",
       "WALLET_SIGNATURE_INVALID": "钱包的签名不是这个账户对 Kalypso 密钥消息的签名。请重新签名。",
-      "WALLET_ACCOUNT_MISSING": "这个钱包账户还不在 Stellar 测试网络上。请用 friendbot 为它充值，然后重试。",
+      "WALLET_ACCOUNT_MISSING": "这个钱包账户还不在 Stellar 测试网络上。请用 Freighter 的 Fund 按钮（免费测试 XLM）为它充值，然后重试。",
       "WALLET_CHANGED_TRANSACTION": "钱包返回的交易与要求它签名的不是同一笔，所以没有发送任何内容。",
       "SIGNING_TOO_SLOW": "批准花的时间超过了中继服务接受的一分钟。请重试，并稍微快一点批准。",
       "KEYS_MISMATCH": "这个账户登记的私钥与这次登录生成的不同，所以无法在这里读取它的薪水。",
@@ -691,7 +837,7 @@
       "NOT_INVITED": "这家公司还没有邀请这个账户。请让他们邀请这里显示的地址。",
       "INVITE_WITHDRAWN": "这个邀请已被撤回，或者你已被移出公司。请让他们再次邀请你。",
       "NOT_REGISTERED": "这个账户还没有设置私密薪水。请先加入一家公司。",
-      "AUDITOR_ID_TAKEN": "这个审计密钥编号不属于你，所以 Kalypso 不会在它下面登记。",
+      "AUDITOR_ID_TAKEN": "这个密钥编号不属于你，所以 Kalypso 不会在它下面登记。",
       "PROOF_REFUSED": "网络拒绝了这个浏览器生成的证明，所以没有任何变化。请重试。",
       "SIMULATION_FAILED": "网络不愿运行这一步，所以没有发送任何内容。",
       "FEE_TOO_HIGH": "网络要求的手续费超过了 Kalypso 的上限，所以没有签名。",
@@ -711,7 +857,7 @@
       "ANCHOR_NOT_READY": "提现服务仍在等你完成它的页面。",
       "ANCHOR_RECORD_INVALID": "提现服务对这笔提现的记录不是 Kalypso 能付款的那种，所以没有生成任何内容。",
       "ANCHOR_RECORD_CHANGED": "提现服务在你看过之后修改了它的请求，所以没有发送任何内容。请重新发起提现。",
-      "CASHOUT_NO_XLM": "你的提现账户已没有 XLM 可付网络手续费，所以没有发送任何内容。请用 friendbot 为它充值，然后重试。",
+      "CASHOUT_NO_XLM": "你的提现账户已没有 XLM 可付网络手续费，所以没有发送任何内容。请用 Stellar 的免费测试币服务为它充值，然后重试。",
       "ANCHOR_ALREADY_PAID": "这笔提现已经从你的账户付过款，所以没有再次发送。"
     },
     "sponsor": {
@@ -724,7 +870,7 @@
       "missing_soroban_data": "这笔交易没有声明它的资源上限，所以手续费赞助方不会为它付费。",
       "wasm_upload": "手续费赞助方从不为上传合约代码付费。",
       "contract_creation": "手续费赞助方只为创建按 Kalypso 的方式设置的通行密钥钱包付费。",
-      "root_contract_not_allowed": "手续费赞助方只为调用 Kalypso 薪酬合约和代币合约付费，以及为登记你自己的审计密钥付费。",
+      "root_contract_not_allowed": "手续费赞助方只为调用 Kalypso 薪酬合约和代币合约付费，以及为登记你自己的密钥付费。",
       "nested_contract_not_allowed": "这次调用会调用到手续费赞助方不付费的合约。",
       "no_auth": "这次调用没有带上你的批准，所以手续费赞助方不会为它付费。",
       "source_account_auth": "手续费赞助方需要这次调用上有你自己的批准，而不是发送方的批准。",
@@ -787,7 +933,7 @@
     },
     "sandbox": {
       "INVALID_AMOUNTS": "这些薪水超过了代币能容纳的上限。",
-      "NOT_ENOUGH_XLM": "Friendbot 给的测试 XLM 不够运行沙盒。请一分钟后重试。",
+      "NOT_ENOUGH_XLM": "到账的免费测试 XLM 不足，无法运行沙盒。请一分钟后再试。",
       "BUSY": "另一个标签页正在运行这个沙盒。请在那边完成，或关闭那个标签页后重试。",
       "NO_SANDBOX": "这个浏览器里没有可继续的已保存沙盒。请开始一个新的。",
       "SIMULATION_FAILED": "网络不愿运行这一步，所以没有发送任何内容。",
@@ -834,7 +980,89 @@
     "run": {
       "paid": "已付。",
       "alreadyPaid": "这个批次中已付过。",
-      "failed": "这笔付款没有成功。"
+      "failed": "这笔付款没有成功。",
+      "PROOF_FAILED": "即使从链上重新读取了每一把密钥，这个浏览器仍无法生成这笔付款的证明。",
+      "SIMULATION_FAILED": "即使从链上重新读取了每一把密钥，网络仍不肯执行这笔付款。",
+      "FEE_TOO_HIGH": "网络为这笔付款要求的手续费高于 Kalypso 的上限，所以没有签名。",
+      "SUBMIT_REFUSED": "网络拒绝了这笔付款，所以批次在这里停止。",
+      "TRANSACTION_FAILED": "这笔付款在链上失败了，所以批次在这里停止。",
+      "TRANSACTION_EXPIRED": "这笔付款在到账前过期了，所以批次在这里停止。",
+      "RUN_STOPPED": "未发送，因为批次在之前的一笔付款处停止了。"
+    }
+  },
+  "siteNav": {
+    "employers": "面向雇主",
+    "workers": "面向员工",
+    "accountants": "面向会计",
+    "docs": "文档",
+    "source": "源码",
+    "sandbox": "试试沙盒",
+    "hintArrows": "方向键移动",
+    "hintEsc": "Esc 关闭",
+    "open": "打开",
+    "menu": "菜单",
+    "close": "关闭",
+    "items": {
+      "payTeam": {
+        "title": "给团队发薪",
+        "text": "用电子表格发放 USDC 薪水。每一笔金额都封存在链上。"
+      },
+      "setUpCompany": {
+        "title": "设立你的公司",
+        "text": "连接钱包，指定你的会计，然后创建公司。"
+      },
+      "testFunds": {
+        "title": "领取测试资金",
+        "text": "免费的测试 XLM 和 USDC，用来在 testnet 上试用 Kalypso。"
+      },
+      "tryNoWallet": {
+        "title": "不用钱包也能试",
+        "text": "在浏览器里跑完一整轮发薪，大约四分钟。"
+      },
+      "howPayrollWorks": {
+        "title": "发薪如何运作",
+        "text": "公众能看到什么，哪些内容保持密封，谁能打开。"
+      },
+      "getYourPay": {
+        "title": "领取你的薪水",
+        "text": "用 Face ID 登录，查看工资条并提现。无需应用，没有手续费。"
+      },
+      "joinCompany": {
+        "title": "加入你的公司",
+        "text": "打开雇主发给你的邀请链接。"
+      },
+      "cashOut": {
+        "title": "提现",
+        "text": "把你的薪水转到你的银行。在 testnet 上不会有真钱流动。"
+      },
+      "yourPasskey": {
+        "title": "你的通行密钥",
+        "text": "哪些手机和浏览器可用，以及不可用时该怎么办。"
+      },
+      "whoSeesPay": {
+        "title": "谁能看到你的薪水",
+        "text": "只有你和公司的会计能读到金额。"
+      },
+      "openBooks": {
+        "title": "打开账簿",
+        "text": "读取公司付出的每一笔款项，并导出用于报税。"
+      },
+      "registerKey": {
+        "title": "登记你的密钥",
+        "text": "一把由你自己的钱包生成、只有你能控制的密钥。"
+      },
+      "exportTax": {
+        "title": "导出用于报税和审计",
+        "text": "完整的 CSV；只要缺少任何一笔付款就会被拒绝。"
+      },
+      "realBooks": {
+        "title": "查看真实公司的账簿",
+        "text": "用公布的密钥打开演示公司的薪酬记录。"
+      },
+      "security": {
+        "title": "安全",
+        "text": "威胁模型，以及每一项声明如何被核查。"
+      }
     }
   }
 }

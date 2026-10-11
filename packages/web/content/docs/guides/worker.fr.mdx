@@ -1,15 +1,15 @@
 ---
 title: "Salarié"
-description: "Rejoignez l'entreprise depuis votre lien d'invitation avec Face ID ou un portefeuille, lisez vos fiches de paie scellées et retirez votre argent auprès de l'ancre de test de Stellar."
+description: "Rejoignez l'entreprise depuis votre lien d'invitation avec Face ID ou un portefeuille, lisez vos fiches de paie scellées et retirez votre argent auprès de la banque d'entraînement de Stellar."
 ---
 
-Votre paie se trouve sur [/worker](/worker). Il vous faut le lien d'invitation de votre employeur, et soit un téléphone ou un ordinateur avec une clé d'accès (Face ID, une empreinte ou le code de l'appareil), soit Freighter sur Testnet. Le sponsor des frais de Kalypso paie les frais d'adhésion et de déplacement de votre paie, donc avec Face ID il n'y a rien à alimenter. Un compte Freighter doit déjà exister sur le testnet.
+Votre paie se trouve sur [/worker](/worker). Il vous faut le lien d'invitation de votre employeur : c'est une adresse web que votre employeur vous envoie et que vous ouvrez dans le navigateur de votre téléphone. Il vous faut aussi soit un téléphone ou un ordinateur avec une clé d'accès (Face ID, une empreinte ou le code de l'appareil), soit Freighter sur Test Net. Le sponsor des frais de Kalypso paie les frais d'adhésion et de déplacement de votre paie, donc avec Face ID il n'y a rien à alimenter. Un compte Freighter doit déjà détenir des XLM de test : utilisez le bouton « Fund » de Freighter.
 
 ## Se connecter
 
 1. Ouvrez le lien d'invitation. Un bandeau intitulé **Invitation**, en haut, indique quelle entreprise vous a invité : le nom de l'entreprise, puis « vous a invité à recevoir votre paie via Kalypso. »
-2. La première fois sur cet appareil, choisissez **Nouveau ici ? Créez votre clé de paie**. Votre appareil vous demande de confirmer deux fois. Votre clé de paie est créée sur l'appareil à partir de la nouvelle clé d'accès, et Kalypso configure votre portefeuille, les frais étant payés par le sponsor. Le bouton affiche « En attente de votre appareil, puis configuration de votre portefeuille » pendant que cela se fait.
-3. À votre retour, choisissez **Se connecter avec Face ID**. Pour un portefeuille, choisissez **Utiliser un portefeuille à la place**, puis **Connecter Freighter**, et signez deux fois le message de clé de Kalypso.
+2. La première fois sur cet appareil, choisissez **Créez votre clé de paie**. Pas encore de lien d'invitation ? Créez votre clé maintenant et envoyez à votre employeur l'adresse affichée à l'écran. Votre appareil vous demande de confirmer deux fois. Votre clé de paie est créée sur l'appareil à partir de la nouvelle clé d'accès, et Kalypso configure votre portefeuille, les frais étant payés par le sponsor. Le bouton affiche « En attente de votre appareil, puis configuration de votre portefeuille » pendant que cela se fait.
+3. À votre retour, choisissez **Se connecter avec Face ID**, sous **Vous avez déjà une clé de paie ?**. Pour un portefeuille, choisissez **Utiliser plutôt un portefeuille Stellar (Freighter)**, puis **Connecter Freighter**, et signez deux fois le message de clé de Kalypso.
 4. Sous **Connecté**, la page affiche votre adresse, avec un bouton de copie, une fois que Kalypso a confirmé depuis la chaîne que le portefeuille est le vôtre. Avant cela, elle affiche « Portefeuille pas encore configuré ». **Se déconnecter** oublie la session dans cet onglet, et votre clé d'accès reste sur l'appareil.
 
 ## Rejoindre l'entreprise
@@ -33,10 +33,14 @@ Pendant l'attente, une carte intitulée **Nous n'avons pas encore pu confirmer v
 
 Si votre portefeuille n'est pas encore sur le réseau, la carte est intitulée **Votre portefeuille n'est pas encore configuré** et son bouton affiche **Terminer la configuration**.
 
+## Si vous perdez votre téléphone
+
+La paie que vous avez déjà sortie de Kalypso reste à vous. La paie encore scellée dans Kalypso ne s'ouvre qu'avec votre clé d'accès : gardez-la synchronisée avec le trousseau iCloud ou le Gestionnaire de mots de passe de Google, et sortez votre paie après chaque jour de paie. Si vous perdez tous vos appareils, créez une nouvelle clé de paie et envoyez la nouvelle adresse à votre employeur ; votre paie future y arrivera.
+
 ## Retirer votre argent
 
-10. Sous **Déplacer vers votre compte de retrait**, saisissez un montant dans la zone **Montant** ou choisissez **Max.** La page répète ce qu'elle a lu (« Vous déplacez 1 500,00 USDC. ») et le bouton affiche **Déplacer 1 500,00 USDC**. La zone accepte une virgule ou un point comme séparateur décimal (« 1,5 » et « 1.5 » valent tous deux un et demi) et refuse les séparateurs de milliers : tapez 4200,50, sans rien entre les milliers. Choisissez le bouton. Votre paie quitte le solde scellé sous forme d'USDC en clair, et la page affiche « Déplacé. » seulement après avoir lu le nouveau solde sur la chaîne. Avec Face ID, le compte de retrait vient de la même clé d'accès, et friendbot lui donne des XLM de test la première fois. Avec Freighter, c'est votre propre compte de portefeuille. Le montant que vous déplacez est public.
-11. Sous **Retirer auprès de l'ancre**, choisissez **Ouvrir l'ancre**. L'ancre de test de Stellar s'ouvre dans une fenêtre contextuelle. Remplissez son formulaire, et son statut s'affiche sous le bouton.
+10. Sous **Déplacer vers votre compte de retrait**, saisissez un montant dans la zone **Montant** ou choisissez **Max.** La page répète ce qu'elle a lu (« Vous déplacez 1 500,00 USDC. ») et le bouton affiche **Déplacer 1 500,00 USDC**. La zone accepte une virgule ou un point comme séparateur décimal (« 1,5 » et « 1.5 » valent tous deux un et demi) et refuse les séparateurs de milliers : tapez 4200,50, sans rien entre les milliers. Choisissez le bouton. Votre paie quitte le solde scellé sous forme d'USDC en clair, et la page affiche « Déplacé. » seulement après avoir lu le nouveau solde sur la chaîne. Avec Face ID, le compte de retrait vient de la même clé d'accès, et il reçoit des XLM de test gratuits la première fois. Avec Freighter, c'est votre propre compte de portefeuille. Le montant que vous déplacez est public.
+11. Sous **Retirer auprès de l'ancre**, choisissez **Ouvrir l'ancre**. L'ancre de test de Stellar est une banque d'entraînement : elle s'ouvre dans une petite fenêtre, des informations inventées suffisent dans son formulaire, et aucun argent réel ne bouge. Son statut s'affiche sous le bouton.
 12. Quand l'ancre est prête, une zone intitulée **L'ancre demande** affiche le montant, puis **À**, **Mémo**, **Frais de l'ancre** et **Vous recevez**, le tout tiré de l'enregistrement de l'ancre elle-même. Vérifiez le montant, puis choisissez **Approuver et envoyer** dans les cinq minutes. Le dernier statut affiche « Terminé. L'ancre a versé les fonds. » Sur testnet, aucun argent réel ne bouge. Choisissez **Retirer à nouveau** pour en commencer un autre.
 
 ## Quand quelque chose ne va pas
@@ -52,4 +56,4 @@ Si votre portefeuille n'est pas encore sur le réseau, la carte est intitulée *
 
 ## Ce que vous voyez, et ce que vous ne voyez pas
 
-Vous ne voyez que vos propres fiches de paie et votre solde, jamais la paie d'un collègue ni le solde de l'entreprise. Votre employeur et Kalypso ne voient jamais votre clé. N'importe qui peut voir que l'entreprise a payé votre adresse et quand, ainsi que le montant que vous déplacez. L'ancre voit ce que vous retirez. Kalypso enregistre aussi une clé d'audit sous un identifiant qui vous appartient et en jette aussitôt le secret, donc la copie de l'auditeur de votre paie ne s'ouvre pour personne.
+Vous ne voyez que vos propres fiches de paie et votre solde, jamais la paie d'un collègue ni le solde de l'entreprise. Votre employeur et Kalypso ne voient jamais votre clé. N'importe qui peut voir que l'entreprise a payé votre adresse et quand, ainsi que le montant que vous déplacez. L'ancre voit ce que vous retirez. Le jeton privé de Stellar demande à chaque compte de désigner une clé capable de lire ses paiements. Kalypso vous en crée une que personne ne détient : il la crée, l'enregistre et en efface aussitôt le secret, donc personne d'autre ne peut lire votre paie grâce à elle.

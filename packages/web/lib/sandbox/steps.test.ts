@@ -17,7 +17,8 @@ import { periodId } from "./engine";
 import { SandboxError } from "./errors";
 import { depositFor, totalOf } from "./salaries";
 import { Keypair } from "./sdk";
-import { accountantStep, csvAmount, fundStep, payrollCsvText, runStep, type SandboxProgress, type StepContext } from "./steps";
+import { SANDBOX_COMPANY_LABEL } from "./label";
+import { accountantStep, companyStep, csvAmount, fundStep, payrollCsvText, runStep, type SandboxProgress, type StepContext } from "./steps";
 import type { SandboxState } from "./storage";
 import { invoke, journalOf } from "./transactions";
 
@@ -201,6 +202,80 @@ describe("accountant step against a fake registry", () => {
   });
 });
 
+describe("company step against a journal saved before the fixed label", () => {
+  /** A payroll holding one company, as get_company answers it; every send attempt is counted. */
+  function payrollWith(state: SandboxState, label: string) {
+    const calls = { simulate: 0, submit: 0 };
+    const struct = (fields: Record<string, baseXdr.ScVal>) =>
+      baseXdr.ScVal.scvMap(Object.entries(fields).map(([key, val]) => new baseXdr.ScMapEntry({ key: baseXdr.ScVal.scvSymbol(key), val })));
+    const port: ChainPort = {
+      async read(_contract, method) {
+        if (method !== "get_company") throw new ContractCallError(method, undefined);
+        return struct({
+          admin: new Address(addressOf(state, "employer")).toScVal(),
+          accountant: new Address(addressOf(state, "accountant")).toScVal(),
+          auditor_id: baseXdr.ScVal.scvU32(7),
+          label: baseXdr.ScVal.scvString(label),
+          created_ledger: baseXdr.ScVal.scvU32(1),
+          active_workers: baseXdr.ScVal.scvU32(0),
+          roster_len: baseXdr.ScVal.scvU32(0),
+          runs_opened: baseXdr.ScVal.scvU32(0),
+          admin_changes: baseXdr.ScVal.scvU32(0),
+        });
+      },
+      async simulate() {
+        calls.simulate++;
+        return { ok: false, error: "HostError: Error(Contract, #7)", latestLedger: 1 };
+      },
+      async submit() {
+        calls.submit++;
+        return { hash: "0".repeat(64) };
+      },
+      async waitFor() {
+        return { status: "NOT_FOUND" };
+      },
+      async sourceAccount() {
+        return { sequence: "100" };
+      },
+      async latestLedger() {
+        return { sequence: 5_100_100, closeTime: 1_900_000_000 };
+      },
+    };
+    return { port, calls };
+  }
+
+  function oldJournal(): SandboxState {
+    const state = sample();
+    state.step = "company";
+    state.auditorIds.accountant = 7;
+    state.companyId = 9n;
+    return state;
+  }
+
+  it("resumes the company its journal recorded under the old label, sending nothing", async () => {
+    const state = oldJournal();
+    const chain = payrollWith(state, `Sandbox ${addressOf(state, "employer").slice(0, 4)}`);
+    const { ctx } = context(state, chain.port);
+    await companyStep(ctx);
+    expect(state.companyId).toBe(9n);
+    expect(chain.calls).toEqual({ simulate: 0, submit: 0 });
+  });
+
+  it("resumes a company under the fixed label the same way", async () => {
+    const state = oldJournal();
+    const chain = payrollWith(state, SANDBOX_COMPANY_LABEL);
+    await companyStep(context(state, chain.port).ctx);
+    expect(chain.calls).toEqual({ simulate: 0, submit: 0 });
+  });
+
+  it("does not take a company with any other label for its own", async () => {
+    const state = oldJournal();
+    const chain = payrollWith(state, "Somebody else's studio");
+    await expect(companyStep(context(state, chain.port).ctx)).rejects.toMatchObject({ code: "SIMULATION_FAILED" });
+    expect(chain.calls.simulate).toBe(1);
+  });
+});
+
 describe("transaction journal", () => {
   it("rebuilds a transaction that expired before it landed, by chain time", async () => {
     const chain = fakeChain();
@@ -269,9 +344,9 @@ describe("fund step", () => {
     const said = progress.map((p) => p.label);
     expect(said).toContain("The employer's account already has test XLM");
     expect(said).toContain("Worker 2's account already has test XLM");
-    expect(said).toContain("Friendbot funded the accountant's account");
-    expect(said).toContain("Friendbot funded worker 1's account");
-    expect(said).toContain("Friendbot funded worker 3's account");
+    expect(said).toContain("Stellar's free test-money service funded the accountant's account");
+    expect(said).toContain("Stellar's free test-money service funded worker 1's account");
+    expect(said).toContain("Stellar's free test-money service funded worker 3's account");
     expect(said.some((line) => /the worker/i.test(line))).toBe(false);
   });
 });

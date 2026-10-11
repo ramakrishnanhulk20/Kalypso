@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ErrorNote } from "@/components/app/error-note";
 import { TextField, SelectField } from "@/components/app/fields";
 import { StepButton } from "@/components/app/step-button";
+import { TestFundsCard, useFundsNeed } from "@/components/app/test-funds-card";
 import { useAction } from "@/components/app/use-action";
 import { useWallet } from "@/components/app/wallet-session";
 import { companyIdFrom, readAdminCompany } from "./company-read";
 import { readCompanies, saveCompany } from "./company-store";
 import type { SavedCompany } from "./company-store";
+import { ConsoleErrorNote } from "./console-error-note";
 import { Dashboard } from "./dashboard";
 import { SetupWizard } from "./setup-wizard";
 
@@ -48,7 +49,7 @@ function OpenById({ onOpened, intro }: { onOpened: (company: SavedCompany) => vo
           {t("open")}
         </StepButton>
       </div>
-      {open.error ? <ErrorNote error={open.error} /> : null}
+      {open.error ? <ConsoleErrorNote error={open.error} /> : null}
     </form>
   );
 }
@@ -59,6 +60,7 @@ export function EmployerConsole() {
   const [companies, setCompanies] = useState<SavedCompany[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("dashboard");
+  const fundsNeeded = useFundsNeed(wallet.address, ["xlm", "usdc"]);
 
   useEffect(() => {
     const list = readCompanies(wallet.address);
@@ -76,9 +78,15 @@ export function EmployerConsole() {
   };
 
   const current = companies.find((company) => company.id === selected);
+  const showWizard = view === "wizard" || current === undefined;
 
   return (
     <>
+      {fundsNeeded === null ? null : (
+        <div className={`mb-10 w-full max-w-[640px] ${showWizard ? "mx-auto" : ""}`}>
+          <TestFundsCard address={wallet.address} assets={["xlm", "usdc"]} wallet={wallet} open={fundsNeeded} />
+        </div>
+      )}
       {companies.length > 0 ? (
         <div className="mb-[6vh] flex flex-wrap items-end gap-x-8 gap-y-5">
           <SelectField
@@ -103,7 +111,7 @@ export function EmployerConsole() {
         </div>
       ) : null}
 
-      {view === "wizard" || current === undefined ? (
+      {showWizard ? (
         <>
           <h1 className="sr-only">{t("srSetup")}</h1>
           <SetupWizard onCreated={adopt} />

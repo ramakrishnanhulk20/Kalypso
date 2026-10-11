@@ -1,18 +1,18 @@
 ---
 title: 入门
-description: "不用钱包，在浏览器里发一次薪酬；读取线上示例；用你自己的钱包使用三个真实界面；然后克隆仓库，在终端里检查每一项说法。"
+description: "不用钱包，在浏览器里发一次薪酬；读取线上示例；用你自己的钱包使用三个真实界面。"
 ---
 
-入口有四个：什么都不用安装的沙盒、首页上的线上示例、三个真实界面，以及代码仓库。
+入口有三个：什么都不用安装的沙盒、首页上的线上示例，以及三个真实界面。想从代码入手，请看[开发者](/docs/developers)。
 
 ## 不用钱包来试一试：沙盒
 
-[/demo](/demo) 的沙盒会在你的浏览器里，于 Stellar testnet 上建起一家小公司，并通过 Kalypso 用真实的零知识证明给它发薪。它不需要钱包，也不需要注册，在笔记本电脑上大约需要 3 分钟，较慢的手机需要更久。在“本月薪酬”下输入三份薪水，然后选择**开始沙盒**。页面接着会走完十个步骤。它们发送的每笔交易都是真实的，每一笔都能在 stellar.expert 上打开：
+[/demo](/demo) 的沙盒会在你的浏览器里，于 Stellar testnet 上建起一家小公司，并通过 Kalypso 用真实的零知识证明给它发薪。它不需要钱包，也不需要注册，在笔记本电脑上大约需要 4 分钟，较慢的手机需要更久。在“本月薪酬”下输入三份薪水，然后选择**开始沙盒**。页面接着会走完十个步骤。它们发送的每笔交易都是真实的，每一笔都能在 stellar.expert 上打开：
 
 1. 密钥：你的浏览器创建五个一次性的 testnet 账户：雇主（它的账户就是金库）、会计和三位员工。
-2. 测试币：friendbot 给这五个账户都充入测试 XLM。
-3. USDC：金库开通 USDC trustline，五个账户在 Stellar DEX 上为它购买测试 USDC：三份薪水再加 2%，所以它公开的存款永远不等于薪酬总额。
-4. 会计：会计在 Kalypso 的审计密钥登记表里登记自己的审计密钥，并拿到一个编号。
+2. 测试币：Stellar 免费给这五个账户发放测试 XLM。
+3. USDC：金库开通 USDC trustline（让它能持有 USDC），五个账户在 Stellar DEX 上为它购买测试 USDC：三份薪水再加 2%，所以它公开的存款永远不等于薪酬总额。
+4. 会计：会计在 Kalypso 的审计密钥登记表里登记自己的审计密钥（能打开金额的那把密钥），并拿到一个编号。
 5. 金库：金库用那个编号登记到机密代币，证明在你的浏览器里生成。链上会先检查这个编号的所有者和密钥，再签名。
 6. 公司：薪酬合约创建公司，并指定它的会计。
 7. 员工：每位员工登记自己的审计密钥，登记到代币，被邀请并接受。
@@ -40,90 +40,10 @@ description: "不用钱包，在浏览器里发一次薪酬；读取线上示例
 
 ## 使用三个真实界面
 
-沙盒替你扮演了每个角色。真实界面把同一份薪酬分给三个人，每人持有自己的密钥：
+沙盒替你扮演了每个角色。真实界面把同一份薪酬分给三个人，每人持有自己的密钥；雇主也可以用同一个钱包自己记账。请按这个顺序：如果由别人记账，先是会计，然后是雇主，最后是员工。
 
-- [雇主指南](/docs/guides/employer)：在 /employer 设立公司，为金库充值，邀请团队，并用 CSV 发放一个月的薪水。
-- [员工指南](/docs/guides/worker)：在 /worker 通过邀请链接，用 Face ID 或 Freighter 加入，查看工资条，并在测试锚点提现。
-- [会计指南](/docs/guides/accountant)：在 /accountant 登记你的密钥，把你的编号交给雇主，然后打开并导出账簿。
+1. [会计指南](/docs/guides/accountant)：在 /accountant 登记你的密钥，把你的会计编号和地址交给雇主。自己记账的雇主跳过这一步。
+2. [雇主指南](/docs/guides/employer)：在 /employer 设立公司，为金库充值，邀请团队，并用 CSV 发放一个月的薪水。
+3. [员工指南](/docs/guides/worker)：在 /worker 通过邀请链接，用 Face ID 或 Freighter 加入，查看工资条，并在练习银行提现。
 
-雇主和会计各自需要把 Freighter 设为 Testnet，并有一个用 friendbot 充值过的账户。用 Face ID 登录的员工不需要充值任何东西。
-
-## 开发者路径 [#developer-path]
-
-你需要 Git、Node.js 24（服务器需要 24；testnet 脚本需要 22.9 或更高版本）、用于合约的 Rust 工具链（CI 使用 Rust 1.99.0），以及用于构建证明检查的 [stellar CLI](https://github.com/stellar/stellar-cli) 28.1.0。
-
-```bash
-git clone https://github.com/ramakrishnanhulk20/Kalypso.git
-cd Kalypso
-```
-
-下面每个命令块都从仓库根目录开始。
-
-### 运行测试
-
-10 月 11 日，测试套件共有 115 个薪酬合约测试和 43 个审计密钥登记表测试（`cargo test`）、560 个 core 测试（行覆盖率 98.47%）、316 个服务器测试（97.99%）、505 个网页应用测试和 11 个 testnet 脚本测试，总计 1,550 个。服务器的 316 个测试还会通过生产环境的 Postgres 驱动再运行一遍，命令是 `npm run test:wire`。
-
-```bash
-cd packages/contracts && cargo test
-```
-
-```bash
-cd packages/core && npm install && npm test
-```
-
-```bash
-cd packages/server && npm install && npm test
-```
-
-```bash
-cd packages/server && npm run test:wire
-```
-
-```bash
-cd packages/web && npm install && npm test
-```
-
-```bash
-cd packages/contracts/scripts && npm ci && npm test
-```
-
-### 检查线上的薪酬合约是否来自这个仓库
-
-```bash
-stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
-```
-
-它的回答是：`.github/workflows/release.yml`，标签 `v0.1.1`，提交 `03dea9094ce7225fbe15845d2e265561c67b562c`，构建于 GitHub 托管的运行器上。
-
-### 从链上状态检查整套系统
-
-`check:testnet` 读取链上状态并运行 18 项检查：没有人（包括我们）能改变验证器接受哪些证明；我们的两份合约都没有管理员或升级路径；链上的代码就是已发布的代码；每份合约在归档之前至少还有 14 天。它需要 v0.1.1 版本的薪酬合约和 v0.1.0 版本的审计密钥登记表，各放在自己的文件夹里：
-
-```bash
-mkdir -p release/v0.1.1 release/v0.1.0
-curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
-curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
-cd packages/contracts/scripts && npm ci
-npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
-```
-
-同样的文件在[发布页面](https://github.com/ramakrishnanhulk20/Kalypso/releases)。通过的运行会以 `18 of 18 checks passed. RESULT: PASS` 结束。
-
-### 攻击示例公司
-
-`prove:testnet` 在 testnet 上攻击示例公司的各项承诺，并打印出每次攻击是被什么挡下的。它运行 13 项检查，不需要任何密钥。
-
-```bash
-cd packages/core && npm ci && npm run build
-cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
-```
-
-没有种子的私有文件时，金额用已公布的演示会计密钥来检查，P10 的员工部分会被跳过，所以陌生人的运行以 12 项通过、1 项跳过结束。历史检查读取 RPC，而 RPC 只保留大约最近 7 天。上面的 `--archive` 参数从 Kalypso 的线上事件归档读取更早的账本，所以过了这个窗口，历史检查仍然有效；它的健康状况公开在 [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health)。最近一次完整运行在[攻击测试](/docs/security/attack-run)。
-
-### 让整套系统保持存活
-
-```bash
-cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
-```
-
-这会延长全部四份合约及其代码的存储寿命，默认 60 天（用 `-- --days <n>` 修改），这样在评审期间没有一份会被归档。任何人都可以为延长付费，它不会改变其他任何东西。它从 `packages/contracts/.stellar` 里由 `DEPLOYER`（默认 `kalypso-deployer`）指定的 stellar CLI 身份付费，这个身份必须存在并持有 testnet XLM。任何一份合约剩余不足 14 天，`check:testnet` 就会失败。
+会计和雇主各自需要把 Freighter 设为 Test Net，并有一些免费的测试 XLM。每份指南都以**开始之前**一节开头，页面上的**领取免费测试币**卡片一键就能领到测试币。用 Face ID 登录的员工不需要充值任何东西。

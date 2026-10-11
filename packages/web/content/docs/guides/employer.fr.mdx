@@ -1,32 +1,93 @@
 ---
 title: "Employeur"
-description: "Créez une entreprise, alimentez sa trésorerie scellée, invitez l'équipe et payez un mois depuis un tableur sur /employer."
+description: "Créez une entreprise, tenez ses comptes ou nommez un comptable, ajoutez des USDC, invitez l'équipe et payez un mois depuis un tableur sur /employer."
 ---
 
-La console employeur, sur [/employer](/employer), fonctionne avec Freighter réglé sur Testnet. Le compte de votre portefeuille devient la trésorerie de l'entreprise et paie tous les frais sur cet écran, alimentez-le donc d'abord en XLM de test : le bouton « Fund » de Freighter interroge friendbot. Procurez-vous d'abord l'identifiant et l'adresse de votre comptable : le [guide du comptable](/docs/guides/accountant) montre où il les trouve.
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+<Callout title="Ce que vous allez faire" style={{ "--callout-color": "var(--color-seal)" }}>
+1. Installez Freighter et passez-le sur Test Net.
+2. Connectez-vous et obtenez de l'argent de test gratuit.
+3. Tenez vos propres comptes, ou ajoutez votre comptable.
+4. Créez l'entreprise et ajoutez des USDC.
+5. Invitez votre équipe et payez-la.
+</Callout>
+
+Votre portefeuille est le compte bancaire de l'entreprise : Kalypso en paie les salaires et tous les frais de réseau.
+
+## Avant de commencer
+
+1. Installez Freighter, le portefeuille de Stellar pour votre navigateur, depuis [freighter.app](https://www.freighter.app).
+2. Cliquez sur l'icône de Freighter dans la barre d'outils de votre navigateur. En haut de Freighter, cliquez sur le nom du réseau (il indique Main Net) et choisissez Test Net.
+3. Revenez sur [/employer](/employer) et choisissez **Connecter Freighter**.
+
+## Obtenir de l'argent de test gratuit
+
+Une fois connecté, la carte **Obtenez de l'argent de test gratuit** vous donne 100 XLM de test et 100 USDC de test depuis le faucet de Kalypso, en un clic chacun. Demandez d'abord les XLM : ils ouvrent aussi votre compte. Avant le premier USDC, Freighter vous demande une fois d'autoriser votre compte à détenir des USDC. L'argent de test n'a aucune valeur. Le bouton « Fund » de Freighter donne aussi des XLM de test gratuits.
+
+## Tenir vos propres comptes, ou ajouter votre comptable
+
+La clé de votre comptable est celle qui ouvre chaque montant que l'entreprise paie, pour les impôts et la clôture de l'année. Sous **Votre comptable**, choisissez l'une des deux cartes :
+
+- **Je tiens mes propres comptes**, choisie au départ. Ce même portefeuille devient le comptable de l'entreprise. Choisissez **Créer ma clé de comptable**, signez deux fois dans Freighter, puis approuvez une transaction de plus. La page indique « Votre clé de comptable porte le numéro » suivi du numéro. Plus tard, vous ouvrez vos comptes sur la [page comptable](/accountant) avec ce même portefeuille.
+- **Quelqu'un d'autre tient les comptes**. Votre comptable passe en premier : il ouvre la [page comptable](/accountant), enregistre sa clé et vous envoie son identifiant de comptable (le numéro que son enregistrement lui a donné) et son adresse. Le [guide du comptable](/docs/guides/accountant) montre où il trouve les deux. Saisissez l'**Identifiant du comptable** et l'**Adresse du comptable**, puis choisissez **Vérifier**. Un **Code de confirmation** de 16 caractères en quatre groupes apparaît. Demandez à votre comptable de lire le code sur son propre écran, et cochez **Le code correspond** seulement si chaque caractère correspond. Un code différent signifie que la clé de quelqu'un d'autre se trouve sous cet identifiant.
+
+Pas encore de comptable ni de portefeuille ? Le [bac à sable](/demo) joue tous les rôles pour vous.
+
+<Accordions>
+<Accordion title="Détails : comment la clé du comptable est vérifiée">
+La clé du comptable se trouve dans le registre d'audit de Kalypso, la liste publique des clés des comptables, sous un numéro qui est son identifiant. Vos deux signatures portent sur le message de clé de Kalypso, et elles créent la clé ; deux signatures identiques prouvent que votre portefeuille crée la même clé à chaque fois, donc la page comptable la reconstruit avec le même portefeuille.
+
+Quand vous tenez vos propres comptes, Kalypso cherche d'abord un numéro que ce navigateur a vu votre portefeuille enregistrer. Il ne le réutilise que si le registre indique que votre portefeuille en est le propriétaire et qu'il contient votre clé. Sinon, il enregistre votre clé avec votre portefeuille comme propriétaire et prend le numéro dans la transaction confirmée. Dans les deux cas, il lit ensuite sur la chaîne le propriétaire et la clé de ce numéro, et ne continue que si les deux sont les vôtres. Il n'y a pas de code de confirmation à cocher, car vous compareriez votre propre écran avec lui-même.
+
+Avec l'identifiant de quelqu'un d'autre, **Vérifier** lit dans le registre le même propriétaire et la même clé, et le code correspond aux 16 premiers caractères de cette clé. Avant l'enregistrement du compte de l'entreprise, Kalypso relit les deux sur la chaîne et refuse si l'un a changé.
+</Accordion>
+</Accordions>
 
 ## Créer l'entreprise
 
-1. Choisissez **Connecter Freighter**.
-2. Sous **Votre comptable**, saisissez l'**Identifiant du comptable** et l'**Adresse du comptable**, puis choisissez **Vérifier**. Kalypso lit le registre d'audit et affiche un **Code de confirmation** : 16 caractères en quatre groupes.
-3. Demandez à votre comptable de lire le code sur son propre écran. Cochez **Le code correspond** seulement si chaque caractère correspond. Un code différent signifie que la clé de quelqu'un d'autre se trouve sous cet identifiant.
-4. Saisissez le **Nom affiché sur les fiches de paie**, de 1 à 64 octets. N'importe qui peut le lire sur la chaîne.
-5. Choisissez **Créer l'entreprise**. Freighter vous demande de signer deux fois le message de clé de Kalypso, ce qui crée la clé privée de la trésorerie, puis d'approuver deux transactions : l'enregistrement de la trésorerie auprès du jeton confidentiel, prouvé dans votre navigateur, puis l'entreprise elle-même. Le tableau de bord s'ouvre avec l'identifiant de l'entreprise en haut.
+1. Saisissez le **Nom affiché sur les fiches de paie**. N'importe qui peut le lire.
+2. Choisissez **Créer l'entreprise**. Freighter vous demande de signer deux fois, puis d'approuver deux transactions. Le tableau de bord s'ouvre avec l'identifiant de l'entreprise en haut. Si vous tenez vos propres comptes, il indique aussi « Vous tenez vos propres comptes. Ouvrez-les sur la page comptable. »
 
-## Alimenter la trésorerie
+<Accordions>
+<Accordion title="Détails : ce que fait Créer l'entreprise">
+Le nom peut faire de 1 à 64 octets. Pour des lettres et des chiffres simples, un octet correspond à un caractère, et le compteur sous la zone compte les octets.
 
-6. Dans **Trésorerie**, sous **Ajouter des fonds**, saisissez un **Montant (USDC)** et choisissez **Ajouter à la trésorerie**. Freighter approuve une ligne de confiance USDC la première fois, puis un dépôt et une fusion. Le solde scellé s'affiche ensuite, ouvert dans votre navigateur avec votre clé. Le montant du dépôt est public, donc il montre à peu près ce que coûte la paie.
+Les deux signatures portent à nouveau sur le message de clé de Kalypso, cette fois pour la trésorerie. Elles créent la clé privée de la trésorerie, et deux signatures identiques prouvent que votre portefeuille reconstruit la même clé à chaque fois. La première transaction enregistre la trésorerie auprès du jeton confidentiel sous l'identifiant du comptable, avec une preuve construite dans votre navigateur. Cet enregistrement ne peut jamais passer à un autre identifiant. La seconde crée l'entreprise sur le contrat de paie, en nommant son comptable.
+</Accordion>
+</Accordions>
 
-## Inviter l'équipe
+## Ajouter des USDC
 
-7. Dans **Équipe**, collez les **Adresses des salariés, une par ligne**, jusqu'à 50, et choisissez **Inviter**. Chaque adresse est une transaction à part, et chaque ligne se termine par invité, déjà invité, déjà rejoint, refusé ou non envoyé.
-8. Envoyez à chaque salarié le **Lien d'invitation**. Un salarié qui s'inscrit avec Face ID obtient une nouvelle adresse sur son écran : invitez-la, et il rejoint l'entreprise depuis le même lien. Seuls les salariés qui ont rejoint l'entreprise peuvent être payés.
+3. Dans **Trésorerie**, sous **Ajouter des fonds**, saisissez un **Montant (USDC)** et choisissez **Ajouter à la trésorerie**. Freighter vous demande d'approuver chaque étape. Le solde s'affiche ensuite, ouvert dans votre navigateur avec votre clé. Le montant ajouté est public, donc il montre à peu près ce que coûte la paie.
 
-## Payer un mois
+   Pas encore d'USDC ? Utilisez la carte **Obtenez de l'argent de test gratuit** en haut de la page.
 
-9. Dans **Lancer la paie**, choisissez le **Mois** et l'**Année**.
-10. Déposez le CSV sur la zone, ou choisissez **Coller à la place**. Chaque ligne contient une adresse, un montant et un nom facultatif, jusqu'à 500 lignes plus une ligne d'en-tête. Les problèmes sont listés par ligne, et l'aperçu montre chaque montant et le total. Les montants du fichier utilisent toujours un point comme séparateur décimal et aucun séparateur de milliers (1250.50, jamais 1 250,50), quelle que soit la langue de la page.
-11. Choisissez **Approuver et payer**. Freighter approuve une transaction pour ouvrir le cycle, une pour chaque groupe de deux salariés, et une pour le clôturer. Votre navigateur prouve d'abord chaque paiement. Chaque ligne se termine par payé, déjà payé ou échoué, et « Cycle clôturé » apparaît une fois que tout est payé.
+<Accordions>
+<Accordion title="Détails : ligne de confiance, dépôt et fusion">
+- Une ligne de confiance permet à votre compte de détenir des USDC. Vous l'approuvez une seule fois, la première.
+- Le dépôt fait passer des USDC de votre compte vers la trésorerie scellée.
+- La fusion rend le dépôt disponible pour payer.
+- Les signatures de clé sont les deux signatures identiques du message de clé de Kalypso. Elles créent la clé privée de votre trésorerie.
+</Accordion>
+</Accordions>
+
+## Inviter votre équipe
+
+4. Dans **Équipe**, collez les **Adresses des salariés, une par ligne**, jusqu'à 50, et choisissez **Inviter**. Chaque adresse est une transaction à part, et chaque ligne se termine par invité, déjà invité, déjà rejoint, refusé ou non envoyé.
+5. La zone **Lien d'invitation** se trouve sous **Équipe**, après la liste. Envoyez ce lien à chaque salarié. Un salarié qui s'inscrit avec Face ID obtient une nouvelle adresse sur son écran : invitez-la, et il rejoint l'entreprise depuis le même lien. Seuls les salariés qui ont rejoint l'entreprise peuvent être payés.
+
+## Les payer
+
+6. Dans **Lancer la paie**, choisissez le **Mois** et l'**Année**.
+7. Déposez le CSV sur la zone, ou choisissez **Coller à la place**. Chaque ligne contient une adresse, un montant et un nom facultatif, jusqu'à 500 lignes plus une ligne d'en-tête. Les problèmes sont listés par ligne, et l'aperçu montre chaque montant et le total. Les montants du fichier utilisent toujours un point comme séparateur décimal et aucun séparateur de milliers (1250.50, jamais 1 250,50), quelle que soit la langue de la page.
+8. Choisissez **Approuver et payer**. Chaque ligne se termine par payé, déjà payé ou échoué, et « Cycle clôturé » apparaît une fois que tout est payé.
+
+<Accordions>
+<Accordion title="Détails : ce qu'envoie Approuver et payer">
+Freighter approuve une transaction pour ouvrir le cycle, une pour chaque groupe de deux salariés, et une pour le clôturer. Votre navigateur prouve d'abord chaque paiement, donc le montant est vérifié sans être montré. Le contrat garde un indicateur de paiement par salarié et par cycle, donc personne n'est payé deux fois.
+</Accordion>
+</Accordions>
 
 ## Sur un autre navigateur
 
@@ -36,7 +97,7 @@ Votre liste d'entreprises vit dans ce navigateur. Sur un nouveau, saisissez l'id
 
 Les messages que vous risquez le plus de rencontrer :
 
-- « Le compte de ce portefeuille n'existe pas encore sur le testnet. » Alimentez-le avec friendbot.
+- « Le compte de ce portefeuille n'existe pas encore sur le testnet. » Obtenez des XLM de test gratuits avec la carte **Obtenez de l'argent de test gratuit**, ou avec le bouton « Fund » de Freighter.
 - « Cet identifiant de comptable appartient à une autre adresse que celle saisie. » Vérifiez les deux avec votre comptable.
 - « Ce portefeuille est déjà enregistré auprès du jeton confidentiel sous un autre identifiant de comptable, et cela ne pourra jamais changer. » Utilisez un portefeuille neuf.
 - « Le fichier liste plus de salariés que ceux qui ont rejoint l'entreprise. » Attendez que chacun ait rejoint l'entreprise.
@@ -45,4 +106,4 @@ Les messages que vous risquez le plus de rencontrer :
 
 ## Ce que vous voyez, et ce que vous ne voyez pas
 
-Vous voyez le solde scellé de la trésorerie et les montants de votre propre fichier, jamais le solde d'un salarié. La clé de votre comptable ouvre chaque montant que vous payez et le solde de la trésorerie après chaque paiement, et elle ne peut pas déplacer d'argent. Les inconnus voient que votre trésorerie a payé chaque salarié et quand, jamais combien. Kalypso ne détient jamais vos clés.
+Vous voyez le solde scellé de la trésorerie et les montants de votre propre fichier, jamais le solde d'un salarié. La clé de votre comptable ouvre chaque montant que vous payez et le solde de la trésorerie après chaque paiement, et elle ne peut pas déplacer d'argent. Quand vous tenez vos propres comptes, cette clé est la vôtre. Les inconnus voient que votre trésorerie a payé chaque salarié et quand, jamais combien. Kalypso ne détient jamais vos clés.

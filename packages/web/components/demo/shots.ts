@@ -10,16 +10,16 @@ export interface Shot {
 }
 
 export const SHOTS: readonly Shot[] = [
-  { key: "keys", seconds: 2 },
-  { key: "fund", seconds: 5 },
-  { key: "usdc", seconds: 26 },
-  { key: "accountant", seconds: 6 },
-  { key: "treasury", seconds: 17 },
-  { key: "company", seconds: 7 },
-  { key: "workers", seconds: 35 },
-  { key: "deposit", seconds: 15 },
-  { key: "run", seconds: 5 },
-  { key: "pay", seconds: 26 },
+  { key: "keys", seconds: 3 },
+  { key: "fund", seconds: 7 },
+  { key: "usdc", seconds: 38 },
+  { key: "accountant", seconds: 9 },
+  { key: "treasury", seconds: 25 },
+  { key: "company", seconds: 10 },
+  { key: "workers", seconds: 51 },
+  { key: "deposit", seconds: 22 },
+  { key: "run", seconds: 7 },
+  { key: "pay", seconds: 38 },
 ];
 
 export const SHOT_COUNT = SHOTS.length;

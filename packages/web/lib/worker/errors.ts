@@ -44,7 +44,7 @@ const MESSAGES = {
   WALLET_REJECTED: "The wallet did not approve the request.",
   WALLET_NOT_REPRODUCIBLE: "This wallet gave two different signatures for the same message, so it cannot rebuild your key next time. Use a wallet that signs the same way each time, such as Freighter.",
   WALLET_SIGNATURE_INVALID: "The wallet's signature is not this account's signature over the Kalypso key message. Sign it again.",
-  WALLET_ACCOUNT_MISSING: "This wallet account is not on the Stellar test network yet. Fund it with friendbot, then try again.",
+  WALLET_ACCOUNT_MISSING: "This wallet account is not on the Stellar test network yet. Fund it with Freighter's Fund button (free test XLM), then try again.",
   WALLET_CHANGED_TRANSACTION: "The wallet returned a different transaction from the one it was asked to sign, so nothing was sent.",
   SIGNING_TOO_SLOW: "The approval took longer than the minute the relayer accepts. Try again and approve a little sooner.",
   KEYS_MISMATCH: "This account is registered with other private keys than the ones this sign-in made, so its pay cannot be read here.",
@@ -53,7 +53,7 @@ const MESSAGES = {
   NOT_INVITED: "This company has not invited this account. Ask them to invite the address shown here.",
   INVITE_WITHDRAWN: "This invite was withdrawn, or you were removed from the company. Ask them to invite you again.",
   NOT_REGISTERED: "This account is not set up for private pay yet. Join a company first.",
-  AUDITOR_ID_TAKEN: "The audit key id does not belong to you, so Kalypso will not register under it.",
+  AUDITOR_ID_TAKEN: "That key number does not belong to you, so Kalypso will not register under it.",
   PROOF_REFUSED: "The network refused this browser's proof, so nothing changed. Try again.",
   SIMULATION_FAILED: "The network would not run this step, so nothing was sent.",
   FEE_TOO_HIGH: "The network asked for a fee above Kalypso's cap, so nothing was signed.",
@@ -75,7 +75,7 @@ const MESSAGES = {
   ANCHOR_NOT_READY: "The cash-out service is still waiting for you to finish its page.",
   ANCHOR_RECORD_INVALID: "The cash-out service's record of this withdrawal is not one Kalypso can pay, so nothing was built.",
   ANCHOR_RECORD_CHANGED: "The cash-out service changed its request after you saw it, so nothing was sent. Start the cash-out again.",
-  CASHOUT_NO_XLM: "Your cash-out account has no XLM left for the network fee, so nothing was sent. Fund it with friendbot, then try again.",
+  CASHOUT_NO_XLM: "Your cash-out account has no XLM left for the network fee, so nothing was sent. Fund it with Stellar's free test-money service, then try again.",
   ANCHOR_ALREADY_PAID: "This cash-out was already paid from your account, so it was not sent again.",
 } as const;
 

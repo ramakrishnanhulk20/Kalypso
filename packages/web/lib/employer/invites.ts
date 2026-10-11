@@ -63,13 +63,14 @@ export async function inviteWorkers(
     const results: InviteResult[] = [];
     for (const [i, worker] of workers.entries()) {
       const n = `${i + 1} of ${workers.length}`;
+      const at = { n: i + 1, total: workers.length };
       const now = await status(worker);
       if (now === "Active" || now === "Invited") {
         results.push({ address: worker, status: now === "Active" ? "active" : "already-invited" });
-        p.tick(now === "Active" ? `Worker ${n} is already in the company` : `Worker ${n} is already invited`);
+        p.tick(now === "Active" ? "invite_already_active" : "invite_already_invited", at);
         continue;
       }
-      p.say(`Inviting worker ${n}`);
+      p.say("invite_sending", at);
       const sent = await sendCall(ctx, wallet, {
         what: "invite_worker",
         contractId: payroll,
@@ -80,7 +81,7 @@ export async function inviteWorkers(
         return after === "Invited" || after === "Active";
       });
       results.push({ address: worker, status: "invited", txHash: sent.hash });
-      p.tick(`Worker ${n} is invited`, sent.hash);
+      p.tick("invite_done", at, sent.hash);
     }
     return results;
   });

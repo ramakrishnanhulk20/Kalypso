@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import type { WorkerSession } from "@/lib/worker";
 import { ErrorNote } from "@/components/app/error-note";
+import { RowChip } from "@/components/app/row-chip";
 import { StepButton } from "@/components/app/step-button";
 import { TxLink } from "@/components/app/tx-link";
 import { useAction } from "@/components/app/use-action";
@@ -135,9 +136,12 @@ export function CashOut({ kit, worker, max, onMoved }: { kit: WorkerKit; worker:
   return (
     <section aria-labelledby={headingId} className="mt-14 border-t border-line pt-10">
       <p className="t-label">{t("label")}</p>
-      <h2 id={headingId} className="mt-3 font-display text-[1.5rem] font-medium leading-[1.15] text-fg">
-        {t("title")}
-      </h2>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h2 id={headingId} className="font-display text-[1.5rem] font-medium leading-[1.15] text-fg">
+          {t("title")}
+        </h2>
+        <RowChip tone="wait">{t("testChip")}</RowChip>
+      </div>
       <p className="mt-3 max-w-[36rem] font-sans text-base text-muted">{t("text")}</p>
       <ol className="mt-8 border-b border-line">
         <Step number="01" title={t("step1")}>

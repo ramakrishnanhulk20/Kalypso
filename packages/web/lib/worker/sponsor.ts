@@ -105,7 +105,7 @@ const REFUSALS = {
   missing_soroban_data: [NOT_SENT, "The transaction does not state its resource limits, so the fee sponsor will not pay for it."],
   wasm_upload: [NOT_SENT, "The fee sponsor never pays to upload contract code."],
   contract_creation: [NOT_SENT, "The fee sponsor only pays to create a passkey wallet set up the way Kalypso sets one up."],
-  root_contract_not_allowed: [NOT_SENT, "The fee sponsor only pays for calls into the Kalypso payroll and token contracts, and for registering your own audit key."],
+  root_contract_not_allowed: [NOT_SENT, "The fee sponsor only pays for calls into the Kalypso payroll and token contracts, and for registering your own key."],
   nested_contract_not_allowed: [NOT_SENT, "This call reaches a contract the fee sponsor does not pay for."],
   no_auth: [NOT_SENT, "The call carries no approval from you, so the fee sponsor will not pay for it."],
   source_account_auth: [NOT_SENT, "The fee sponsor needs your own approval on this call, not the sender's."],

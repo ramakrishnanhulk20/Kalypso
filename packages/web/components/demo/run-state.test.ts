@@ -74,9 +74,9 @@ describe("reduceRun", () => {
 
 describe("the live line in each language", () => {
   it("shows the engine's own words in English and a sentence by step elsewhere", () => {
-    const state = play([{ type: "begin" }, { type: "progress", at: 0, progress: { step: "workers", label: "Registering worker 2's own audit key", done: 2, total: 3 } }]);
-    expect(liveSentence(state, "en", progress)).toBe("Registering worker 2's own audit key");
-    expect(liveSentence(state, "es", progress)).toBe("Setting up worker 2 of 3: audit key, token account, invite and acceptance");
+    const state = play([{ type: "begin" }, { type: "progress", at: 0, progress: { step: "workers", label: "Registering worker 2's own key for reading their pay", done: 2, total: 3 } }]);
+    expect(liveSentence(state, "en", progress)).toBe("Registering worker 2's own key for reading their pay");
+    expect(liveSentence(state, "es", progress)).toBe("Setting up worker 2 of 3: key for reading their pay, token account, invite and acceptance");
     expect(liveSentence(FRESH_RUN, "es", progress)).toBe("");
   });
 
@@ -90,24 +90,25 @@ describe("the live line in each language", () => {
 
 describe("time and progress", () => {
   it("uses the live step times, by the step list's own keys", () => {
-    const measured = { keys: 2, fund: 5, usdc: 26, accountant: 6, treasury: 17, company: 7, workers: 35, deposit: 15, run: 5, pay: 26 };
+    const measured = { keys: 3, fund: 7, usdc: 38, accountant: 9, treasury: 25, company: 10, workers: 51, deposit: 22, run: 7, pay: 38 };
     expect(Object.fromEntries(SHOTS.map((shot) => [shot.key, shot.seconds]))).toEqual(measured);
   });
 
   it("adds up the steps still to go, counting the current one in full", () => {
-    expect(secondsLeft(0)).toBe(144);
-    expect(secondsLeft(3)).toBe(111);
-    expect(secondsLeft(7)).toBe(46);
+    expect(secondsLeft(0)).toBe(210);
+    expect(secondsLeft(3)).toBe(162);
+    expect(secondsLeft(7)).toBe(67);
     expect(secondsLeft(SHOTS.length)).toBe(0);
-    expect(secondsLeft(-1)).toBe(144);
+    expect(secondsLeft(-1)).toBe(210);
   });
 
   it("rounds minutes left up, and says under a minute below 60 seconds", () => {
-    expect(timeLeftLabel(run, 0)).toBe("about 3 min left");
-    expect(timeLeftLabel(run, 2)).toBe("about 3 min left");
-    expect(timeLeftLabel(run, 3)).toBe("about 2 min left");
+    expect(timeLeftLabel(run, 0)).toBe("about 4 min left");
+    expect(timeLeftLabel(run, 2)).toBe("about 4 min left");
+    expect(timeLeftLabel(run, 3)).toBe("about 3 min left");
     expect(timeLeftLabel(run, 6)).toBe("about 2 min left");
-    expect(timeLeftLabel(run, 7)).toBe("under a minute left");
+    expect(timeLeftLabel(run, 7)).toBe("about 2 min left");
+    expect(timeLeftLabel(run, 8)).toBe("under a minute left");
     expect(timeLeftLabel(run, SHOTS.length)).toBe("under a minute left");
   });
 
@@ -123,22 +124,22 @@ describe("time and progress", () => {
   });
 
   it("takes the whole run from the same step times the estimate uses", () => {
-    expect(TOTAL_SECONDS).toBe(144);
+    expect(TOTAL_SECONDS).toBe(210);
     expect(TOTAL_SECONDS).toBe(secondsLeft(0));
   });
 
   it("counts finished steps plus the elapsed part of the current one over the whole run", () => {
     const running: RunState = { ...FRESH_RUN, frontier: 1, running: true, startedAt: { fund: 0 } };
-    expect(progressFraction(running, 4_000)).toBeCloseTo((2 + 4) / TOTAL_SECONDS, 5);
-    expect(progressFraction(running, 60_000)).toBeCloseTo((2 + 5) / TOTAL_SECONDS, 5);
+    expect(progressFraction(running, 4_000)).toBeCloseTo((3 + 4) / TOTAL_SECONDS, 5);
+    expect(progressFraction(running, 60_000)).toBeCloseTo((3 + 7) / TOTAL_SECONDS, 5);
   });
 
   it("reaches the end as the last step takes its typical time", () => {
     const last = SHOTS.length - 1;
     const lastKey = (SHOTS[last] as (typeof SHOTS)[number]).key;
     const finishing: RunState = { ...FRESH_RUN, frontier: last, running: true, startedAt: { [lastKey]: 0 } };
-    expect(progressFraction(finishing, 0)).toBeCloseTo((TOTAL_SECONDS - 26) / TOTAL_SECONDS, 5);
-    expect(progressFraction(finishing, 26_000)).toBe(1);
+    expect(progressFraction(finishing, 0)).toBeCloseTo((TOTAL_SECONDS - 38) / TOTAL_SECONDS, 5);
+    expect(progressFraction(finishing, 38_000)).toBe(1);
     expect(progressFraction(finishing, 90_000)).toBe(1);
   });
 });

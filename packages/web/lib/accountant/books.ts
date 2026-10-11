@@ -70,9 +70,9 @@ export async function openBooks(wallet: WalletPort, input: { companyId: bigint }
   const { config, port } = ctx;
   const p = reporter(onProgress, 3);
   const { companyId, company, secret } = await sealedTo(ctx, wallet, input?.companyId, () =>
-    p.say("Sign the Kalypso key message twice in your wallet to open the books with your key"),
+    p.say("keys_books"),
   );
-  p.tick(`Your key holds accountant id ${company.auditorId}, which this company's pay is sealed to`);
+  p.tick("books_key_holds", { id: String(company.auditorId) });
 
   let books: SealedPayroll;
   try {
@@ -85,9 +85,9 @@ export async function openBooks(wallet: WalletPort, input: { companyId: bigint }
       treasury: company.admin,
       auditorSecret: secret,
       onProgress: (step, done, total) => {
-        if (step === "history") p.say(total === 0 ? "Reading the company's payroll history" : `Reading the payroll history: ${done} of ${total} payments`);
-        else if (step === "opening") p.tick(`Opening ${total} payments with your key`);
-        else p.tick(`Opened ${done} of ${total} payments`);
+        if (step === "history") p.say(total === 0 ? "books_history_start" : "books_history", { done, total });
+        else if (step === "opening") p.tick("books_opening", { total });
+        else p.tick("books_opened", { done, total });
       },
     });
   } catch (err) {

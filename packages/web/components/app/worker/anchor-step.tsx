@@ -42,9 +42,9 @@ export function AnchorStep({ kit, worker }: { kit: WorkerKit; worker: WorkerSess
 
   useEffect(() => () => watcher.current?.abort(), []);
 
-  // The lib's sentence for the status in English (and the anchor's own explanation of an error);
-  // the status code's sentence elsewhere.
-  const statusText = (s: { status: CashOutStatus; message: string }): string => (locale === "en" ? s.message : t(`status.${s.status}`));
+  // The status's sentence from messages in the page's language. An error the anchor explained keeps
+  // the anchor's own words on an English page, since the anchor writes them in English.
+  const statusText = (s: { status: CashOutStatus; message: string }): string => (s.status === "error" && locale === "en" ? s.message : t(`status.${s.status}`));
 
   const build = useAction(async (_onProgress, transactionId: string) => {
     const built = await shownErrors(() => kit.lib.buildAnchorPayment(worker, transactionId));
@@ -169,6 +169,7 @@ export function AnchorStep({ kit, worker }: { kit: WorkerKit; worker: WorkerSess
 
   return (
     <div>
+      {finished ? null : <p className="mb-4 max-w-[36rem] font-sans text-[0.9375rem] text-muted">{t("windowNote")}</p>}
       {finished ? null : (
         <StepButton action={{ running: prepare.running, progress: prepare.progress, flash: false }} disabled={prepare.running} onClick={onOpen}>
           {t("open")}

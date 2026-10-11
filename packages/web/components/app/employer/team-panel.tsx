@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { CopyButton } from "@/components/app/copy-button";
-import { ErrorNote } from "@/components/app/error-note";
 import { describeError } from "@/components/app/errors";
 import { FIELD, TextAreaField } from "@/components/app/fields";
 import { loadEmployer } from "@/components/app/loaders";
@@ -14,8 +13,10 @@ import { StepButton } from "@/components/app/step-button";
 import { TxLink } from "@/components/app/tx-link";
 import { useAction } from "@/components/app/use-action";
 import { useWallet } from "@/components/app/wallet-session";
+import { useProgressText } from "./progress-text";
 import { useErrorText } from "@/lib/i18n/errors";
 import { shortId } from "@/lib/ledger";
+import { ConsoleErrorNote } from "./console-error-note";
 
 type InviteRow = {
   address: string;
@@ -34,10 +35,6 @@ const TONE: Record<InviteRow["status"], ChipTone> = {
 
 // Each address goes in its own call, so a refusal belongs to one row and the rows before it keep
 // their result. The lib numbers a one-address call "worker 1 of 1"; the screen uses the real place.
-function renumber(sentence: string, index: number, total: number): string {
-  return sentence.replace(/(worker )1 of 1/i, `$1${index + 1} of ${total}`);
-}
-
 // The lib's English reason names "Worker 1"; on a list the row already says which address.
 function reasonOf(message: string): string {
   return message.replace(/^Worker 1: /, "").replace(/^Worker 1 is /, "This address is ");
@@ -48,6 +45,7 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
   const locale = useLocale();
   const errorText = useErrorText();
   const wallet = useWallet();
+  const progressText = useProgressText();
   const [text, setText] = useState("");
   const [rows, setRows] = useState<InviteRow[]>([]);
   const chipText = {
@@ -71,8 +69,9 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
     setRows([]);
     for (const [index, address] of addresses.entries()) {
       try {
+        // Each address is invited on its own, so the lib counts "1 of 1"; the list's own count replaces it.
         const [result] = await lib.inviteWorkers(wallet, { companyId, workers: [address] }, (p) =>
-          onProgress({ ...p, sentence: renumber(p.sentence, index, addresses.length) }),
+          progressText(onProgress)({ ...p, values: { ...p.values, n: index + 1, total: addresses.length } }),
         );
         if (!result) throw new Error("No result.");
         const row: InviteRow = { address, status: result.status === "active" ? "joined" : result.status };
@@ -111,7 +110,7 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
             {t("invite")}
           </StepButton>
         </div>
-        {invite.error ? <ErrorNote error={invite.error} /> : null}
+        {invite.error ? <ConsoleErrorNote error={invite.error} /> : null}
         {rows.length > 0 ? (
           <ul className="mt-6 border-t border-line" aria-label={t("invitesLabel")}>
             {rows.map((row, index) => (

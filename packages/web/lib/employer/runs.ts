@@ -13,15 +13,19 @@ import { confirmOnChain, sendCall } from "./send";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const;
 
-const FAILURES: Record<RowFailureReason, string> = {
-  PROOF_FAILED: "The payment proof could not be made in this browser, even with every key read again from chain.",
-  SIMULATION_FAILED: "The network would not run this payment, even with every key read again from chain.",
-  FEE_TOO_HIGH: "The network asked for a fee above Kalypso's cap for a payment, so it was not signed.",
-  SUBMIT_REFUSED: "The network refused this payment, so the run stopped here.",
-  TRANSACTION_FAILED: "This payment failed on chain, so the run stopped here.",
-  TRANSACTION_EXPIRED: "This payment expired before it landed, so the run stopped here.",
-  RUN_STOPPED: "Not sent, because the run stopped at an earlier payment.",
+// A Record, so the compiler refuses a reason core adds that this list does not name.
+const FAILURE_REASONS: Record<RowFailureReason, true> = {
+  PROOF_FAILED: true,
+  SIMULATION_FAILED: true,
+  FEE_TOO_HIGH: true,
+  SUBMIT_REFUSED: true,
+  TRANSACTION_FAILED: true,
+  TRANSACTION_EXPIRED: true,
+  RUN_STOPPED: true,
 };
+
+/** Why a row did not go through. The screen shows errors.run.<reason> in the page's language. */
+export const ROW_FAILURE_REASONS = Object.keys(FAILURE_REASONS) as RowFailureReason[];
 
 export interface RunPeriod {
   /** 202610 for October 2026: the seed's year-and-month run id. */
@@ -35,8 +39,8 @@ export interface PayrollRow {
   address: string;
   status: "paid" | "already-paid" | "failed";
   txHash?: string;
-  /** A plain sentence for the row. Never an amount. */
-  sentence: string;
+  /** For a failed row, why: one of ROW_FAILURE_REASONS. */
+  reason?: RowFailureReason;
 }
 
 export interface PayrollRun {
@@ -122,12 +126,8 @@ async function openRun(ctx: ConsoleContext, wallet: WalletPort, company: Company
 
 function rowsOf(report: RunReport): PayrollRow[] {
   return report.rows.map((row) => {
-    const out: PayrollRow = {
-      line: row.line,
-      address: row.address,
-      status: row.status,
-      sentence: row.status === "paid" ? "Paid." : row.status === "already-paid" ? "Already paid in this run." : FAILURES[row.reason ?? "RUN_STOPPED"],
-    };
+    const out: PayrollRow = { line: row.line, address: row.address, status: row.status };
+    if (row.status === "failed") out.reason = row.reason ?? "RUN_STOPPED";
     if (row.txHash !== undefined) out.txHash = row.txHash;
     return out;
   });
@@ -171,30 +171,31 @@ export async function runPayroll(
     const p = reporter(onProgress, rows.length + 2);
     const result: PayrollRun = { companyId, runId: period.runId, label: period.label, rows: [], transactions: [], closed: false };
 
-    p.say("Sign the Kalypso key message twice in your wallet to open the treasury");
+    p.say("keys_treasury");
     const keys = await walletKeys(wallet, { domain: config.keyDomain, token: config.contracts.token });
 
-    p.say(`Opening the ${period.label} run`);
+    const run = { label: period.label };
+    p.say("run_opening", run);
     const opened = await openRun(ctx, wallet, company, companyId, period, rows.length);
     if (opened.openTx !== undefined) result.openTx = opened.openTx;
     const allPaid = (await paidFlags(ctx, companyId, period.runId, rows)).every(Boolean);
-    const alreadyPaid = (): PayrollRow[] => rows.map((row) => ({ line: row.line, address: row.address, status: "already-paid", sentence: "Already paid in this run." }));
+    const alreadyPaid = (): PayrollRow[] => rows.map((row) => ({ line: row.line, address: row.address, status: "already-paid" }));
     if (opened.run.status === "Closed") {
       if (!allPaid) throw new ConsoleError("RUN_CLOSED");
       result.rows = alreadyPaid();
       result.closed = true;
-      p.tick(`The ${period.label} run was already paid and closed`);
+      p.tick("run_already_closed", run);
       return result;
     }
-    p.tick(`The ${period.label} run is open`, opened.openTx);
+    p.tick("run_open", run, opened.openTx);
 
     const position = new Map(rows.map((row, i) => [row.line, i + 1]));
-    const of = (line: number) => `Payment ${position.get(line) ?? "?"} of ${rows.length} (line ${line})`;
+    const at = (line: number) => ({ n: position.get(line) ?? "?", total: rows.length, line });
     // Every row paid while the run is still open (the close was lost): closing needs no proof and
     // no saved opening, so the engine is not asked and a new device needs no rebuild for it.
     if (allPaid) {
       result.rows = alreadyPaid();
-      for (const row of rows) p.tick(`${of(row.line)}: already paid`);
+      for (const row of rows) p.tick("pay_already_paid", at(row.line));
     } else {
       let report: RunReport;
       try {
@@ -210,11 +211,11 @@ export async function runPayroll(
           keys,
           prover: await ctx.prover(),
           onProgress: ({ row, status }) => {
-            if (status === "proving") p.say(`${of(row)}: proving it in your browser`);
-            else if (status === "submitted") p.say(`${of(row)}: sent to the network`);
-            else if (status === "paid") p.tick(`${of(row)}: landed`);
-            else if (status === "already-paid") p.tick(`${of(row)}: already paid`);
-            else p.say(`${of(row)}: did not go through`);
+            if (status === "proving") p.say("pay_proving", at(row));
+            else if (status === "submitted") p.say("pay_submitted", at(row));
+            else if (status === "paid") p.tick("pay_landed", at(row));
+            else if (status === "already-paid") p.tick("pay_already_paid", at(row));
+            else p.say("pay_failed", at(row));
           },
         });
       } catch (err) {
@@ -224,13 +225,13 @@ export async function runPayroll(
       result.transactions = [...report.transactions];
     }
     if (result.rows.some((row) => row.status === "failed")) {
-      p.say(`The ${period.label} run stays open: some payments did not go through`);
+      p.say("run_stays_open", run);
       return result;
     }
 
     const now = await runOrNull(ctx, companyId, period.runId);
     if (now?.status === "Open") {
-      p.say(`Closing the ${period.label} run`);
+      p.say("run_closing", run);
       const sent = await sendCall(ctx, wallet, {
         what: "close_run",
         contractId: config.contracts.payroll,
@@ -240,7 +241,7 @@ export async function runPayroll(
       await confirmOnChain(ctx, `Closing the ${period.label} run`, async () => (await runOrNull(ctx, companyId, period.runId))?.status === "Closed");
     }
     result.closed = true;
-    p.tick(`Every payment landed and the ${period.label} run is closed`, result.closeTx);
+    p.tick("run_closed", run, result.closeTx);
     return result;
   });
 }

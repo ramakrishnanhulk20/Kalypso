@@ -62,14 +62,14 @@ function publicView(wallet: WalletPort, point: Point): AccountantKey {
  */
 export async function deriveAccountantKey(wallet: WalletPort, onProgress?: OnProgress): Promise<AccountantKey> {
   const p = reporter(onProgress, 1);
-  p.say("Sign the Kalypso key message twice in your wallet to make your accountant key");
+  p.say("keys_accountant");
   const { point } = await accountantSecret(wallet);
-  p.tick("Your accountant key is ready");
+  p.tick("accountant_key_ready");
   return publicView(wallet, point);
 }
 
-/** True when the registry says this wallet owns `id` and holds this point under it. An outage throws. */
-async function holds(id: number, owner: string, point: Point): Promise<boolean> {
+/** True when the registry says `owner` owns `id` and holds this point under it. An outage throws. */
+export async function holds(id: number, owner: string, point: Point): Promise<boolean> {
   const ctx = consoleContext();
   try {
     await requireAuditorBinding(ctx.port, ctx.config.contracts.auditor, id, { owner, key: point });
@@ -103,17 +103,17 @@ export async function registerAccountantKey(
   return withWalletLock(wallet.address, async () => {
     const p = reporter(onProgress, 2);
     if ((await ctx.ledger.xlmBalance(wallet.address)) === null) throw new ConsoleError("ACCOUNT_NOT_FOUND");
-    p.say("Sign the Kalypso key message twice in your wallet to make your accountant key");
+    p.say("keys_accountant");
     const { point } = await accountantSecret(wallet);
-    p.tick("Your accountant key is ready");
+    p.tick("accountant_key_ready");
 
     if (knownId !== undefined) {
       if (!(await holds(knownId, wallet.address, point))) throw new ConsoleError("ACCOUNTANT_ID_NOT_YOURS");
-      p.tick(`Accountant id ${knownId} already holds your key`);
+      p.tick("accountant_id_held", { id: String(knownId) });
       return { ...publicView(wallet, point), accountantId: knownId };
     }
 
-    p.say("Registering your accountant key on chain");
+    p.say("accountant_registering");
     const sent = await sendCall(ctx, wallet, {
       what: "register_key",
       contractId: ctx.config.contracts.auditor,
@@ -127,7 +127,7 @@ export async function registerAccountantKey(
       throw new ConsoleError("CHAIN_DISAGREES", { message: "The key registration landed, but the network did not say which id it got. Look the transaction up on stellar.expert to find it." });
     }
     await confirmOnChain(ctx, "The accountant key", () => holds(accountantId, wallet.address, point));
-    p.tick(`Your accountant id is ${accountantId}`, sent.hash);
+    p.tick("accountant_registered", { id: String(accountantId) }, sent.hash);
     return { ...publicView(wallet, point), accountantId, txHash: sent.hash };
   });
 }

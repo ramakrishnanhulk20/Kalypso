@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { RebuiltTreasury, TreasuryBalance } from "@/lib/employer";
-import { ErrorNote } from "@/components/app/error-note";
 import type { ShownError } from "@/components/app/errors";
 import { describeError } from "@/components/app/errors";
 import { TextField } from "@/components/app/fields";
@@ -15,8 +14,10 @@ import { TxLink } from "@/components/app/tx-link";
 import { useAction } from "@/components/app/use-action";
 import { useLeaveWarning } from "@/components/app/use-leave-warning";
 import { useWallet } from "@/components/app/wallet-session";
+import { useProgressText } from "./progress-text";
 import { useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { displayUsdc } from "@/lib/money";
+import { ConsoleErrorNote } from "./console-error-note";
 import { depositAmount } from "./deposit-amount";
 
 const DISPLAY_144 = { fontVariationSettings: '"opsz" 144' } as const;
@@ -59,6 +60,7 @@ export function TreasuryPanel({
   const app = useTranslations("app");
   const locale = useMoneyLocale();
   const wallet = useWallet();
+  const progressText = useProgressText();
   const balance = useBalance(companyId, tick);
   const [amountText, setAmountText] = useState("");
   const deposit = depositAmount(amountText, locale, t);
@@ -67,15 +69,15 @@ export function TreasuryPanel({
   // The click passes the amount its own render showed on the button, so the deposit is that figure.
   const fund = useAction(async (onProgress, shown: bigint) => {
     const lib = await loadEmployer();
-    await lib.ensureUsdcTrustline(wallet, onProgress);
-    const funded = await lib.fundTreasury(wallet, { amount: shown }, onProgress);
+    await lib.ensureUsdcTrustline(wallet, progressText(onProgress));
+    const funded = await lib.fundTreasury(wallet, { amount: shown }, progressText(onProgress));
     refresh();
     return funded;
   });
 
   const rebuild = useAction(async (onProgress) => {
     const lib = await loadEmployer();
-    const rebuilt = await lib.rebuildTreasury(wallet, companyId, onProgress);
+    const rebuilt = await lib.rebuildTreasury(wallet, companyId, progressText(onProgress));
     refresh();
     return rebuilt;
   });
@@ -102,11 +104,15 @@ export function TreasuryPanel({
             <p className="font-display text-[clamp(2rem,4vw,3rem)] font-medium leading-none text-fg" style={DISPLAY_144}>
               {displayUsdc(balance.balance.value, locale)}
             </p>
-            <p className="t-label mt-3">{t("sealedLabel")}</p>
+            {balance.balance.source === "empty" ? (
+              <p className="mt-3 font-sans text-[0.9375rem] text-muted">{t("noDeposits")}</p>
+            ) : (
+              <p className="t-label mt-3">{t("sealedLabel")}</p>
+            )}
           </div>
         ) : (
           <div>
-            <ErrorNote error={balance.error} />
+            <ConsoleErrorNote error={balance.error} />
             <button type="button" className="btn-ghost mt-4" onClick={refresh}>
               {t("readAgain")}
             </button>
@@ -144,7 +150,7 @@ export function TreasuryPanel({
           </div>
         </div>
         {deposit.confirm ? <p className="mt-3 font-sans text-[0.9375rem] text-fg">{deposit.confirm}</p> : null}
-        {fund.error ? <ErrorNote error={fund.error} /> : null}
+        {fund.error ? <ConsoleErrorNote error={fund.error} /> : null}
         {funded ? (
           <div role="status" className="mt-4 space-y-2 font-sans text-[0.9375rem] text-muted">
             {funded.resumed ? <p>{t("resumed", { amount: displayUsdc(funded.deposited, locale) })}</p> : null}
@@ -161,8 +167,8 @@ export function TreasuryPanel({
         ) : null}
         <p className="mt-5 max-w-[36rem] font-sans text-[0.9375rem] text-muted">
           {t.rich("needUsdc", {
-            lab: (chunks) => (
-              <a href="https://lab.stellar.org" target="_blank" rel="noopener" className="link-draw text-[0.9375rem] text-fg">
+            card: (chunks) => (
+              <a href="#test-funds" className="link-draw text-[0.9375rem] text-fg">
                 {chunks}
               </a>
             ),
@@ -193,7 +199,7 @@ export function TreasuryPanel({
             <StepButton variant="ghost" action={rebuild} onClick={() => void rebuild.start()}>
               {app("rebuild")}
             </StepButton>
-            {rebuild.error ? <ErrorNote error={rebuild.error} /> : null}
+            {rebuild.error ? <ConsoleErrorNote error={rebuild.error} /> : null}
             {rebuild.value ? (
               <div className="mt-4">
                 <RebuildResult result={rebuild.value} />

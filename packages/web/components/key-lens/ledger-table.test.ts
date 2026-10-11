@@ -1,8 +1,9 @@
 // Covers when a run subtotal or the books' grand total may show a sum: only over a verified complete
 // history where every payment opened. An incomplete history or a run where some payments did not
 // open shows "Total withheld" in the wait colour with its title, and a key that opened nothing keeps
-// "No key fits". Does NOT cover the table's layout or how the landing lens, /demo and the books pass
-// the complete flag in; the live before and after check in scratchpad/rd covers those.
+// the sealed line ("Sealed. This key can't open it."). Does NOT cover the table's layout or how the
+// landing lens, /demo and the books pass the complete flag in; the live before and after check in
+// scratchpad/rd covers those.
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SealedPayment } from "@kalypso/core";
@@ -47,7 +48,7 @@ describe("totalOf", () => {
     expect(totalOf(run, new Map([[paymentKey(run[0] as SealedPayment), 1n]]), true)).toEqual({ kind: "withheld" });
   });
 
-  it("keeps No key fits for a key that opened nothing, complete or not", () => {
+  it("keeps the sealed line for a key that opened nothing, complete or not", () => {
     const stranger = run.map((p) => payment(p.runId, Number(p.txHash), null));
     expect(totalOf(stranger, opened(stranger), true)).toEqual({ kind: "none" });
     expect(totalOf(stranger, opened(stranger), false)).toEqual({ kind: "none" });

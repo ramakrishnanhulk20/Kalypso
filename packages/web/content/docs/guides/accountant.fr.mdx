@@ -3,13 +3,23 @@ title: "Comptable"
 description: "Enregistrez votre clé de comptable, donnez à l'employeur votre identifiant, votre adresse et votre code, puis ouvrez et exportez les comptes d'une entreprise sur /accountant."
 ---
 
-La vue comptable, sur [/accountant](/accountant), fonctionne avec Freighter réglé sur Testnet. Votre clé est créée dans ce navigateur à partir de deux signatures de votre portefeuille, donc elle ne quitte jamais le navigateur et le même portefeuille la reconstruit toujours. Vous payez une seule fois de petits frais en XLM de test, environ 0.07, pour l'enregistrer : alimentez donc d'abord le compte avec friendbot.
+La vue comptable, sur [/accountant](/accountant), fonctionne avec Freighter réglé sur Test Net. Votre clé est créée dans ce navigateur à partir de deux signatures de votre portefeuille, donc elle ne quitte jamais le navigateur et le même portefeuille la reconstruit toujours. Vous payez une seule fois de petits frais en XLM de test, environ 0.07, pour l'enregistrer : votre compte a donc d'abord besoin de XLM de test. La première section ci-dessous explique comment en obtenir.
+
+## Avant de commencer
+
+1. Installez Freighter, le portefeuille de Stellar pour votre navigateur, depuis [freighter.app](https://www.freighter.app).
+2. Ouvrez Freighter et passez le réseau, en haut, de Main Net à Test Net.
+3. Revenez sur [/accountant](/accountant) et choisissez **Connecter Freighter**. L'argent de test gratuit est ensuite à un clic.
+
+Obtenez de l'argent de test gratuit avec la carte **Obtenez de l'argent de test gratuit** après la connexion, ou avec le bouton « Fund » de Freighter. L'argent de test est gratuit et sans aucune valeur.
+
+Vous passez en premier. L'employeur ne peut pas créer l'entreprise tant que vous ne lui avez pas envoyé votre identifiant de comptable (le numéro que votre enregistrement vous donne) et votre adresse.
 
 ## Enregistrer votre clé
 
 1. Ouvrez la page et choisissez **Connecter Freighter**.
-2. Sous **Votre clé**, choisissez **Dériver ma clé**. Freighter vous demande de signer deux fois le même message, ce qui prouve que votre portefeuille reconstruit chaque fois la même clé. Votre **Code de confirmation** s'affiche : 16 caractères en quatre groupes. Rien n'est envoyé.
-3. Choisissez **Enregistrer ma clé** et approuvez une transaction. Le registre d'audit de Kalypso stocke votre clé et renvoie un nouvel identifiant. Vous seul, en tant que propriétaire, pouvez changer la clé sous cet identifiant.
+2. Sous **Votre clé**, choisissez **Créer ma clé**. Freighter vous demande de signer deux fois le même message, ce qui prouve que votre portefeuille reconstruit chaque fois la même clé. Votre **Code de confirmation** s'affiche : 16 caractères en quatre groupes. Rien n'est envoyé.
+3. Choisissez **Enregistrer ma clé** et approuvez une transaction. Le registre d'audit de Kalypso (la liste publique des clés des comptables) stocke votre clé et renvoie un nouvel identifiant : votre identifiant de comptable. Vous seul, en tant que propriétaire, pouvez changer la clé sous cet identifiant.
 4. La zone intitulée **Donnez ceci à l'employeur** affiche votre **Identifiant du comptable** et votre **Adresse**, chacun avec un bouton de copie. Envoyez les deux à l'employeur.
 5. Quand l'employeur les vérifie, son écran affiche un code de confirmation. Lisez-lui le vôtre et assurez-vous que chaque caractère correspond. Un code différent signifie que l'identifiant qu'il a saisi contient la clé de quelqu'un d'autre, et qu'il doit s'arrêter.
 
@@ -25,7 +35,7 @@ Envie d'essayer avant qu'une vraie entreprise vous nomme ? La clé de l'entrep
 
 - « Les comptes de cette entreprise sont scellés pour un identifiant de comptable que la clé de ce portefeuille ne détient pas, donc ils ne peuvent pas être ouverts avec elle. » Connectez le portefeuille avec lequel vous vous êtes enregistré. Si c'est déjà lui, l'entreprise a été créée sous l'identifiant d'un autre comptable.
 - « Aucune entreprise n'existe sous cet identifiant sur le contrat de paie. » Vérifiez l'identifiant auprès de l'employeur.
-- « Le compte de ce portefeuille n'existe pas encore sur le testnet. » Alimentez-le avec friendbot, puis enregistrez-vous.
+- « Le compte de ce portefeuille n'existe pas encore sur le testnet. » Obtenez des XLM de test gratuits avec la carte **Obtenez de l'argent de test gratuit**, ou avec le bouton « Fund » de Freighter, puis enregistrez-vous.
 - « Les comptes sont incomplets, donc rien n'a été exporté » et la raison qui suit. Réessayez dans une minute, car les registres les plus récents n'ont peut-être pas encore été lus.
 - « Freighter n'a pas signé, donc rien n'a été envoyé. » Vous avez refusé une demande. Choisissez à nouveau le bouton.
 - « Passez Freighter sur Testnet, puis réessayez. » Kalypso ne tourne que sur le testnet Stellar.

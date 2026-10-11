@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { SealMark } from "@/components/seal-mark";
 import { useSealedPayroll } from "@/hooks/use-sealed-payroll";
@@ -20,7 +21,7 @@ type WalletGateProps = {
   children: ReactNode;
 };
 
-// A judge with no wallet still sees something live before the gate: the showcase company's
+// A visitor with no wallet still sees something live before the gate: the showcase company's
 // payroll, read from the chain the way the landing reads it, and the way to the sandbox.
 function LiveProof() {
   const t = useTranslations("app");
@@ -40,6 +41,88 @@ function LiveProof() {
           {t("liveProof", { company: showcase.label, payments: payroll.payments.length, runs })}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+const NEEDS = ["need1", "need2", "need3", "need4", "need5"] as const;
+
+// What a person with no wallet needs and does before the connect button works. Freighter is a
+// desktop browser extension, so a phone is sent to the sandbox first instead of into steps it
+// cannot finish. The employer also sees what the whole setup asks of them, before they start.
+function BeforeYouStart() {
+  const t = useTranslations("app");
+  const common = useTranslations("common");
+  const pathname = usePathname();
+  const employer = pathname.startsWith("/employer");
+  const link = "link-draw text-[0.9375rem] text-fg";
+  return (
+    <div className="mt-7 border-t border-line pt-6">
+      <p className="t-label">{t("before.label")}</p>
+      <p className="mt-4 font-sans text-[0.9375rem] text-fg">{t("before.computer")}</p>
+      <div className="mt-4 md:hidden">
+        <p className="font-sans text-[0.9375rem] text-muted">{t("before.phone")}</p>
+        <Link href="/demo" className="btn-ghost mt-3 w-full">
+          {common("openSandbox")}
+        </Link>
+      </div>
+      {employer ? (
+        <div className="mt-6">
+          <p className="t-label">{t("before.needLabel")}</p>
+          <ul className="mt-3 space-y-2 font-sans text-[0.9375rem] text-muted">
+            {NEEDS.map((key) => (
+              <li key={key} className="flex items-start gap-3">
+                <span aria-hidden="true" className="mt-[9px] h-[5px] w-[5px] shrink-0 rounded-full bg-seal" />
+                <span>{t(`before.${key}`)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <ol className="mt-6 list-decimal space-y-2 pl-5 font-sans text-[0.9375rem] text-muted">
+        <li>
+          {t.rich("before.step1", {
+            site: (chunks) => (
+              <a href="https://www.freighter.app" target="_blank" rel="noopener" className={link}>
+                {chunks}
+              </a>
+            ),
+          })}
+        </li>
+        <li>{t("before.step2")}</li>
+        <li>{t("before.step3")}</li>
+      </ol>
+      {employer ? (
+        <p className="mt-4 font-sans text-[0.9375rem] text-muted">
+          {t.rich("before.accountantFirst", {
+            accountant: (chunks) => (
+              <Link href="/accountant" className={link}>
+                {chunks}
+              </Link>
+            ),
+            sandbox: (chunks) => (
+              <Link href="/demo" className={link}>
+                {chunks}
+              </Link>
+            ),
+          })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// The site nav links to /employer#test-funds. Before connecting, this block is that target; after,
+// the console's TestFundsCard is. The gate and the console never render at the same time.
+function TestMoneyNote() {
+  const t = useTranslations("app.testMoney");
+  const pathname = usePathname();
+  const employer = pathname.startsWith("/employer");
+  if (!employer && !pathname.startsWith("/accountant")) return null;
+  return (
+    <div id="test-funds" className="mt-7 border-t border-line pt-6" style={{ scrollMarginTop: 96 }}>
+      <p className="t-label">{t("label")}</p>
+      <p className="mt-3 font-sans text-[0.9375rem] text-muted">{employer ? t("employer") : t("accountant")}</p>
     </div>
   );
 }
@@ -67,6 +150,8 @@ export function WalletGate({ heading, paragraph, children }: WalletGateProps) {
         {heading}
       </h1>
       <p className="mt-3 font-sans text-base text-muted">{paragraph}</p>
+      <BeforeYouStart />
+      <TestMoneyNote />
       {session?.devNote ? (
         <p role="status" className="t-label mt-7" style={{ textTransform: "none", letterSpacing: "0.04em" }}>
           {session.devNote}

@@ -77,12 +77,12 @@ export async function rebuildTreasury(wallet: WalletPort, companyId: bigint, onP
   return withWalletLock(wallet.address, async () => {
     const p = reporter(onProgress, 2);
     await adminCompany(ctx, wallet, companyId);
-    p.say("Sign the Kalypso key message twice in your wallet to open the treasury");
+    p.say("keys_treasury");
     await walletKeys(wallet, { domain: ctx.config.keyDomain, token: ctx.config.contracts.token });
-    p.tick("The treasury is open in this browser");
-    p.say("Rebuilding the treasury balance from the chain's history");
+    p.tick("treasury_open");
+    p.say("rebuild_running");
     const rebuilt = await rebuildFromChain(ctx, wallet);
-    p.tick(rebuilt.matchesDevice ? "The chain's history matches what this browser expected" : "Rebuilt from the chain. Compare it with what this browser expected before paying");
+    p.tick(rebuilt.matchesDevice ? "rebuild_matches" : "rebuild_differs");
     return rebuilt;
   });
 }

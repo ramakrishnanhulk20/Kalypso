@@ -48,6 +48,7 @@ import type { SandboxConfig } from "./config";
 import { archiveSource } from "../archive";
 import { requireAffordable, topUpUsdc, type DexContext, type HorizonPort } from "./dex";
 import { SandboxError, throwIfAborted } from "./errors";
+import { SANDBOX_COMPANY_LABEL } from "./label";
 import { requireCovered, totalOf } from "./salaries";
 import { Asset, Operation, commit } from "./sdk";
 import { openingStoreOf, type SandboxState, type SandboxStep } from "./storage";
@@ -164,17 +165,13 @@ function returned(tx: Landed, what: string) {
 }
 
 function requireId(id: number | null, whose: string): number {
-  if (id === null) throw new SandboxError("CHAIN_DISAGREES", `The ${whose} has no audit key id yet.`);
+  if (id === null) throw new SandboxError("CHAIN_DISAGREES", `The ${whose} has no key number yet.`);
   return id;
 }
 
 function requireCompany(state: SandboxState): bigint {
   if (state.companyId === null) throw new SandboxError("CHAIN_DISAGREES", "The sandbox company does not exist yet.");
   return state.companyId;
-}
-
-export function companyLabel(state: SandboxState): string {
-  return `Sandbox ${addressOf(state, "employer").slice(0, 4)}`;
 }
 
 /** True when the registry says `owner` owns `id` and holds the key for `secret` under it. An outage throws, never reads as false. */
@@ -218,7 +215,7 @@ async function runPaid(ctx: StepContext): Promise<boolean> {
 /** Friendbot test XLM for all five accounts, at once. */
 export async function fundStep(ctx: StepContext): Promise<void> {
   const p = progress(ctx, "fund", ROLES.length);
-  p.say(`Asking friendbot for test XLM for ${ROLES.length} accounts`);
+  p.say(`Asking Stellar's free test-money service for test XLM for ${ROLES.length} accounts`);
   throwIfAborted(ctx.signal);
   const journal = journalOf(ctx.state.txs, ctx.save);
   const roleOf = new Map(ROLES.map((role) => [addressOf(ctx.state, role), role]));
@@ -226,7 +223,7 @@ export async function fundStep(ctx: StepContext): Promise<void> {
   await fundAll([...roleOf.keys()], wait ? { ledger, friendbot, wait } : { ledger, friendbot }, (account, result) => {
     const role = roleOf.get(account) as Role;
     if (result.hash !== undefined) journal.landed(`${role} account created by friendbot`, result.hash, undefined);
-    p.tick(result.created ? `Friendbot funded ${possessive(role)} account` : `${startOfSentence(possessive(role))} account already has test XLM`, result.hash);
+    p.tick(result.created ? `Stellar's free test-money service funded ${possessive(role)} account` : `${startOfSentence(possessive(role))} account already has test XLM`, result.hash);
   });
 }
 
@@ -238,11 +235,11 @@ export async function usdcStep(ctx: StepContext): Promise<void> {
   const treasury = employer.publicKey();
   const p = progress(ctx, "usdc", 2);
 
-  p.say("Opening a USDC trustline for the treasury");
+  p.say("Letting the treasury hold USDC");
   let trust: Landed | undefined;
   await runStep(
     ctx,
-    "The treasury's USDC trustline",
+    "The step that lets the treasury hold USDC",
     async () => (await deps.ledger.usdcBalance(treasury)) !== null,
     async () => {
       trust = await classic(tx, { label: "treasury USDC trustline", signer: employer, operations: [Operation.changeTrust({ asset: new Asset("USDC", deps.config.usdc.issuer) })] });
@@ -253,7 +250,7 @@ export async function usdcStep(ctx: StepContext): Promise<void> {
   // Once the deposit landed, or the run is paid, the treasury needs no more USDC on its public balance.
   const need = async () => (landed(tx, DEPOSIT) || (await runPaid(ctx)) ? 0n : state.deposit);
   const funders = ROLES.map((role) => ({ label: `${role} buys USDC for the treasury`, keypair: keypairOf(state, role) }));
-  p.say("Buying test USDC on the Stellar DEX");
+  p.say("Buying test USDC on the Stellar exchange");
   await runStep(
     ctx,
     "The treasury's USDC purchase",
@@ -272,7 +269,7 @@ export async function usdcStep(ctx: StepContext): Promise<void> {
         destination: treasury,
         target,
         funders,
-        onBought: (bought) => p.say("Bought test USDC on the Stellar DEX", bought.hash),
+        onBought: (bought) => p.say("Bought test USDC on the Stellar exchange", bought.hash),
       });
     },
   );
@@ -284,11 +281,11 @@ export async function accountantStep(ctx: StepContext): Promise<void> {
   const { state, deps } = ctx;
   const accountant = keypairOf(state, "accountant");
   const p = progress(ctx, "accountant", 1);
-  p.say("Registering the accountant's audit key");
+  p.say("Registering the accountant's key");
   let sent: Landed | undefined;
   await runStep(
     ctx,
-    "The accountant's audit key",
+    "The accountant's key",
     () => auditorKeyHeld(ctx, state.auditorIds.accountant, accountant.publicKey(), state.auditorSecrets.accountant),
     async () => {
       sent = await invoke(txOf(ctx), {
@@ -297,11 +294,11 @@ export async function accountantStep(ctx: StepContext): Promise<void> {
         build: (base) => buildRegisterKey({ ...base, contractId: deps.config.contracts.auditor }, { owner: accountant.publicKey(), point: auditorPublicKey(state.auditorSecrets.accountant) }),
       });
       // Never predicted from key_count: anyone can register first (C43).
-      state.auditorIds.accountant = readRegisteredAuditorId(returned(sent, "accountant register_key"));
+      state.auditorIds.accountant = readRegisteredAuditorId(returned(sent, "accountant's key registration"));
       ctx.save();
     },
   );
-  p.tick(`The accountant holds audit key ${state.auditorIds.accountant}`, sent?.hash);
+  p.tick(`The accountant holds key number ${state.auditorIds.accountant}`, sent?.hash);
 }
 
 /** The treasury registers with the token under the accountant's id, through core's checked builder. */
@@ -339,15 +336,21 @@ export async function treasuryStep(ctx: StepContext): Promise<void> {
       });
     },
   );
-  p.tick("The treasury is registered under the accountant's audit key", sent?.hash);
+  p.tick("The treasury is registered under the accountant's key", sent?.hash);
 }
+
+// A sandbox saved before every sandbox company took the one fixed label named its company "Sandbox"
+// and the first four characters of its employer's address. Resuming one must find that company by
+// the id its journal recorded, not create a second one under the new label.
+const legacyLabel = (state: SandboxState) => `Sandbox ${addressOf(state, "employer").slice(0, 4)}`;
 
 async function companyMatches(ctx: StepContext, expected: { admin: string; accountant: string; auditorId: number; label: string }): Promise<boolean> {
   const { state, deps } = ctx;
   if (state.companyId === null) return false;
   try {
     const c = await getCompany(deps.port, deps.config.contracts.payroll, state.companyId);
-    return c.admin === expected.admin && c.accountant === expected.accountant && c.auditorId === expected.auditorId && c.label === expected.label;
+    const labelMatches = c.label === expected.label || c.label === legacyLabel(state);
+    return c.admin === expected.admin && c.accountant === expected.accountant && c.auditorId === expected.auditorId && labelMatches;
   } catch (err) {
     if (isPayrollError(err, PayrollErrorCode.CompanyNotFound)) return false;
     throw err;
@@ -362,7 +365,7 @@ export async function companyStep(ctx: StepContext): Promise<void> {
     admin: employer.publicKey(),
     accountant: addressOf(state, "accountant"),
     auditorId: requireId(state.auditorIds.accountant, "accountant"),
-    label: companyLabel(state),
+    label: SANDBOX_COMPANY_LABEL,
   };
   const p = progress(ctx, "company", 1);
   p.say(`Creating ${expected.label} on the payroll contract`);
@@ -377,7 +380,7 @@ export async function companyStep(ctx: StepContext): Promise<void> {
         signer: employer,
         build: (base) => buildCreateCompany({ ...base, contractId: deps.config.contracts.payroll }, expected),
       });
-      state.companyId = readU64(returned(sent, "create_company"), "create_company");
+      state.companyId = readU64(returned(sent, "company creation"), "company creation");
       ctx.save();
     },
   );
@@ -423,20 +426,20 @@ export async function workersStep(ctx: StepContext): Promise<void> {
     let sent: Landed | undefined;
     await runStep(
       ctx,
-      `Worker ${i + 1}'s audit key`,
+      `Worker ${i + 1}'s key for reading their pay`,
       () => auditorKeyHeld(ctx, state.auditorIds.workers[i], worker.publicKey(), state.auditorSecrets.workers[i]),
       async () => {
-        p.say(`Registering worker ${i + 1}'s own audit key`);
+        p.say(`Registering worker ${i + 1}'s own key for reading their pay`);
         sent = await invoke(tx, {
           label: `worker${i + 1} register_key`,
           signer: worker,
           build: (base) => buildRegisterKey({ ...base, contractId: config.contracts.auditor }, { owner: worker.publicKey(), point: auditorPublicKey(state.auditorSecrets.workers[i]) }),
         });
-        state.auditorIds.workers[i] = readRegisteredAuditorId(returned(sent, `worker${i + 1} register_key`));
+        state.auditorIds.workers[i] = readRegisteredAuditorId(returned(sent, `worker ${i + 1}'s key registration`));
         ctx.save();
       },
     );
-    p.tick(`Worker ${i + 1} holds their own audit key`, sent?.hash);
+    p.tick(`Worker ${i + 1} holds their own key for reading their pay`, sent?.hash);
   };
 
   const registerWithToken = async (i: 0 | 1 | 2) => {
@@ -557,22 +560,22 @@ export async function depositStep(ctx: StepContext): Promise<void> {
   );
   p.tick("The deposit is in the confidential treasury", sent?.hash);
 
-  p.say("Merging the deposit into the treasury balance");
+  p.say("Making the deposit spendable in the treasury balance");
   let merged: Landed | undefined;
   await runStep(
     ctx,
-    "The treasury merge",
+    "The step that makes the deposit spendable",
     async () => landed(tx, MERGE) || (await runPaid(ctx)),
     async () => {
       // Only this deposit may be waiting: anything else would make the opening kept next wrong.
       const account = await confidentialBalance(port, token, treasury);
       if (account === null || !account.receiving.equals(commit(state.deposit, 0n))) {
-        throw new SandboxError("CHAIN_DISAGREES", "The treasury's incoming balance is not exactly the sandbox deposit, so it was not merged.");
+        throw new SandboxError("CHAIN_DISAGREES", "The treasury's incoming balance is not exactly the sandbox deposit, so it was not made spendable.");
       }
       merged = await invoke(tx, { label: MERGE, signer: employer, build: (base) => buildMerge({ ...base, contractId: token }, { account: treasury }) });
     },
   );
-  p.tick("The deposit is merged into the treasury balance", merged?.hash);
+  p.tick("The deposit is now spendable in the treasury balance", merged?.hash);
 
   const store = openingStoreOf(state, ctx.save);
   await runStep(
@@ -648,7 +651,7 @@ async function payTransactions(ctx: StepContext): Promise<string[] | null> {
 /**
  * An amount as the pay step writes it into its CSV. core's parser refuses one to three digits, a
  * dot and exactly three more as ambiguous (threat model C26: "12.345" is twelve thousand to a reader
- * who groups with a dot), so a judge's 12.345 salary would stop the sandbox at the pay step. A
+ * who groups with a dot), so a visitor's 12.345 salary would stop the sandbox at the pay step. A
  * fourth decimal keeps the value and the parser's rule, as editableUsdc does for typed fields.
  */
 export function csvAmount(stroops: bigint): string {

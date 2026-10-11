@@ -175,14 +175,14 @@ export async function ensureFunded(account: string, deps: FundingDeps): Promise<
       break;
     }
     if ((await deps.ledger.xlmBalance(account)) !== null) return { created: true };
-    if (attempt === FRIENDBOT_TRIES) throw new Error(`Friendbot refused a sandbox account ${FRIENDBOT_TRIES} times (last answer ${res.status}). Try again in a minute.`);
+    if (attempt === FRIENDBOT_TRIES) throw new Error(`Stellar's free test-money service refused a sandbox account ${FRIENDBOT_TRIES} times (last answer ${res.status}). Try again in a minute.`);
     await wait(3_000 * attempt);
   }
   for (let look = 0; look < APPEAR_LOOKS; look++) {
     if ((await deps.ledger.xlmBalance(account)) !== null) return hash === undefined ? { created: true } : { created: true, hash };
     await wait(APPEAR_WAIT_MS);
   }
-  throw new Error("Friendbot said yes, but a sandbox account did not appear on the ledger.");
+  throw new Error("Stellar's free test-money service said yes, but a sandbox account did not appear on the ledger.");
 }
 
 /**

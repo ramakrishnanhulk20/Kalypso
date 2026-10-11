@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { AppHeader } from "@/components/app-header";
 import { DemoApp } from "@/components/demo/demo-app";
+import { SiteNav } from "@/components/site-nav/site-nav";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("metadata.sandbox");
@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function DemoPage() {
   return (
     <>
-      <AppHeader />
+      <SiteNav />
       <main className="bg-canvas" style={{ padding: "10vh 4vw 14vh" }}>
         <DemoApp />
       </main>

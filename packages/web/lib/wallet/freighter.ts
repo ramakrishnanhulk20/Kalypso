@@ -84,7 +84,7 @@ async function requireTestnet(): Promise<void> {
 }
 
 // Only a named, different signer is refused here. The signature check after it is the real gate,
-// so an extension version that leaves signerAddress empty is judged by its signature alone.
+// so an extension version that leaves signerAddress empty is decided by its signature alone.
 function namesAnotherSigner(reported: unknown, address: string): boolean {
   if (reported === undefined || reported === null || reported === "") return false;
   try {

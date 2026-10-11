@@ -13,6 +13,7 @@ export type ConsoleErrorCode =
   | "ACCOUNTANT_KEY_CHANGED"
   | "ACCOUNTANT_ID_NOT_YOURS"
   | "DEMO_ACCOUNTANT"
+  | "OWN_BOOKS_TAKEN"
   | "BOOKS_NOT_YOURS"
   | "BOOKS_INCOMPLETE"
   | "LABEL_INVALID"
@@ -56,7 +57,7 @@ const MESSAGES: Record<ConsoleErrorCode, string> = {
   STORAGE_UNAVAILABLE: "This browser does not let Kalypso keep the treasury records it needs (private browsing can block it), so nothing was sent.",
   STORAGE_FAILED: "This browser refused to save or read a treasury record, so nothing was sent. Leave private browsing or free some disk space, then try again.",
   BUSY: "Another Kalypso tab is working with this wallet right now. Finish there, then try again.",
-  ACCOUNT_NOT_FOUND: "This wallet's account does not exist on testnet yet. Fund it with test XLM from friendbot (Freighter's Fund button does this), then try again.",
+  ACCOUNT_NOT_FOUND: "This wallet's account does not exist on testnet yet. Get free test XLM from the Test money card, or with Freighter's Fund button, then try again.",
   KEY_NOT_DERIVED: "The wallet's signatures could not make a Kalypso key, so nothing was sent.",
   ACCOUNTANT_ID_INVALID: "The accountant id must be a whole number, exactly as the accountant's own screen shows it.",
   ACCOUNTANT_ADDRESS_INVALID: "The accountant's address is not a valid Stellar address.",
@@ -66,6 +67,8 @@ const MESSAGES: Record<ConsoleErrorCode, string> = {
   ACCOUNTANT_KEY_CHANGED: "The key under this accountant id changed since it was checked. Check it with your accountant again before going on.",
   ACCOUNTANT_ID_NOT_YOURS: "This id is not registered to this wallet with the key it makes here, so it was not used. Register your key to get your own id.",
   DEMO_ACCOUNTANT: "This accountant id is Kalypso's public demo key: anyone can read payroll under it. Ask your accountant to register their own key and use that id.",
+  OWN_BOOKS_TAKEN:
+    "This wallet's payroll account already names an outside accountant, so every company you pay from it shares that accountant. Use another wallet to keep your own books.",
   BOOKS_NOT_YOURS: "This company's books are sealed to an accountant id this wallet's key does not hold, so they cannot be opened with it.",
   BOOKS_INCOMPLETE: "The books are incomplete, so nothing was exported. Try again in a minute.",
   LABEL_INVALID: "The company name must be 1 to 64 bytes long.",

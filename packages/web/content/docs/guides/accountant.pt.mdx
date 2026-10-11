@@ -3,13 +3,23 @@ title: Contador
 description: "Registre a sua chave de contador, passe ao empregador o seu id, endereço e código, depois abra e exporte os livros de uma empresa em /accountant."
 ---
 
-A visão do contador em [/accountant](/accountant) funciona com o Freighter configurado na Testnet. Sua chave é gerada neste navegador a partir de duas assinaturas da sua carteira, então nunca sai do navegador e a mesma carteira sempre a reconstrói. Você paga uma taxa pequena em XLM de teste, cerca de 0.07, uma única vez, para registrá-la, então financie a conta com o friendbot antes.
+A visão do contador em [/accountant](/accountant) funciona com o Freighter configurado na Test Net. Sua chave é gerada neste navegador a partir de duas assinaturas da sua carteira, então nunca sai do navegador e a mesma carteira sempre a reconstrói. Você paga uma taxa pequena em XLM de teste, cerca de 0.07, uma única vez, para registrá-la, então a sua conta precisa de XLM de teste primeiro. A primeira seção abaixo mostra como pegá-los.
+
+## Antes de começar
+
+1. Instale o Freighter, a carteira da Stellar para o seu navegador, em [freighter.app](https://www.freighter.app).
+2. Abra o Freighter e troque a rede no topo de Main Net para Test Net.
+3. Volte para [/accountant](/accountant) e escolha **Conectar Freighter**. Depois disso, o dinheiro de teste grátis está a um clique.
+
+Pegue dinheiro de teste grátis com o cartão **Pegue dinheiro de teste grátis** depois de conectar, ou com o botão Fund do Freighter. O dinheiro de teste é grátis e não tem valor nenhum.
+
+Você vai primeiro. O empregador não consegue criar a empresa até receber de você o seu id de contador (o número que o seu registro gera) e o seu endereço.
 
 ## Registre a sua chave
 
 1. Abra a página e escolha **Conectar Freighter**.
-2. Em **Sua chave**, escolha **Derivar minha chave**. O Freighter pede que você assine a mesma mensagem duas vezes, o que prova que a sua carteira reconstrói a mesma chave sempre. Seu **Código de confirmação** aparece: 16 caracteres em quatro grupos. Nada é enviado.
-3. Escolha **Registrar minha chave** e aprove uma transação. O registro de auditores da Kalypso guarda a sua chave e devolve um id novo. Só você, como dono, pode mudar a chave sob esse id.
+2. Em **Sua chave**, escolha **Criar minha chave**. O Freighter pede que você assine a mesma mensagem duas vezes, o que prova que a sua carteira reconstrói a mesma chave sempre. Seu **Código de confirmação** aparece: 16 caracteres em quatro grupos. Nada é enviado.
+3. Escolha **Registrar minha chave** e aprove uma transação. O registro de auditores da Kalypso (a lista pública das chaves dos contadores) guarda a sua chave e devolve um id novo: o seu id de contador. Só você, como dono, pode mudar a chave sob esse id.
 4. A caixa com o título **Entregue isto ao empregador** mostra o seu **Id do contador** e o seu **Endereço**, cada um com um botão de copiar. Envie os dois ao empregador.
 5. Quando o empregador os verifica, a tela dele mostra um código de confirmação. Leia o seu para ele e confira se todos os caracteres são iguais. Um código diferente significa que o id que ele digitou guarda a chave de outra pessoa, e ele deve parar.
 
@@ -25,7 +35,7 @@ Quer testar antes de uma empresa de verdade indicar você? A chave da empresa de
 
 - "Os livros desta empresa estão selados para um id de contador que a chave desta carteira não possui, então não podem ser abertos com ela." Conecte a carteira com a qual você se registrou. Se já for essa carteira, a empresa foi criada com o id de outro contador.
 - "Não existe empresa com este id no contrato de folha de pagamento." Confira o id com o empregador.
-- "A conta desta carteira ainda não existe na testnet." Financie-a com o friendbot e depois registre.
+- "A conta desta carteira ainda não existe na testnet." Pegue XLM de teste grátis com o cartão **Pegue dinheiro de teste grátis**, ou com o botão Fund do Freighter, e depois registre.
 - "Os livros estão incompletos, então nada foi exportado" e o motivo logo depois. Tente de novo em um minuto, porque os ledgers mais recentes podem ainda não ter sido lidos.
 - "O Freighter não assinou, então nada foi enviado." Você recusou um pedido. Escolha o botão de novo.
 - "Mude o Freighter para Testnet e tente de novo." A Kalypso roda só na testnet da Stellar.

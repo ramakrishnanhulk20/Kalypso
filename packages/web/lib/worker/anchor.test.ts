@@ -450,13 +450,13 @@ describe("sendAnchorPayment", () => {
     expect(submitted).toEqual([]);
   });
 
-  it("refuses, naming friendbot, when the cash-out account cannot pay the fee from XLM above its reserve", async () => {
+  it("refuses, naming where to get free test XLM, when the cash-out account cannot pay the fee from XLM above its reserve", async () => {
     const { session, cash } = worker();
     for (const account of [null, funded("1.5009999")]) {
       const { rt, submitted } = anchor({ cash, record: ready(), horizon: { account } });
       const err = await sendAnchorPayment(rt, session, await buildAnchorPayment(rt, session, ID)).catch((e: unknown) => e);
       expect(err).toMatchObject({ code: "CASHOUT_NO_XLM" });
-      expect((err as Error).message).toContain("friendbot");
+      expect((err as Error).message).toContain("Stellar's free test-money service");
       expect(submitted).toEqual([]);
     }
     const enough = anchor({ cash, record: ready(), horizon: { account: funded("1.5010000") } });

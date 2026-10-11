@@ -1,15 +1,15 @@
 ---
 title: Worker
-description: "Join from your invite link with Face ID or a wallet, read your sealed payslips, and cash out at Stellar's test anchor."
+description: "Join from your invite link with Face ID or a wallet, read your sealed payslips, and cash out at Stellar's practice bank."
 ---
 
-Your pay lives at [/worker](/worker). You need your employer's invite link, and either a phone or laptop with a passkey (Face ID, a fingerprint or the device PIN) or Freighter on Testnet. Kalypso's fee sponsor pays the fees for joining and moving your pay, so with Face ID there is nothing to fund. A Freighter account must already exist on testnet.
+Your pay lives at [/worker](/worker). You need your employer's invite link. It is a web address your employer sends you, which you open in your phone's browser. You also need either a phone or laptop with a passkey (Face ID, a fingerprint or the device PIN) or Freighter on Test Net. Kalypso's fee sponsor pays the fees for joining and moving your pay, so with Face ID there is nothing to fund. A Freighter account must already hold test XLM: use Freighter's Fund button.
 
 ## Sign in
 
 1. Open the invite link. A strip headed **Invitation** at the top says which company invited you: the company's name, then "invited you to receive your pay through Kalypso."
-2. The first time on this device, choose **New here? Create your pay key**. Your device asks you to confirm twice. Your pay key is made on the device from the new passkey, and Kalypso sets up your wallet, with the fee paid by the sponsor. The button reads "Waiting for your device, then setting up your wallet" while it works.
-3. When you come back, choose **Sign in with Face ID**. For a wallet, choose **Use a wallet instead**, then **Connect Freighter**, and sign the Kalypso key message twice.
+2. The first time on this device, choose **Create your pay key**. No invite link yet? Create your key now and send the address on your screen to your employer. Your device asks you to confirm twice. Your pay key is made on the device from the new passkey, and Kalypso sets up your wallet, with the fee paid by the sponsor. The button reads "Waiting for your device, then setting up your wallet" while it works.
+3. When you come back, choose **Sign in with Face ID**, under **Already have a pay key?**. For a wallet, choose **Use a Stellar wallet (Freighter) instead**, then **Connect Freighter**, and sign the Kalypso key message twice.
 4. Under **Signed in** the page shows your address, with a copy button, once Kalypso has confirmed from the chain that the wallet is yours. Until then it reads "Wallet not set up yet". **Sign out** forgets the session in this tab, and your passkey stays on the device.
 
 ## Join the company
@@ -33,10 +33,14 @@ While it waits, a card headed **We could not confirm your wallet yet** says "You
 
 If your wallet is not on the network yet, the card is headed **Your wallet is not set up yet** and its button reads **Finish setting up**.
 
+## If you lose your phone
+
+Pay you have already moved out of Kalypso stays yours. Pay still sealed in Kalypso can only be opened with your passkey, so keep it synced with iCloud Keychain or Google Password Manager, and move your pay out after each payday. If you do lose every device, make a new pay key and send your employer the new address; your future pay goes there.
+
 ## Cash out
 
-10. Under **Move to your cash-out account**, type an amount in the **Amount** box or choose **Max**. The page repeats what it read ("You are moving 1,500.00 USDC.") and the button reads **Move 1,500.00 USDC**. A comma counts only as a thousands separator, so "1,5" is refused. Choose the button. Your pay leaves the sealed balance as plain USDC, and the page says "Moved." only after it has read the new balance from the chain. With Face ID, the cash-out account comes from the same passkey, and friendbot gives it test XLM the first time. With Freighter, it is your own wallet account. The amount you move is public.
-11. Under **Cash out at the anchor**, choose **Open the anchor**. Stellar's test anchor opens in a popup. Fill in its form, and its status shows under the button.
+10. Under **Move to your cash-out account**, type an amount in the **Amount** box or choose **Max**. The page repeats what it read ("You are moving 1,500.00 USDC.") and the button reads **Move 1,500.00 USDC**. A comma counts only as a thousands separator, so "1,5" is refused. Choose the button. Your pay leaves the sealed balance as plain USDC, and the page says "Moved." only after it has read the new balance from the chain. With Face ID, the cash-out account comes from the same passkey, and it receives free test XLM the first time. With Freighter, it is your own wallet account. The amount you move is public.
+11. Under **Cash out at the anchor**, choose **Open the anchor**. Stellar's test anchor is a practice bank: it opens in a small window, any made-up details work in its form, and no real money moves. Its status shows under the button.
 12. When the anchor is ready, a box headed **The anchor asks for** shows the amount, then **To**, **Memo**, **Anchor fee** and **You receive**, all from the anchor's own record. Check the amount, then choose **Approve and send** within five minutes. The last status reads "Done. The anchor has paid out." On testnet no real money moves. Choose **Cash out again** to start another.
 
 ## When something goes wrong
@@ -52,4 +56,4 @@ If your wallet is not on the network yet, the card is headed **Your wallet is no
 
 ## What you see, and what you do not
 
-You see only your own payslips and balance, never a coworker's pay or the company's balance. Your employer and Kalypso never see your key. Anyone can see that the company paid your address and when, and the amount you move out. The anchor sees what you cash out. Kalypso also registers an audit key under an id you own and throws its secret away at once, so the auditor's copy of your pay opens for nobody.
+You see only your own payslips and balance, never a coworker's pay or the company's balance. Your employer and Kalypso never see your key. Anyone can see that the company paid your address and when, and the amount you move out. The anchor sees what you cash out. Stellar's private token asks every account to name a key that can read its payments. Kalypso makes you one that nobody holds: it creates it, registers it and deletes the secret at once, so nobody else can read your pay through it.

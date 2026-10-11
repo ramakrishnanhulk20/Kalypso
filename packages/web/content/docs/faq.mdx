@@ -1,6 +1,6 @@
 ---
 title: FAQ
-description: "Straight answers to the questions companies and judges ask first about Kalypso."
+description: "Straight answers to the questions companies and visitors ask first about Kalypso."
 ---
 
 ## Who can see salaries?
@@ -17,7 +17,7 @@ Whoever holds it can read every amount ever encrypted to it, forever, along with
 
 ## What if a worker loses their key?
 
-A worker's key is not a file they can lose. With Freighter it is derived from the wallet signing Kalypso's key message, so the same wallet rebuilds the same key on any device. With Face ID it is derived from the passkey, so any device that holds the same passkey rebuilds it. If the worker loses the wallet or the passkey itself, nobody can recover the money, because Kalypso has no admin who could move or reissue it. The pay stays on chain, bound to that account.
+A worker's key is not a file they can lose. With Freighter it is made from the wallet signing Kalypso's key message, so the same wallet rebuilds the same key on any device. With Face ID it is made from the passkey, so any device that holds the same passkey rebuilds it. If the worker loses the wallet or the passkey itself, nobody can recover the money, because Kalypso has no admin who could move or reissue it. The pay stays on chain, bound to that account.
 
 ## Can Kalypso freeze or move money?
 
@@ -25,11 +25,11 @@ No. Neither the payroll contract nor the auditor registry has an admin or an upg
 
 ## Why Stellar?
 
-OpenZeppelin's confidential token, which hides balances and amounts behind zero-knowledge proofs while letting an auditor read them, is built for Stellar, and the Stellar Development Foundation lists payroll as a use for it. USDC is issued natively on Stellar, a payment costs a fraction of an XLM, and anchors let people cash USDC out to local money. Kalypso's payroll contract is built around that token: without it, the pay call has nothing to keep private.
+OpenZeppelin's confidential token, which hides balances and amounts behind zero-knowledge proofs while letting an auditor read them, is built for Stellar, and the Stellar Development Foundation lists payroll as a use for it. USDC is issued natively on Stellar, a payment costs a fraction of an XLM, and anchors (companies that turn USDC into local money) let people cash it out. Kalypso's payroll contract is built around that token: without it, the pay call has nothing to keep private.
 
 ## Why testnet only?
 
-The confidential token, its circuits and its verifier come from a new OpenZeppelin revision that has not been audited, and Kalypso itself is self-audited, not audited by a security firm. Real salaries should wait for both. Everything on testnet is otherwise real: real contracts, real proofs and real encrypted payments, in test USDC.
+The confidential token, its circuits and its verifier come from a new OpenZeppelin revision that has not been audited, and Kalypso itself is self-audited, not audited by a security firm. Kalypso runs on Stellar's test network today. Real salaries wait for the main network and an outside security audit. Everything on testnet is otherwise real: real contracts, real proofs and real encrypted payments, in test USDC.
 
 ## How much does a run cost?
 
@@ -41,12 +41,12 @@ Nobody is paid twice and nothing is lost. The contract keeps a paid flag per wor
 
 ## How do workers cash out?
 
-In two steps on the worker portal. First the worker moves pay from their sealed balance to their cash-out account as plain USDC. Then they cash out at SDF's test anchor on its own page, opened in a popup. Kalypso builds the anchor's USDC payment only from the anchor's own record, and shows the amount, the destination and the memo before the worker approves it. The withdraw amount is public, so a worker who withdraws exactly one payslip reveals that payslip, and the anchor sees what is cashed out. On testnet no real money moves. Cash-out to a real bank would need a mainnet anchor, and Kalypso runs on testnet only.
+In two steps on the worker portal. First the worker moves pay from their sealed balance to their cash-out account as plain USDC. Then they cash out at Stellar's test anchor, a practice bank where any made-up details work, on its own page opened in a popup. Kalypso builds the anchor's USDC payment only from the anchor's own record, and shows the amount, the destination and the memo before the worker approves it. The withdraw amount is public, so a worker who withdraws exactly one payslip reveals that payslip, and the anchor sees what is cashed out. On testnet no real money moves. Cash-out to a real bank would need a mainnet anchor, and Kalypso runs on testnet only.
 
 ## Do workers need a crypto wallet?
 
-No. A worker can sign in with Face ID, a fingerprint or the device PIN. Kalypso makes a passkey smart wallet for them, and the fee sponsor pays to create it and every fee of joining, so the wallet never needs XLM. The worker's key comes from the passkey's PRF output, and a passkey that cannot give one is refused, never weakened. PRF support differs between phones, laptops and passkey providers. Kalypso has run the passkey path end to end in Chrome with a virtual authenticator that supports PRF, and has not been checked on every device brand. A worker can use Freighter instead.
+No. A worker can sign in with Face ID, a fingerprint or the device PIN. Kalypso makes a passkey smart wallet for them, and the fee sponsor pays to create it and every fee of joining, so the wallet never needs XLM. If a worker's passkey cannot make their key, they should save it in Google Password Manager or iCloud Keychain, use their phone, or use Freighter instead. Kalypso refuses a passkey like that rather than weakening it (the missing ability is called PRF). Support differs between phones, laptops and passkey providers. Kalypso has run the passkey path end to end in Chrome with a virtual authenticator that has the ability, and has not been checked on every device brand.
 
 ## Can I check any of this myself?
 
-Yes, with three commands and no Kalypso key: one shows which release built the code on chain, one reads chain state to confirm nobody can change the rules, and one attacks the live showcase and prints what stopped each attack. They are in [Getting started](/docs/getting-started#developer-path), and the [security overview](/docs/security/overview) maps each claim to the check that proves it.
+Yes, with three commands and no Kalypso key: one shows which release built the code on chain, one reads chain state to confirm nobody can change the rules, and one attacks the live showcase and prints what stopped each attack. They are on [Developers](/docs/developers), and the [security overview](/docs/security/overview) maps each claim to the check that proves it.

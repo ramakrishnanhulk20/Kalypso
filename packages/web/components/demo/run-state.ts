@@ -135,7 +135,7 @@ export function secondsLeft(frontier: number): number {
   return SHOTS.slice(Math.max(frontier, 0)).reduce((sum, shot) => sum + shot.seconds, 0);
 }
 
-/** "about 3 min left" or "under a minute left". t is the sandbox.run namespace. */
+/** "about 4 min left" or "under a minute left". t is the sandbox.run namespace. */
 export function timeLeftLabel(t: PlainT, frontier: number): string {
   const left = secondsLeft(frontier);
   return left < 60 ? t("underMinute") : t("minutesLeft", { m: Math.ceil(left / 60) });

@@ -27,6 +27,23 @@ export function PubliclyReadable() {
   );
 }
 
+/** The English sentence under the chip, kept for the tests that read it. */
+export const PUBLIC_NOTE = "This is Kalypso's public demo company, so anyone can read its amounts.";
+
+// The chip's title only shows on hover, which a phone never does, so the reason is also written out.
+export function PublicNote({ className = "" }: { className?: string }) {
+  const t = useTranslations("worker.chips");
+  return <p className={`font-sans text-[0.875rem] text-muted ${className}`}>{t("publicNote")}</p>;
+}
+
+/** True when any of these payslips comes from a company anyone can read, so the list says so once. */
+export function anyPubliclyReadable(companyIds: readonly string[], companies: ReadonlyMap<string, CompanyFacts | "unknown">): boolean {
+  return companyIds.some((id) => {
+    const facts = companies.get(id);
+    return facts !== undefined && facts !== "unknown" && facts.publiclyReadable;
+  });
+}
+
 // A company whose settings could not be read must not look private: a missing chip would read as
 // the safe answer (C47).
 export function ReadersUnknown() {

@@ -53,7 +53,9 @@ What stays public, by design: who pays whom and when, each company's roster and 
 ### Employer: the employer console at `/employer`
 
 - Connect Freighter on testnet. The wallet's account becomes the company's treasury and pays its own fees.
-- Name the accountant by id and address. Kalypso reads the auditor registry and shows a 16-character confirmation code to compare with the accountant's screen.
+- Get free test money: after connecting, the **Get free test money** card on `/employer` and `/accountant` pays 100 test XLM and 100 test USDC from Kalypso's faucet, once per wallet per asset per day.
+- Keep your own books: choose **I'll keep my own books** and the same wallet becomes the company's accountant, with no confirmation code to compare.
+- Or name an outside accountant by id and address. Kalypso reads the auditor registry and shows a 16-character confirmation code to compare with the accountant's screen.
 - Create the company: the treasury registers with the confidential token, with a proof built in the browser, then the payroll contract creates the company.
 - Fund the treasury with a USDC deposit. The sealed balance opens in the browser with the employer's key.
 - Invite up to 50 workers in one paste, and send each one the invite link.
@@ -77,9 +79,10 @@ What stays public, by design: who pays whom and when, each company's roster and 
 
 ### Anyone checking: no wallet needed
 
-- The home page `/`: the "Try to read the salaries" key lens reads the live showcase with the accountant's key or a stranger's. Every row links to its transaction on stellar.expert.
-- The sandbox `/demo`: a whole payroll on testnet in your browser, ten steps, real proofs, about 3 minutes on a laptop. Then open it with each of five keys.
-- The docs `/docs`: a guide for each screen, how it works, contracts and addresses, the threat model and the attack run.
+- The home page `/`: its buttons are **Pay your team**, which opens the employer console, and **See it work**, which scrolls to the "Try to read the salaries" key lens. The lens reads the live showcase with the accountant's key or a stranger's. Every row links to its transaction on stellar.expert.
+- The top bar has a menu for each role, **For employers**, **For workers** and **For accountants**, with five links each to that role's screen, its guide and the pages that answer its next question.
+- The sandbox `/demo`: a whole payroll on testnet in your browser for a company named Sandbox studio, ten steps, real proofs, about 4 minutes on a laptop. Then open it with each of five keys.
+- The docs `/docs`: a guide for each screen, how it works, contracts and addresses, the threat model and the attack run, and [For developers](https://kalypso-payroll.vercel.app/docs/developers), the commands that run the tests and check the live contracts.
 - Three terminal commands, in the next section, check the live contracts with no Kalypso key.
 
 ## Testnet deployment detail
@@ -270,10 +273,10 @@ flowchart TB
 
 ## The two-minute judge path
 
-1. Open the [live app](https://kalypso-payroll.vercel.app). The home page reads "Pay your team in USDC. Nobody else can read the salaries." Choose **Try to read the salaries**.
-2. The key lens shows Andes Studio (demo), read live from Stellar testnet: 6 workers, two runs, 12 sealed payments. With **Accountant's key** selected, move the lens over the ledger. A mouse moves it; on a phone, drag the ring. The amounts open under the lens, in your browser, with the demo accountant key published on purpose.
+1. Open the [live app](https://kalypso-payroll.vercel.app). The home page reads "Pay your team in USDC. Nobody else can read the salaries." Choose **See it work**.
+2. The page scrolls to the key lens, "Try to read the salaries". It shows Andes Studio (demo), read live from Stellar testnet: 6 workers, two runs, 12 sealed payments. With **Accountant's key** selected, move the lens over the ledger. A mouse moves it; on a phone, drag the ring. The amounts open under the lens, in your browser, with the demo accountant key published on purpose.
 3. Choose **A stranger's key** and move the lens again. The same payments stay sealed. Open any row's transaction on stellar.expert: the payment is there, with no amount.
-4. Open the [sandbox](https://kalypso-payroll.vercel.app/demo). Under "This month's payroll", type three salaries and choose **Start the sandbox**. It works through ten steps, each a real testnet transaction, in about 3 minutes on a laptop.
+4. Open the [sandbox](https://kalypso-payroll.vercel.app/demo). Under "This month's payroll", type three salaries and choose **Start the sandbox**. It works through ten steps, each a real testnet transaction, in about 4 minutes on a laptop.
 5. When the page says "Your payroll is on chain.", choose each key in turn. **Worker 1**, **Worker 2** and **Worker 3** each see their own payslip, **Accountant** sees every payment with its amount, and **Stranger** sees every payment sealed.
 6. Open the [docs](https://kalypso-payroll.vercel.app/docs): the overview, then the [security overview](https://kalypso-payroll.vercel.app/docs/security/overview), which maps each claim to the check that proves it.
 7. In a terminal, from a clone of this repo, run the prove command. It takes about 3 minutes and prints each check as it goes:
@@ -300,7 +303,7 @@ cd ../web && npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. With no variables set, the home page, the sandbox, the employer console, the accountant view and the docs all work, reading Stellar testnet directly, and the sponsor and archive routes under `/api` answer 503 `not_configured`.
+Open http://localhost:3000. With no variables set, the home page, the sandbox, the employer console, the accountant view and the docs all work, reading Stellar testnet directly, and the sponsor, archive and faucet routes under `/api` answer 503 `not_configured`.
 
 The worker portal sends every contract call through the fee sponsor. To run the sponsor and the archive locally, copy the example file, still in `packages/web`:
 
@@ -319,6 +322,7 @@ Then set these in `packages/web/.env.local` and restart `npm run dev`:
 | `TRUSTED_IP_HEADER` | `x-forwarded-for`, under `next dev` only. A caller can forge it there, so never use it in production. |
 | `ARCHIVE_START_LEDGER` | `5083382`, the ledger of the token's deploy |
 | `TOKEN_DEPLOY_TX` | `348da699d0e3494a0496a45a1fe33b558d100d2f63c5ef202f93aa19056299b9`, the token's deploy transaction. Both come from `contracts.token.deployTx` in `deployments/testnet.json` and let the archive prove where its history starts. |
+| `FAUCET_SECRET_KEY` | Optional; `packages/server/scripts/faucet-setup.mjs` makes and funds one. It writes the key into `packages/server/.env` and `packages/web/.env.local`, so copy `packages/server/.env.example` to `packages/server/.env` first. Blank leaves `POST /api/faucet` answering 503. `FAUCET_XLM_STROOPS`, `FAUCET_USDC_STROOPS`, `FAUCET_CLAIMS_PER_IP_PER_DAY` and `FAUCET_CLAIMS_PER_DAY` set its amounts and limits and are optional too. |
 
 The four contract ids are already filled in from `deployments/testnet.json`. Screens served over plain http read RPC's 7-day window and do not read the archive. Every variable has a one-line note in [`packages/web/.env.example`](packages/web/.env.example).
 
@@ -377,19 +381,19 @@ The registry has no constructor, no admin and no upgrade entry point, so the dep
 
 ## Test results
 
-Run on 9 to 11 October 2026; the core library and the web app were run again on 11 October. Every suite passed: 1,550 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
+Run on 9 to 11 October 2026; the core library, the server (both ways) and the web app were run again on 11 October. Every suite passed: 1,755 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
 
 | Suite | Command, from the repo root | Tests |
 |---|---|---|
 | Payroll contract | `cd packages/contracts && cargo test -p kalypso-payroll --locked` | 115: 104 unit, 10 attack, 1 property test |
 | Auditor registry | `cd packages/contracts && cargo test -p kalypso-auditor --locked` | 43: 37 unit, 2 attack, 1 property, 3 against OpenZeppelin's token wasm |
 | Core library | `cd packages/core && npx vitest run` | 560 in 27 files |
-| Server | `cd packages/server && npx vitest run` | 316 in 14 files |
-| Server, production driver | `cd packages/server && npm run test:wire` | the same 316 |
-| Web app | `cd packages/web && npm test` | 505 in 43 files |
+| Server | `cd packages/server && npx vitest run` | 352 in 16 files |
+| Server, production driver | `cd packages/server && npm run test:wire` | the same 352 |
+| Web app | `cd packages/web && npm test` | 674 in 55 files |
 | Testnet scripts | `cd packages/contracts/scripts && npm test` | 11 |
 
-Line coverage: core 98.47%, server 97.99%.
+Line coverage: core 98.47%, server 98.31%.
 
 Payroll, one line per test binary (unit tests, `tests/attacks.rs`, `tests/props.rs`):
 
@@ -413,35 +417,35 @@ Core library:
 ```text
  Test Files  27 passed (27)
       Tests  560 passed (560)
-   Start at  18:43:45
-   Duration  11.47s (tests 73%, import 20%, transform 6%)
+   Start at  23:14:22
+   Duration  10.10s (tests 71%, import 21%, transform 7%)
 ```
 
 Server:
 
 ```text
- Test Files  14 passed (14)
-      Tests  316 passed (316)
-   Start at  19:57:41
-   Duration  7.63s (tests 89%, import 8%, transform 3%)
+ Test Files  16 passed (16)
+      Tests  352 passed (352)
+   Start at  23:14:33
+   Duration  6.83s (tests 87%, import 10%, transform 3%)
 ```
 
 Server, through the production Postgres driver (`npm run test:wire`):
 
 ```text
- Test Files  14 passed (14)
-      Tests  316 passed (316)
-   Start at  19:57:58
-   Duration  7.28s (tests 88%, import 9%, transform 3%)
+ Test Files  16 passed (16)
+      Tests  352 passed (352)
+   Start at  23:14:40
+   Duration  7.44s (tests 88%, import 9%, transform 3%)
 ```
 
 Web app:
 
 ```text
- Test Files  43 passed (43)
-      Tests  505 passed (505)
-   Start at  18:43:38
-   Duration  5.03s (import 59%, tests 20%, transform 20%)
+ Test Files  55 passed (55)
+      Tests  674 passed (674)
+   Start at  23:14:49
+   Duration  4.08s (import 59%, tests 23%, transform 18%)
 ```
 
 Testnet scripts:
@@ -486,7 +490,7 @@ Keeping the stack alive is paid separately, in testnet XLM: extending the payrol
 | `packages/contracts/scripts` | Deploy, seed, check, prove and keepalive scripts for testnet |
 | `packages/contracts/deployments` | `testnet.json` and `showcase-testnet.json`: every address, hash and transaction |
 | `packages/core` | `@kalypso/core`: CSV import, USDC amounts, address parsing, key derivation, proving, the run engine, payslips, the audit and history checks |
-| `packages/server` | `@kalypso/server`: the fee sponsor and the event archive, as Web Fetch handlers |
+| `packages/server` | `@kalypso/server`: the fee sponsor, the event archive and the testnet faucet, as Web Fetch handlers |
 | `packages/web` | `@kalypso/web`: the Next.js app with the home page, the sandbox, the three screens, `/docs` and the `/api` routes |
 | `docs/security` | The threat model, the attack run and the static analysis record |
 | `.github/workflows` | `ci.yml` (tests, clippy, coverage, Scout, npm audit), `release.yml` (attested contract builds from a tag), `archive.yml` (the hourly archive ingest and its health check) |
@@ -524,11 +528,11 @@ Keeping the stack alive is paid separately, in testnet XLM: extending the payrol
 
 ## Security
 
-The [threat model](docs/security/threat-model.md) was written on 7 October 2026, at the architecture gate, before any contract code. It names the attackers: an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys. It sets out the trust boundaries, every input an attacker controls, what each attacker wants, and 56 invariants the code must uphold. Its section C is the definition of done: a piece of the system is finished only when every invariant that applies to it is upheld and a test shows it.
+The [threat model](docs/security/threat-model.md) was written on 7 October 2026, at the architecture gate, before any contract code. It names the attackers: an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys. It sets out the trust boundaries, every input an attacker controls, what each attacker wants, and 57 invariants the code must uphold. Its section C is the definition of done: a piece of the system is finished only when every invariant that applies to it is upheld and a test shows it.
 
 A three-pass review attacked the code at commit `fb9f2b5` and the threat model itself: the contracts, the client money path, and the payslips, sponsor and archive. It found 20 issues: 1 High, 3 Medium, 8 Low and 8 Info. Every one was fixed or named as a limit in the threat model, and its attack tests stay in the suites as refusing tests. Its fixes added invariants C38 to C50, and the contract fixes shipped as payroll v0.1.1.
 
-Two more review passes sit on either side of it. The backend gate review on 8 October attacked section C against the code as built, and its findings became invariants C29 to C37. A second pass re-checked every fix from the three-pass review. The app's screens, and the sponsor's rule for paying to create a passkey wallet, were built after those two. A finishing review on 9 October then attacked the built screens, the server and the standard itself, and walked a production build end to end; its findings became invariants C51 to C55, and a review of the five languages on 11 October added C56 ([audits](https://kalypso-payroll.vercel.app/docs/security/audits)). None of these reviews was done by a security firm.
+Two more review passes sit on either side of it. The backend gate review on 8 October attacked section C against the code as built, and its findings became invariants C29 to C37. A second pass re-checked every fix from the three-pass review. The app's screens, and the sponsor's rule for paying to create a passkey wallet, were built after those two. A finishing review on 9 October then attacked the built screens, the server and the standard itself, and walked a production build end to end; its findings became invariants C51 to C55, and a review of the five languages on 11 October added C56. The testnet faucet, added the same day, brought C57 ([audits](https://kalypso-payroll.vercel.app/docs/security/audits)). None of these reviews was done by a security firm.
 
 Both contracts are built by GitHub Actions from a release tag, and each wasm carries a build attestation. The workflow that writes attestations pins every third-party action by commit, not by tag. `check:testnet` then confirms from chain state that the released code is what runs. The static analysis record is [`docs/security/static-analysis.md`](docs/security/static-analysis.md). Scout reported 33 findings. 9 were fixed, each with a test that forces the failure, and 24 were justified, each with a reason checked against the code at that line. Its rescan at v0.1.1 found no new kind. cargo audit reports 0 vulnerabilities and 1 warning, an unmaintained macro crate that never ships in a contract. clippy runs with `-D warnings`.
 

@@ -78,7 +78,7 @@ export function useMoneyLocale() {
 export function NoKeyFits() {
   const t = useTranslations("landing.ledger");
   return (
-    <span className="font-mono text-[0.875rem] text-fail">{t("noKeyFits")}</span>
+    <span className="inline-block max-w-[12rem] font-sans text-[0.8125rem] leading-snug text-fail">{t("noKeyFits")}</span>
   );
 }
 

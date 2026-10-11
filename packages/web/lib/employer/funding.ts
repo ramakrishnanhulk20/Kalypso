@@ -41,7 +41,7 @@ async function depositOnce(ctx: ConsoleContext, wallet: WalletPort, amount: bigi
   const treasury = wallet.address;
   const saved = await readDepositRecord(ctx.text, treasury);
   if (saved !== undefined) {
-    p.say("Checking the deposit this browser sent last time");
+    p.say("deposit_checking_earlier");
     let status: "SUCCESS" | "FAILED" | "NOT_FOUND";
     try {
       status = (await settle(ctx, saved.hash, saved.maxTime)).status;
@@ -55,7 +55,7 @@ async function depositOnce(ctx: ConsoleContext, wallet: WalletPort, amount: bigi
 
   const usdc = await ctx.ledger.usdcBalance(treasury);
   if (usdc === null || usdc < amount) throw new ConsoleError("USDC_SHORT");
-  p.say("Depositing testnet USDC into the confidential treasury");
+  p.say("deposit_sending");
   try {
     const sent = await sendCall(ctx, wallet, {
       what: "deposit",
@@ -74,16 +74,16 @@ async function trustline(ctx: ConsoleContext, wallet: WalletPort, onProgress: On
   const p = reporter(onProgress, 1);
   if ((await ctx.ledger.xlmBalance(wallet.address)) === null) throw new ConsoleError("ACCOUNT_NOT_FOUND");
   if ((await ctx.ledger.usdcBalance(wallet.address)) !== null) {
-    p.tick("This wallet can hold testnet USDC");
+    p.tick("trustline_ready");
     return { created: false };
   }
-  p.say("Opening a USDC trustline so this wallet can hold testnet USDC");
+  p.say("trustline_sending");
   const sent = await sendClassic(ctx, wallet, {
-    what: "USDC trustline",
+    what: "USDC setup",
     operations: [Operation.changeTrust({ asset: new Asset("USDC", ctx.config.usdc.issuer) })],
   });
-  await confirmOnChain(ctx, "The USDC trustline", async () => (await ctx.ledger.usdcBalance(wallet.address)) !== null);
-  p.tick("This wallet can hold testnet USDC", sent.hash);
+  await confirmOnChain(ctx, "The step that lets this wallet hold USDC", async () => (await ctx.ledger.usdcBalance(wallet.address)) !== null);
+  p.tick("trustline_ready", undefined, sent.hash);
   return { created: true, txHash: sent.hash };
 }
 
@@ -131,15 +131,15 @@ export async function fundTreasury(wallet: WalletPort, input: { amount: bigint }
     const p = reporter(onProgress, 5);
     // Asked before anything is sent, so a person who declines the key prompts has moved nothing;
     // the rebuild at the end reuses these keys without asking again.
-    p.say("Sign the Kalypso key message twice in your wallet to open the treasury");
+    p.say("keys_treasury");
     await walletKeys(wallet, { domain: config.keyDomain, token });
-    p.tick("The treasury is open in this browser");
+    p.tick("treasury_open");
 
-    // Only the trustline's "opening" sentence is passed on; its last one is this step's own tick.
+    // Only the trustline's opening step is passed on; its last one is this step's own tick.
     const line = await trustline(ctx, wallet, (e) => {
-      if (e.done === 0) p.say(e.sentence);
+      if (e.done === 0) p.say(e.step, e.values);
     });
-    p.tick("This wallet can hold testnet USDC", line.txHash);
+    p.tick("trustline_ready", undefined, line.txHash);
 
     const account = await confidentialBalance(ctx.port, token, treasury);
     if (account === null) throw new ConsoleError("TREASURY_NOT_REGISTERED");
@@ -147,18 +147,18 @@ export async function fundTreasury(wallet: WalletPort, input: { amount: bigint }
     if ((await ctx.store.get(inFlightKey(token, treasury))) !== undefined) throw new ConsoleError("PAYMENT_PENDING");
 
     const deposit = await depositOnce(ctx, wallet, amount, p);
-    p.tick(deposit.resumed ? "Your earlier deposit had landed, so no new one was sent" : "The deposit is in the treasury's incoming balance", deposit.hash);
+    p.tick(deposit.resumed ? "deposit_resumed" : "deposit_incoming", undefined, deposit.hash);
 
     // Always merged, a resumed deposit too: a read that lags the deposit could show nothing
     // incoming, and merging an empty incoming balance changes nothing on chain.
-    p.say("Merging the deposit into the treasury balance");
-    const merge = await sendCall(ctx, wallet, { what: "merge", contractId: token, build: (base) => buildMerge(base, { account: treasury }) });
+    p.say("merge_sending");
+    const merge = await sendCall(ctx, wallet, { what: "final deposit step", contractId: token, build: (base) => buildMerge(base, { account: treasury }) });
     await clearDepositRecord(ctx.text, treasury);
-    p.tick("The deposit is merged into the treasury balance", merge.hash);
+    p.tick("merge_done", undefined, merge.hash);
 
-    p.say("Rebuilding the treasury balance from the chain's history");
+    p.say("rebuild_running");
     const rebuilt = await rebuildFromChain(ctx, wallet);
-    p.tick("This browser can pay from the treasury balance the chain shows");
+    p.tick("rebuild_ready");
     return { ...rebuilt, depositTx: deposit.hash, mergeTx: merge.hash, deposited: deposit.amount, resumed: deposit.resumed };
   });
 }

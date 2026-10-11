@@ -1,0 +1,82 @@
+---
+title: "Développeurs"
+description: "Clonez le dépôt, lancez toutes les suites de tests et vérifiez chaque affirmation face aux contrats en direct sur le testnet, depuis votre terminal."
+---
+
+Il vous faut Git, Node.js 24 (le serveur exige la 24 ; les scripts testnet exigent la 22.9 ou une version plus récente), une chaîne d'outils Rust pour les contrats (la CI utilise Rust 1.99.0), et la [CLI stellar](https://github.com/stellar/stellar-cli) 28.1.0 pour la vérification de l'attestation de build.
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/Kalypso.git
+cd Kalypso
+```
+
+Chaque bloc de commandes ci-dessous part de la racine du dépôt.
+
+## Lancer les tests
+
+Le 11 octobre, les suites comptaient 115 tests de paie et 43 tests d'audit (`cargo test`), 560 tests du cœur à 98,47 % de couverture de lignes, 352 tests du serveur à 98,31 %, 674 tests de l'application web et 11 tests pour les scripts testnet, soit 1 755 au total. Les 352 tests du serveur tournent aussi une seconde fois via le pilote Postgres de production, avec `npm run test:wire`.
+
+```bash
+cd packages/contracts && cargo test
+```
+
+```bash
+cd packages/core && npm install && npm test
+```
+
+```bash
+cd packages/server && npm install && npm test
+```
+
+```bash
+cd packages/server && npm run test:wire
+```
+
+```bash
+cd packages/web && npm install && npm test
+```
+
+```bash
+cd packages/contracts/scripts && npm ci && npm test
+```
+
+## Vérifier que la paie en direct vient de ce dépôt
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+Elle répond avec `.github/workflows/release.yml` au tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, construit sur un runner hébergé par GitHub.
+
+## Vérifier la pile depuis l'état de la chaîne [#check-the-stack-from-chain-state]
+
+`check:testnet` lit l'état de la chaîne et lance 18 contrôles : personne, nous compris, ne peut changer les preuves que le vérificateur accepte ; aucun de nos contrats n'a d'administrateur ni de mise à jour possible ; le code sur la chaîne est le code publié ; et chaque contrat a au moins 14 jours avant d'être archivé. Il lui faut le contrat de paie de la version v0.1.1 et le registre d'audit de la version v0.1.0, chacun dans son propre dossier :
+
+```bash
+mkdir -p release/v0.1.1 release/v0.1.0
+curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
+curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
+cd packages/contracts/scripts && npm ci
+npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
+```
+
+Les mêmes fichiers sont sur la [page des versions](https://github.com/ramakrishnanhulk20/Kalypso/releases). Une exécution réussie se termine par `18 of 18 checks passed. RESULT: PASS`.
+
+## Attaquer l'entreprise de démonstration
+
+`prove:testnet` attaque sur le testnet les promesses de l'entreprise de démonstration et affiche ce qui a arrêté chaque attaque. Il lance 13 contrôles et n'exige aucune clé.
+
+```bash
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
+```
+
+Sans le fichier privé du seed, les montants sont vérifiés avec la clé du comptable de démonstration publiée et la moitié salarié de P10 est sautée, donc l'exécution d'un inconnu se termine avec 12 réussis et 1 sauté. Les contrôles d'historique lisent le RPC, qui conserve environ les 7 derniers jours. L'option `--archive` ci-dessus lit les registres plus anciens dans l'archive d'événements en direct de Kalypso, donc les contrôles d'historique continuent de fonctionner au-delà de cette fenêtre ; son état de santé est public sur [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health). La dernière exécution complète est sur [Rapport d'attaque](/docs/security/attack-run).
+
+## Garder la pile en vie
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
+```
+
+Cela prolonge la durée de vie du stockage des quatre contrats et de leur code, de 60 jours par défaut (`-- --days <n>` pour la changer), pour qu'aucun ne soit archivé pendant que vous et d'autres visiteurs le consultez. N'importe qui peut payer une prolongation, et elle ne change rien d'autre. Elle paie depuis l'identité de la CLI stellar nommée par `DEPLOYER` (par défaut `kalypso-deployer`) dans `packages/contracts/.stellar`, qui doit exister et détenir des XLM testnet. `check:testnet` échoue dès qu'un contrat a moins de 14 jours restants.

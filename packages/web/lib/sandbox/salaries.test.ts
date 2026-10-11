@@ -1,4 +1,4 @@
-// Covers the salary checks a judge's input meets before anything is sent, the deposit margin, and
+// Covers the salary checks a visitor's input meets before anything is sent, the deposit margin, and
 // the coverage check before the deposit. Does NOT cover what the DEX quotes or whether friendbot
 // XLM can buy the deposit (dex.ts measures that live), or core's own refusals inside executeRun.
 import { MAX_STROOPS } from "@kalypso/core";

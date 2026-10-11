@@ -145,7 +145,7 @@ async function spendableXlm(ctx: DexContext, funder: Keypair): Promise<bigint> {
 
 /**
  * Refuses before anything is bought when the funders that have not bought yet cannot pay for
- * `need` stroops of USDC at today's quote, so a judge's salaries never leave a half-funded treasury.
+ * `need` stroops of USDC at today's quote, so a visitor's salaries never leave a half-funded treasury.
  *
  * @throws SandboxError NOT_ENOUGH_XLM, or either 1% limit from measurePurchase.
  */
@@ -155,7 +155,7 @@ export async function requireAffordable(ctx: DexContext, need: bigint, funders: 
   let budget = 0n;
   for (const f of funders) if (!landed(ctx.tx, f.label)) budget += await spendableXlm(ctx, f.keypair);
   if ((m.quote.xlm * SEND_MAX_PER_MILLE) / 1_000n > budget) {
-    throw new SandboxError("NOT_ENOUGH_XLM", "These salaries need more test USDC than the sandbox accounts' friendbot XLM can buy. Lower them and start again.");
+    throw new SandboxError("NOT_ENOUGH_XLM", "These salaries need more test USDC than the sandbox accounts' free test XLM can buy. Lower them and start again.");
   }
 }
 
@@ -178,7 +178,7 @@ export async function topUpUsdc(
       if (settled) p.onBought(settled);
     }
     const have = await ctx.ledger.usdcBalance(p.destination);
-    if (have === null) throw new SandboxError("CHAIN_DISAGREES", "The treasury has no USDC trustline, so it cannot receive test USDC.");
+    if (have === null) throw new SandboxError("CHAIN_DISAGREES", "The treasury has not been set up to hold USDC, so it cannot receive test USDC.");
     if (have >= p.target) return;
     if (landed(ctx.tx, label)) continue;
     const spendable = await spendableXlm(ctx, keypair);

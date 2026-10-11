@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { CSV_DEFAULT_MAX_BYTES, CSV_DEFAULT_MAX_ROWS, CSV_NAME_MAX_CHARACTERS } from "@kalypso/core";
-import { ErrorNote } from "@/components/app/error-note";
 import { problemsOf } from "@/components/app/errors";
 import { SelectField, TextAreaField } from "@/components/app/fields";
 import { loadEmployer, useEmployerLib } from "@/components/app/loaders";
@@ -13,11 +12,13 @@ import { TxLink } from "@/components/app/tx-link";
 import { useAction } from "@/components/app/use-action";
 import { useLeaveWarning } from "@/components/app/use-leave-warning";
 import { useWallet } from "@/components/app/wallet-session";
+import { useProgressText } from "./progress-text";
 import { useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { readPayrollCsv } from "@/lib/employer/csv";
 import { INTL_TAG } from "@/lib/i18n/locales";
 import { shortId } from "@/lib/ledger";
 import { displayUsdc } from "@/lib/money";
+import { ConsoleErrorNote } from "./console-error-note";
 import { CsvDrop } from "./csv-drop";
 import { RunResult } from "./run-result";
 
@@ -64,10 +65,11 @@ export function PayrollPanel({ companyId, refresh }: { companyId: bigint; refres
     return csv(problem.code, { where, kb: Math.floor(CSV_DEFAULT_MAX_BYTES / 1024), rows: CSV_DEFAULT_MAX_ROWS, chars: CSV_NAME_MAX_CHARACTERS });
   };
 
+  const progressText = useProgressText();
   const pay = useAction(async (onProgress) => {
     const employer = await loadEmployer();
     try {
-      return await employer.runPayroll(wallet, { companyId, year, month, csv: text }, onProgress);
+      return await employer.runPayroll(wallet, { companyId, year, month, csv: text }, progressText(onProgress));
     } finally {
       // The treasury moves with every payment that landed, even in a run that then stopped.
       refresh();
@@ -209,7 +211,7 @@ export function PayrollPanel({ companyId, refresh }: { companyId: bigint; refres
           </ol>
         ) : null}
 
-        {pay.error ? <ErrorNote error={pay.error} /> : null}
+        {pay.error ? <ConsoleErrorNote error={pay.error} /> : null}
         {refused.length > 1 ? (
           <ul className="mt-2 space-y-1 font-sans text-[0.9375rem] text-fail">
             {refused.map((problem) => (

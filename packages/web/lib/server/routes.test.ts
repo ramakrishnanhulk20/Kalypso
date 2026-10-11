@@ -13,6 +13,7 @@ import { clearTables, freshDb, resetArchive } from "../../../server/test/db";
 import { CRON_SECRET, DB_API, DB_INGEST, TOKEN, keypairFor, testEnv } from "../../../server/test/helpers";
 import { FakeChain, deployTxEvent, mergeEvent, transferEvent, txHashOf } from "../../../server/test/archive/fake-chain";
 import { LIVE_CREATION, fakeTransactions } from "../../../server/test/sponsor/fake-rpc";
+import { FakeLedger } from "../../../server/test/faucet/fake-ledger";
 
 const fakes = vi.hoisted(() => ({
   db: undefined as Db | undefined,
@@ -57,6 +58,11 @@ const SERVER_VARIABLES = [
   "LOG_SALT",
   "ARCHIVE_START_LEDGER",
   "TOKEN_DEPLOY_TX",
+  "FAUCET_SECRET_KEY",
+  "FAUCET_XLM_STROOPS",
+  "FAUCET_USDC_STROOPS",
+  "FAUCET_CLAIMS_PER_IP_PER_DAY",
+  "FAUCET_CLAIMS_PER_DAY",
 ];
 
 const REQUIRED = [
@@ -96,6 +102,7 @@ async function coldStart() {
     status: await import("../../app/api/sponsor/status/route"),
     birth: await import("../../app/api/sponsor/birth/route"),
     birthLookup: await import("../../app/api/sponsor/birth/lookup/route"),
+    faucet: await import("../../app/api/faucet/route"),
     archive: await import("../../app/api/archive/[...path]/route"),
     ingest: await import("../../app/api/archive/ingest/route"),
   };
@@ -130,6 +137,7 @@ describe("with no server variables", () => {
       ["sponsorStatus", () => routes.status.GET(new Request(ORIGIN + "/api/sponsor/status?id=tx_1", { headers: IP }))],
       ["sponsorBirth", () => routes.birth.POST(new Request(ORIGIN + "/api/sponsor/birth", { method: "POST", headers: IP, body: "{}" }))],
       ["sponsorBirthLookup", () => routes.birthLookup.POST(new Request(ORIGIN + "/api/sponsor/birth/lookup", { method: "POST", headers: IP, body: "{}" }))],
+      ["faucet", () => routes.faucet.POST(new Request(ORIGIN + "/api/faucet", { method: "POST", headers: IP, body: "{}" }))],
       ["archive", () => routes.archive.GET(new Request(ORIGIN + "/api/archive/v1/health"))],
       ["archive", () => routes.archive.OPTIONS(new Request(ORIGIN + "/api/archive/v1/health", { method: "OPTIONS" }))],
       ["ingest", () => routes.ingest.POST(new Request(ORIGIN + "/api/archive/ingest", { method: "POST" }))],
@@ -292,6 +300,31 @@ describe("with a test configuration", () => {
     expect(await read(res)).toEqual({ status: 200, body: { hash: LIVE_CREATION.hash, relayed: [], more: false } });
     expect(await read(await lookup({ address: "CB6BSQ3PXPCF7EM3HGUXBWJBQCLZ3GVYV3C5QH5LKFEDNAHC7URRS6NL" }))).toEqual({ status: 200, body: { hash: null, relayed: [], more: false } });
     expect(await read(await lookup({ wallet: WALLET }))).toEqual({ status: 400, body: { error: "bad_request" } });
+  });
+
+  it("serves POST /api/faucet from the handler: not_configured without a faucet key, and with one a claim paid through the configured RPC", async () => {
+    const post = (body: unknown) =>
+      routes.faucet.POST(new Request(ORIGIN + "/api/faucet", { method: "POST", headers: { ...IP, "content-type": "application/json" }, body: JSON.stringify(body) }));
+    const newcomer = keypairFor("faucet newcomer").publicKey();
+    const off = await post({ address: newcomer, asset: "xlm" });
+    expect(off.headers.get("cache-control")).toBe("no-store");
+    expect(await read(off)).toEqual({ status: 503, body: { error: "not_configured" } });
+
+    await clearTables(db, ["ip_hour", "address_day"]);
+    const faucet = keypairFor("faucet");
+    const ledger = new FakeLedger(faucet).fund(faucet.publicKey(), 10_000_0000000n, { subentries: 1 }).trust(faucet.publicKey(), 2_000_0000000n);
+    fakes.rpc = Object.assign(chain, { getLedgerEntries: ledger.getLedgerEntries, getTransaction: ledger.getTransaction });
+    vi.stubGlobal("fetch", ledger.fetch);
+    setEnv({ ...configuredEnv(), FAUCET_SECRET_KEY: faucet.secret() });
+    routes = await coldStart();
+    const res = await post({ address: newcomer, asset: "xlm" });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await read(res)).toEqual({ status: 200, body: { hash: ledger.envelope(0).hash().toString("hex"), asset: "xlm", amount: "1000000000" } });
+    expect(ledger.fetch).toHaveBeenCalledTimes(1);
+    expect(String(ledger.fetch.mock.calls[0]![0])).toBe("https://soroban-testnet.stellar.org");
+    expect(ledger.envelope(0).operations).toEqual([expect.objectContaining({ type: "createAccount", destination: newcomer })]);
+    expect(await read(await post({ address: newcomer, asset: "xlm" }))).toEqual({ status: 429, body: { error: "already_claimed" } });
+    expect(logLines.join(" ")).not.toContain(faucet.secret());
   });
 
   it("reads the environment once per cold start", async () => {

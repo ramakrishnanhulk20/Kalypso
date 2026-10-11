@@ -5,7 +5,7 @@ import { SandboxError } from "./errors";
 export const DEPOSIT_MARGIN_PERCENT = 2n;
 
 /**
- * Checks the three salaries a judge entered: exactly three bigints, each above zero, and a total
+ * Checks the three salaries a visitor entered: exactly three bigints, each above zero, and a total
  * the token can hold with the deposit margin on top.
  *
  * @throws SandboxError INVALID_AMOUNTS, naming the worker, never the amount.

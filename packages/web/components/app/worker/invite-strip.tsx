@@ -1,7 +1,7 @@
 import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/i18n/errors";
 import { SealMark } from "../../seal-mark";
-import { PubliclyReadable } from "./public-chip";
+import { PublicNote, PubliclyReadable } from "./public-chip";
 import type { InviteState } from "./use-invite";
 
 // Above everything on the page whenever the link names a company, signed in or not. A company
@@ -23,6 +23,7 @@ export function InviteStrip({ invite, onRetry }: { invite: InviteState; onRetry:
             {invite.publiclyReadable ? (
               <div className="mt-2">
                 <PubliclyReadable />
+                <PublicNote className="mt-1" />
               </div>
             ) : null}
           </>
