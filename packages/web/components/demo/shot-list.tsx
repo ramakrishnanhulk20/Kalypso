@@ -1,14 +1,16 @@
-import { SHOTS } from "./shots";
+import { useTranslations } from "next-intl";
+import { SHOTS, descriptionOf, titleOf } from "./shots";
 import { elapsedSeconds, rowStatus } from "./run-state";
 import type { RowStatus, RunState } from "./run-state";
 
 function Status({ status, seconds }: { status: RowStatus; seconds: number | undefined }) {
-  if (status === "waiting") return <span className="t-label">waiting</span>;
+  const t = useTranslations("sandbox.run");
+  if (status === "waiting") return <span className="t-label">{t("waiting")}</span>;
   if (status === "current") {
     return (
       <span className="flex items-center gap-2">
         <span aria-hidden="true" className="dot-pulse h-2 w-2 rounded-full bg-seal" />
-        <span className="font-mono text-[0.875rem] text-paper">{seconds ?? 0} s</span>
+        <span className="font-mono text-[0.875rem] text-fg">{t("seconds", { s: seconds ?? 0 })}</span>
       </span>
     );
   }
@@ -16,21 +18,23 @@ function Status({ status, seconds }: { status: RowStatus; seconds: number | unde
     return (
       <span className="flex items-center gap-2">
         <span aria-hidden="true" className="h-2 w-2 rounded-full bg-ok" />
-        <span className="font-mono text-[0.875rem] text-muted">{seconds === undefined ? "done" : `${seconds} s`}</span>
+        <span className="font-mono text-[0.875rem] text-muted">{seconds === undefined ? t("done") : t("seconds", { s: seconds })}</span>
       </span>
     );
   }
   return (
     <span className="flex items-center gap-2">
       <span aria-hidden="true" className="h-2 w-2 rounded-full bg-fail" />
-      <span className="t-label">stopped</span>
+      <span className="t-label">{t("stopped")}</span>
     </span>
   );
 }
 
 export function ShotList({ run, now }: { run: RunState; now: number }) {
+  const t = useTranslations("sandbox.run");
+  const shots = useTranslations("sandbox.shots");
   return (
-    <ol aria-label="Sandbox steps">
+    <ol aria-label={t("stepsLabel")}>
       {SHOTS.map((shot, index) => {
         const status = rowStatus(run, index);
         const current = status === "current";
@@ -44,13 +48,13 @@ export function ShotList({ run, now }: { run: RunState; now: number }) {
               <span
                 aria-hidden="true"
                 className="absolute inset-y-0 -inset-x-3 -z-10"
-                style={{ background: "rgba(201,71,58,0.05)", boxShadow: "inset 2px 0 0 var(--color-seal)" }}
+                style={{ background: "color-mix(in srgb, var(--color-seal) 5%, transparent)", boxShadow: "inset 2px 0 0 var(--color-seal)" }}
               />
             ) : null}
             <span className="t-label">{String(index + 1).padStart(2, "0")}</span>
             <div>
-              <p className="font-sans text-[1.0625rem] text-paper">{shot.title}</p>
-              <p className="mt-1 font-sans text-[0.9375rem] text-muted">{shot.description}</p>
+              <p className="font-sans text-[1.0625rem] text-fg">{titleOf(shots, shot.key)}</p>
+              <p className="mt-1 font-sans text-[0.9375rem] text-muted">{descriptionOf(shots, shot.key)}</p>
             </div>
             <div className="flex min-w-[5.5rem] justify-end max-sm:col-start-2 max-sm:mt-2 max-sm:justify-start">
               <Status status={status} seconds={current ? elapsedSeconds(run, index, now) : run.seconds[shot.key]} />

@@ -1,4 +1,7 @@
-import { displayUsdc, parseTypedUsdc } from "../../../lib/money";
+import type { Locale } from "../../../lib/i18n/locales";
+import type { PlainT } from "../../../lib/i18n/types";
+import { parseAmount } from "../../../lib/i18n/amount";
+import { displayUsdc } from "../../../lib/money";
 
 export interface MoveReading {
   /** The typed amount in stroops, or null when the text is empty or does not read as one. */
@@ -11,17 +14,18 @@ export interface MoveReading {
 }
 
 /**
- * What the Move box shows for the text in it. The text goes through the one typed-amount parser,
- * so "1,5" is refused instead of read as 15, and a movable amount is shown back as it was parsed,
- * in the sentence and on the button, before the irreversible withdraw (C54).
+ * What the Move box shows for the text in it (t is the worker.cashOut namespace). The text goes
+ * through the one typed-amount parser, so "1,5" is refused in English instead of read as 15 and
+ * read as one and a half in Spanish, and a movable amount is shown back as it was parsed, in the
+ * sentence and on the button, before the irreversible withdraw (C54).
  */
-export function readMove(text: string, max: bigint | null): MoveReading {
-  if (text.trim() === "") return { amount: null, problem: null, confirm: null, label: "Move" };
-  const amount = parseTypedUsdc(text);
-  if (amount === null) return { amount, problem: "INVALID_AMOUNT", confirm: null, label: "Move" };
-  if (max !== null && amount > max) return { amount, problem: "INSUFFICIENT_FUNDS", confirm: null, label: "Move" };
-  const shown = displayUsdc(amount);
-  return { amount, problem: null, confirm: `You are moving ${shown} USDC.`, label: `Move ${shown} USDC` };
+export function readMove(text: string, max: bigint | null, locale: Locale, t: PlainT): MoveReading {
+  if (text.trim() === "") return { amount: null, problem: null, confirm: null, label: t("move") };
+  const amount = parseAmount(text, locale);
+  if (amount === null) return { amount, problem: "INVALID_AMOUNT", confirm: null, label: t("move") };
+  if (max !== null && amount > max) return { amount, problem: "INSUFFICIENT_FUNDS", confirm: null, label: t("move") };
+  const shown = displayUsdc(amount, locale);
+  return { amount, problem: null, confirm: t("confirm", { amount: shown }), label: t("moveAmount", { amount: shown }) };
 }
 
 // The sponsor refused, or went quiet and the chain shows the move did not land. Any other failure

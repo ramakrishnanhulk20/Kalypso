@@ -1,0 +1,52 @@
+---
+title: "FAQ"
+description: "Des réponses directes aux questions que les entreprises et les jurys posent d'abord sur Kalypso."
+---
+
+## Qui peut voir les salaires ?
+
+Trois parties. L'employeur, dont le navigateur détient le tableur ; chaque salarié, pour sa propre paie seulement ; et le comptable de l'entreprise, dont la clé ouvre chaque montant que l'entreprise a payé et le solde de la trésorerie après chaque paiement. Le comptable ouvre les comptes d'une entreprise sur /accountant et peut les exporter en CSV, mais seulement une fois qu'ils sont complets. Personne d'autre ne le peut, serveur de Kalypso compris, qui ne voit que des montants chiffrés. Sur le testnet, un inconnu qui cherche les 12 salaires dans les 72 transactions de la démonstration, sous 15 encodages chacun, n'en trouve aucun (attaque P1).
+
+## Qu'est-ce qui est public ?
+
+Qui paie qui, quand, combien de salariés compte une entreprise, et qui figure sur sa liste. Les montants de dépôt et de retrait sont publics aussi, donc le dépôt qui alimente une trésorerie montre à peu près ce que coûte la paie, et un salarié qui retire exactement sa paie la révèle. Seuls les montants des paiements et des soldes sont privés.
+
+## Et si la clé du comptable fuit ?
+
+Celui qui la détient peut lire chaque montant jamais chiffré pour elle, pour toujours, ainsi que le solde de la trésorerie après chacun de ces paiements. Elle ne peut toujours pas déplacer d'argent. Le comptable peut changer la clé, et lui seul, donc les paiements suivants sont chiffrés pour la nouvelle clé, tandis que les précédents restent lisibles avec celle qui a fuité. La rotation est un appel `rotate_key` sur le registre d'audit de Kalypso, signé par le comptable ; la vue comptable ne la propose pas. Une rotation au milieu d'un cycle fait échouer les preuves construites avec l'ancienne clé, donc le moteur de cycle relit les clés sur la chaîne et les reconstruit.
+
+## Et si un salarié perd sa clé ?
+
+La clé d'un salarié n'est pas un fichier qu'il peut perdre. Avec Freighter, elle est dérivée de la signature par le portefeuille du message de clé de Kalypso, donc le même portefeuille reconstruit la même clé sur n'importe quel appareil. Avec Face ID, elle est dérivée de la clé d'accès, donc tout appareil qui détient la même clé d'accès la reconstruit. Si le salarié perd le portefeuille ou la clé d'accès elle-même, personne ne peut récupérer l'argent, car Kalypso n'a pas d'administrateur qui pourrait le déplacer ou le réémettre. La paie reste sur la chaîne, liée à ce compte.
+
+## Kalypso peut-il geler ou déplacer de l'argent ?
+
+Non. Ni le contrat de paie ni le registre d'audit n'ont d'administrateur ni de mise à jour possible, les rôles d'administrateur et de gestionnaire du vérificateur ont été abandonnés, et l'argent d'une entreprise ne bouge qu'avec la signature de sa propre trésorerie (attaque P5). Kalypso pourrait cesser de sponsoriser les frais. Rien ne bougerait ni ne gèlerait, mais le portail salarié, qui n'envoie les transactions des salariés que par le sponsor, cesserait de les envoyer jusqu'au retour du sponsor. La console employeur et la vue comptable paient leurs propres frais et continueraient. Circle, en tant qu'émetteur d'USDC, peut geler ou récupérer les USDC mis en commun dans le contrat du jeton, et Kalypso ne peut pas s'en défendre.
+
+## Pourquoi Stellar ?
+
+Le jeton confidentiel d'OpenZeppelin, qui cache les soldes et les montants derrière des preuves à divulgation nulle de connaissance tout en laissant un auditeur les lire, est conçu pour Stellar, et la Stellar Development Foundation cite la paie comme un usage. L'USDC est émis nativement sur Stellar, un paiement coûte une fraction de XLM, et les ancres permettent de retirer des USDC en monnaie locale. Le contrat de paie de Kalypso est bâti autour de ce jeton : sans lui, l'appel de paie n'a rien à garder privé.
+
+## Pourquoi seulement le testnet ?
+
+Le jeton confidentiel, ses circuits et son vérificateur viennent d'une révision récente d'OpenZeppelin qui n'a pas été auditée, et Kalypso lui-même est auto-audité, non audité par un cabinet de sécurité. Les vrais salaires devraient attendre les deux. Tout le reste sur testnet est réel : de vrais contrats, de vraies preuves et de vrais paiements chiffrés, en USDC de test.
+
+## Combien coûte un cycle ?
+
+Mesuré sur le testnet, frais de réseau compris : une transaction de paiement paie deux salariés pour une médiane de 0.51 XLM, et l'ouverture du cycle coûte 0.40 XLM. Un cycle de 10 personnes fait donc 5 transactions de paiement et une ouverture, soit environ 2.95 XLM. La mise en place est unique : 0.68 XLM pour créer une entreprise, et pour chaque salarié 0.30 XLM pour inviter plus 0.42 XLM pour accepter, surtout du loyer de stockage prépayé pour environ 180 jours. L'employeur paie le côté de l'entreprise. Le sponsor des frais de Kalypso paie le côté du salarié à l'adhésion, y compris environ 1.79 XLM pour créer un portefeuille Face ID. Chaque chiffre est sur [Contrats et adresses](/docs/contracts#what-each-action-costs).
+
+## Que se passe-t-il si un paiement échoue en cours de route ?
+
+Personne n'est payé deux fois et rien n'est perdu. Le contrat garde un indicateur de paiement par salarié et par cycle, donc un cycle qui s'arrête reprend à partir de ces indicateurs, et un second paiement au même salarié est refusé. Un lot qui ne peut pas être construit, par exemple après qu'un salarié a changé de clé, n'échoue que pour ses propres lignes, et le reste du cycle continue. Si le réseau refuse une transaction, le cycle s'arrête, et le relancer reprend à partir de la chaîne. Un paiement que l'appareil a envoyé mais n'a pas vu arriver n'est jamais oublié : le moteur attend que la chaîne le règle avant de construire quoi que ce soit de nouveau.
+
+## Comment les salariés retirent-ils leur argent ?
+
+En deux étapes sur le portail salarié. D'abord le salarié déplace sa paie de son solde scellé vers son compte de retrait, sous forme d'USDC en clair. Ensuite il retire l'argent auprès de l'ancre de test de la SDF, sur sa propre page, ouverte dans une fenêtre contextuelle. Kalypso ne construit le paiement USDC de l'ancre qu'à partir de l'enregistrement de l'ancre elle-même, et affiche le montant, la destination et le mémo avant que le salarié l'approuve. Le montant du retrait est public, donc un salarié qui retire exactement une fiche de paie révèle cette fiche de paie, et l'ancre voit ce qui est retiré. Sur testnet, aucun argent réel ne bouge. Retirer vers une vraie banque exigerait une ancre sur le mainnet, et Kalypso ne tourne que sur testnet.
+
+## Les salariés ont-ils besoin d'un portefeuille crypto ?
+
+Non. Un salarié peut se connecter avec Face ID, une empreinte ou le code de l'appareil. Kalypso crée pour lui un portefeuille intelligent à clé d'accès, et le sponsor des frais paie sa création et tous les frais d'adhésion, donc le portefeuille n'a jamais besoin de XLM. La clé du salarié vient de la sortie PRF de la clé d'accès, et une clé d'accès qui ne peut pas en fournir est refusée, jamais affaiblie. La prise en charge de PRF varie selon les téléphones, les ordinateurs et les fournisseurs de clés d'accès. Kalypso a fait tourner le chemin par clé d'accès de bout en bout dans Chrome avec un authentificateur virtuel qui prend en charge PRF, et ne l'a pas vérifié sur chaque marque d'appareil. Un salarié peut utiliser Freighter à la place.
+
+## Puis-je vérifier tout cela moi-même ?
+
+Oui, avec trois commandes et sans clé Kalypso : l'une montre quelle version a construit le code sur la chaîne, l'une lit l'état de la chaîne pour confirmer que personne ne peut changer les règles, et l'une attaque la démonstration en direct et affiche ce qui a arrêté chaque attaque. Elles sont dans [Prise en main](/docs/getting-started#developer-path), et la [vue d'ensemble de la sécurité](/docs/security/overview) relie chaque affirmation au contrôle qui la prouve.

@@ -1,4 +1,5 @@
 import type { SandboxProgress } from "@/lib/sandbox/engine";
+import type { PlainT } from "@/lib/i18n/types";
 import { SHOTS, SHOT_COUNT, TOTAL_SECONDS, indexOfStep } from "./shots";
 import type { StepKey } from "./shots";
 
@@ -13,6 +14,8 @@ export interface RunState {
   frontier: number;
   /** The engine's own sentence for the screen, exactly as written. Null until the first one arrives. */
   label: string | null;
+  /** The engine's step and counts behind that sentence, so another language can say it by step. */
+  progress: { step: StepKey | "done"; done: number; total: number } | null;
   lastStep: StepKey | null;
   startedAt: Partial<Record<StepKey, number>>;
   /** Whole seconds each step took in this tab. A step finished before a reload has none. */
@@ -23,11 +26,14 @@ export interface RunState {
   running: boolean;
   failedStep: StepKey | null;
   error: string | null;
+  /** The engine's code for the error, so another language can say it by code. */
+  errorCode: string | null;
 }
 
 export const FRESH_RUN: RunState = {
   frontier: 0,
   label: null,
+  progress: null,
   lastStep: null,
   startedAt: {},
   seconds: {},
@@ -36,13 +42,14 @@ export const FRESH_RUN: RunState = {
   running: false,
   failedStep: null,
   error: null,
+  errorCode: null,
 };
 
 export type RunAction =
   | { type: "saved"; frontier: number }
   | { type: "begin" }
   | { type: "progress"; progress: SandboxProgress; at: number }
-  | { type: "fail"; message: string }
+  | { type: "fail"; message: string; code?: string | null }
   | { type: "stop" }
   | { type: "clear" };
 
@@ -55,13 +62,13 @@ export function reduceRun(state: RunState, action: RunAction): RunState {
     case "saved":
       return { ...FRESH_RUN, frontier: action.frontier };
     case "begin":
-      return { ...state, running: true, error: null, failedStep: null, lastStep: null };
+      return { ...state, running: true, error: null, errorCode: null, failedStep: null, lastStep: null };
     case "stop":
       return { ...state, running: false };
     case "clear":
       return FRESH_RUN;
     case "fail":
-      return { ...state, running: false, error: action.message, failedStep: state.lastStep ?? stepAt(state.frontier) };
+      return { ...state, running: false, error: action.message, errorCode: action.code ?? null, failedStep: state.lastStep ?? stepAt(state.frontier) };
     case "progress": {
       const { progress, at } = action;
       const step = progress.step === "done" ? null : progress.step;
@@ -89,7 +96,17 @@ export function reduceRun(state: RunState, action: RunAction): RunState {
         nextId += 1;
       }
 
-      return { ...state, frontier, label: progress.label, lastStep: step, startedAt, seconds, feed, nextId };
+      return {
+        ...state,
+        frontier,
+        label: progress.label,
+        progress: { step: progress.step, done: progress.done, total: progress.total },
+        lastStep: step,
+        startedAt,
+        seconds,
+        feed,
+        nextId,
+      };
     }
   }
 }
@@ -118,9 +135,21 @@ export function secondsLeft(frontier: number): number {
   return SHOTS.slice(Math.max(frontier, 0)).reduce((sum, shot) => sum + shot.seconds, 0);
 }
 
-export function timeLeftLabel(frontier: number): string {
+/** "about 3 min left" or "under a minute left". t is the sandbox.run namespace. */
+export function timeLeftLabel(t: PlainT, frontier: number): string {
   const left = secondsLeft(frontier);
-  return left < 60 ? "under a minute left" : `about ${Math.ceil(left / 60)} min left`;
+  return left < 60 ? t("underMinute") : t("minutesLeft", { m: Math.ceil(left / 60) });
+}
+
+/**
+ * The live line's sentence. In English it is the engine's own sentence, exactly as written. In
+ * another language the engine's step and counts pick a sentence from sandbox.progress, since the
+ * engine's words carry no key of their own.
+ */
+export function liveSentence(state: RunState, locale: string, t: PlainT): string {
+  if (state.progress === null) return state.label ?? "";
+  if (locale === "en") return state.label ?? "";
+  return t(state.progress.step, { done: Math.max(1, state.progress.done), total: state.progress.total });
 }
 
 /** 0 to 1: the measured time of the finished steps plus how far into the current one, over the whole measured run. */

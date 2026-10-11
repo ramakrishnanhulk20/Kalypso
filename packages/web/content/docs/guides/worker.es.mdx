@@ -1,0 +1,55 @@
+---
+title: Trabajador
+description: "Únete desde tu enlace de invitación con Face ID o una billetera, lee tus comprobantes de pago sellados y retira en el anchor de prueba de Stellar."
+---
+
+Tu pago vive en [/worker](/worker). Necesitas el enlace de invitación de tu empleador, y un teléfono o laptop con una llave de acceso (Face ID, una huella o el PIN del dispositivo) o Freighter en Testnet. El patrocinador de comisiones de Kalypso paga las comisiones por unirte y por mover tu pago, así que con Face ID no hay nada que cargar. Una cuenta de Freighter ya debe existir en testnet.
+
+## Inicia sesión
+
+1. Abre el enlace de invitación. Una franja con el título **Invitación** arriba dice qué empresa te invitó: el nombre de la empresa, y luego "te invitó a recibir tu pago con Kalypso."
+2. La primera vez en este dispositivo, elige **¿Primera vez? Crea tu clave de pago**. Tu dispositivo te pide confirmar dos veces. Tu clave de pago se crea en el dispositivo a partir de la nueva llave de acceso, y Kalypso configura tu billetera, con la comisión pagada por el patrocinador. Mientras trabaja, el botón dice "Esperando a tu dispositivo, luego configurando tu billetera".
+3. Cuando vuelvas, elige **Iniciar sesión con Face ID**. Para usar una billetera, elige **Usar una billetera en su lugar**, luego **Conectar Freighter**, y firma dos veces el mensaje de clave de Kalypso.
+4. Bajo **Sesión iniciada** la página muestra tu dirección, con un botón para copiar, una vez que Kalypso ha confirmado desde la cadena que la billetera es tuya. Hasta entonces dice "Billetera aún sin configurar". **Cerrar sesión** olvida la sesión en esta pestaña, y tu llave de acceso se queda en el dispositivo.
+
+## Únete a la empresa
+
+5. Elige el botón que dice **Unirme a** y el nombre de tu empresa. Sus pasos se van marcando uno por uno, desde revisar la invitación hasta aceptarla, en cerca de un minuto, y no te cuesta nada. Tu dispositivo o Freighter te pide aprobar en el camino.
+6. Si ves "Esta empresa no ha invitado a esta cuenta.", la tarjeta muestra "Pide a tu empleador que invite esta dirección:" con tu dirección y un botón para copiar. Envía la dirección a tu empleador. Cuando la invite, elige otra vez el botón **Unirme a**.
+
+## Lee tu pago
+
+7. **Tu saldo** muestra tu pago en USDC, con la línea "Sellado en la cadena. Abierto en este dispositivo con tu clave." Cada comprobante de pago muestra el mes y la empresa, el monto en USDC, una línea **Pagado en** con la transacción que lo pagó, y una línea **Empresa**.
+8. Una etiqueta "Legible públicamente" en un comprobante de pago significa que la empresa usa la clave de contador de demostración publicada, así que cualquiera puede leer sus montos. Una etiqueta "Lectores desconocidos" significa que Kalypso no pudo leer la configuración de la empresa, así que no puede decir si alguien más puede leer ese monto. Recarga para volver a revisar.
+9. "Historial incompleto" significa que una parte de tu historial aún no se pudo comprobar contra la cadena. Una línea debajo dice qué no coincide, y cada monto que sigue mostrándose pasó esa comprobación. Sin comprobantes de pago todavía y con un historial completo, la página dice "Aún no hay comprobantes de pago. Aparecen aquí después de que tu empleador pague la nómina."
+
+## De vuelta en un dispositivo nuevo
+
+Kalypso encuentra tus empresas en la cadena, no solo en las notas de este navegador. Después de que inicias sesión, lee los eventos de unión del propio contrato de nómina para tu billetera y se queda solo con las empresas que la lista de la cadena confirma que te uniste. Así, en un dispositivo nuevo tus comprobantes de pago aparecen sin abrir de nuevo tu enlace de invitación.
+
+Tu dirección aparece bajo **Sesión iniciada** cuando Kalypso confirma cómo se configuró por primera vez tu billetera, leyendo de la cadena la transacción que la creó. Kalypso retiene la dirección hasta entonces a propósito: alguien que supiera el id de tu llave de acceso podría haber creado antes una billetera ahí, desde su propio código, y una dirección mostrada demasiado pronto podría ser suya. Tus comprobantes de pago y el retiro funcionan mientras tanto.
+
+Mientras espera, una tarjeta con el título **Aún no pudimos confirmar tu billetera** dice "Tu billetera está en la red, pero Kalypso no ha confirmado cómo se configuró al principio, así que su dirección queda oculta. Tus comprobantes de pago y el retiro de más abajo siguen funcionando." Elige **Comprobar de nuevo** en un minuto. Si Kalypso aún no puede confirmarla, la tarjeta ofrece también **Crear una nueva clave de pago en su lugar**. Una nueva clave de pago es una llave de acceso nueva con una dirección nueva, que tu empleador debe invitar, así que úsala solo si prefieres no esperar.
+
+Si tu billetera aún no está en la red, la tarjeta tiene el título **Tu billetera aún no está configurada** y su botón dice **Terminar la configuración**.
+
+## Retira
+
+10. Bajo **Mover a tu cuenta de retiro**, escribe un monto en el campo **Monto** o elige **Máx.**. La página repite lo que leyó ("Vas a mover 1.500,00 USDC.") y el botón dice **Mover 1.500,00 USDC**. El campo acepta una coma o un punto como separador decimal ("1,5" y "1.5" significan uno y medio) y rechaza los separadores de miles: "4.200,50" se rechaza, escribe 4200,50. Elige el botón. Tu pago sale del saldo sellado como USDC normal, y la página dice "Movido." solo después de haber leído el nuevo saldo desde la cadena. Con Face ID, la cuenta de retiro sale de la misma llave de acceso, y friendbot le da XLM de prueba la primera vez. Con Freighter, es la cuenta de tu propia billetera. El monto que mueves es público.
+11. Bajo **Retirar en el anchor**, elige **Abrir el anchor**. El anchor de prueba de Stellar se abre en una ventana emergente. Completa su formulario, y su estado aparece bajo el botón.
+12. Cuando el anchor está listo, un recuadro con el título **El anchor pide** muestra el monto, luego **Para**, **Memo**, **Comisión del anchor** y **Recibes**, todo del propio registro del anchor. Revisa el monto y luego elige **Aprobar y enviar** dentro de cinco minutos. El último estado dice "Listo. El anchor ha pagado." En testnet no se mueve dinero real. Elige **Retirar de nuevo** para empezar otro retiro.
+
+## Cuando algo sale mal
+
+- "Esta llave de acceso no puede crear una clave privada de Kalypso." Tu proveedor de llaves de acceso no tiene PRF, que Kalypso necesita. Prueba Chrome o Safari en un teléfono o laptop reciente, o usa una billetera. El soporte de PRF cambia entre dispositivos y proveedores, y Kalypso no se ha comprobado en todos.
+- "Kalypso no encuentra la billetera de esta llave de acceso. Si la creaste en otro dispositivo, termina primero de unirte allí." La billetera aún no está en la red y este navegador no tiene registro de haberla creado, así que termina de unirte en el dispositivo donde creaste la llave de acceso.
+- "Esta dirección fue ocupada antes de que se configurara tu billetera. Crea una nueva clave de pago." o "Esta llave de acceso no es la que controla esta billetera." La billetera de otra persona está en esa dirección, así que Kalypso no la usará. Elige **Crear una nueva clave de pago**, y luego pide a tu empleador que invite la nueva dirección.
+- El patrocinador crea como máximo tres billeteras con Face ID al día por conexión de internet. Pasado eso, usa Freighter o espera un día.
+- Un mensaje que termina con "Kalypso revisa la cadena antes de volver a intentarlo." mientras te unes: elige **Unirme a** otra vez, y se salta lo que ya está hecho.
+- "El patrocinador de comisiones no puede pagar este movimiento ahora" aparece con **Pagar la comisión por tu cuenta**. Eso mueve el mismo monto y toma la pequeña comisión de red de los XLM de prueba de tu cuenta de retiro.
+- "El servicio de retiro cambió su solicitud después de que la vieras, así que no se envió nada. Empieza el retiro de nuevo." Elige **Empezar otra vez**.
+- Con Face ID, tu billetera confía solo en la llave de acceso que la creó. Si esa llave de acceso ya no está en ningún dispositivo, nadie, Kalypso incluido, puede recuperar el pago.
+
+## Qué ves y qué no
+
+Ves solo tus propios comprobantes de pago y tu saldo, nunca el pago de un compañero ni el saldo de la empresa. Tu empleador y Kalypso nunca ven tu clave. Cualquiera puede ver que la empresa pagó a tu dirección y cuándo, y el monto que sacas. El anchor ve lo que retiras. Kalypso también registra una clave de auditoría bajo un id que es tuyo y descarta su secreto de inmediato, así que la copia del auditor de tu pago no se abre para nadie.

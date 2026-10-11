@@ -3,11 +3,14 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { LocaleSwitcher } from "@/components/locale-switcher";
 import { NightSea } from "@/components/night-sea";
 import type { SeaUniforms } from "@/components/night-sea";
 import { SealMark } from "@/components/seal-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { scrollToLens } from "@/lib/lenis-instance";
 import { ATTACK_RUN_URL, REPO_URL } from "@/lib/links";
 
@@ -17,17 +20,14 @@ gsap.registerPlugin(ScrollTrigger);
 // flashes before the timeline takes over.
 const HIDDEN: CSSProperties = { opacity: 0 };
 
+// The poster title is the brand, so it stays KALYPSO in every language.
 const TITLE = "KALYPSO";
-const CREDITS = [
-  "Confidential USDC",
-  "Zero-knowledge proofs",
-  "Stellar testnet",
-  "Open source, MIT",
-];
 
 const EXPO_OUT = "expo.out";
 
 export function PosterHero() {
+  const t = useTranslations("landing.hero");
+  const nav = useTranslations("common");
   const sectionRef = useRef<HTMLElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -40,6 +40,8 @@ export function PosterHero() {
   const creditsRef = useRef<HTMLDivElement>(null);
   const cueRef = useRef<HTMLDivElement>(null);
   const uniforms = useRef<SeaUniforms>({ fade: 0, rise: 0, scroll: 0 });
+
+  const credits = [t("credit1"), t("credit2"), t("credit3"), t("credit4")];
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -131,7 +133,7 @@ export function PosterHero() {
   return (
     <section
       ref={sectionRef}
-      className="relative grid min-h-[100svh] grid-rows-[auto_1fr_auto_auto] overflow-hidden bg-ink"
+      className="relative grid min-h-[100svh] grid-rows-[auto_1fr_auto_auto] overflow-hidden bg-canvas"
     >
       <div ref={canvasWrapRef} className="absolute inset-0">
         {/* SWAP: hero scene. Replace with a film still or loop when Ram provides one; keep the scrim and grain. */}
@@ -143,7 +145,7 @@ export function PosterHero() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "linear-gradient(to top, #15100f 0%, rgba(21,16,15,0.85) 18%, rgba(21,16,15,0) 52%)",
+            "linear-gradient(to top, var(--color-canvas) 0%, color-mix(in srgb, var(--color-canvas) 85%, transparent) 18%, transparent 52%)",
         }}
       />
       <div
@@ -151,24 +153,24 @@ export function PosterHero() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(21,16,15,0.7) 0%, rgba(21,16,15,0) 28%)",
+            "linear-gradient(to bottom, color-mix(in srgb, var(--color-canvas) 70%, transparent) 0%, transparent 28%)",
         }}
       />
 
       <nav
         ref={navRef}
-        aria-label="Primary"
+        aria-label={nav("nav.label")}
         className="relative z-10 flex items-center justify-between px-[4vw] py-7"
         style={HIDDEN}
       >
         <Link
           href="/"
-          aria-label="Kalypso home"
+          aria-label={nav("home")}
           className="logo-link flex items-center gap-[10px]"
         >
           <SealMark size={28} />
           <span
-            className="font-display text-[1.375rem] font-medium text-paper"
+            className="font-display text-[1.375rem] font-medium text-fg"
             style={{
               fontVariationSettings: '"opsz" 36',
               letterSpacing: "-0.01em",
@@ -180,10 +182,10 @@ export function PosterHero() {
 
         <div className="hidden items-center gap-7 md:flex">
           <a href="#lens" onClick={scrollToLens} className="link-draw text-[0.9375rem]">
-            Try it
+            {nav("nav.tryIt")}
           </a>
           <Link href="/demo" className="link-draw text-[0.9375rem]">
-            Sandbox
+            {nav("nav.sandbox")}
           </Link>
           <a
             href={REPO_URL}
@@ -191,7 +193,7 @@ export function PosterHero() {
             rel="noopener"
             className="link-draw text-[0.9375rem]"
           >
-            Source
+            {nav("nav.source")}
           </a>
           <a
             href={ATTACK_RUN_URL}
@@ -200,18 +202,20 @@ export function PosterHero() {
             className="btn-ghost"
             style={{ padding: "0.5rem 0.9rem", fontSize: "0.875rem" }}
           >
-            Read the attack run
+            {nav("nav.attackRun")}
           </a>
+          <span className="flex items-center gap-1">
+            <LocaleSwitcher />
+            <ThemeToggle />
+          </span>
         </div>
 
-        <a
-          href="#lens"
-          onClick={scrollToLens}
-          className="btn-seal md:hidden"
-          style={{ padding: "0.5rem 0.9rem", fontSize: "0.875rem" }}
-        >
-          Try it
-        </a>
+        {/* On a phone the two switches take the nav's right side; the hero's own button below
+            carries the same "try it" action. */}
+        <span className="flex items-center gap-1 md:hidden">
+          <LocaleSwitcher />
+          <ThemeToggle />
+        </span>
       </nav>
 
       <div
@@ -220,11 +224,11 @@ export function PosterHero() {
       >
         <div className="max-w-[34rem]">
           <p ref={eyebrowRef} className="t-label" style={HIDDEN}>
-            Private payroll on Stellar
+            {t("eyebrow")}
           </p>
           <h1
             ref={headlineRef}
-            className="mt-[18px] max-w-[16ch] font-display font-normal text-paper"
+            className="mt-[18px] max-w-[16ch] font-display font-normal text-fg [overflow-wrap:anywhere]"
             style={{
               ...HIDDEN,
               fontSize: "clamp(2rem, min(3.6vw, 6.2svh), 3.25rem)",
@@ -233,15 +237,14 @@ export function PosterHero() {
               lineHeight: 1.08,
             }}
           >
-            Pay your team in USDC. Nobody else can read the salaries.
+            {t("title")}
           </h1>
           <p
             ref={leadRef}
             className="t-lead mt-[18px] max-md:text-[1.0625rem]!"
             style={HIDDEN}
           >
-            Every payment is public proof that it happened. The amount is sealed,
-            and only each worker and your accountant hold a key that opens it.
+            {t("lead")}
           </p>
           <div
             ref={buttonsRef}
@@ -249,10 +252,10 @@ export function PosterHero() {
             style={HIDDEN}
           >
             <a href="#lens" onClick={scrollToLens} className="btn-seal">
-              Try to read the salaries
+              {t("ctaLens")}
             </a>
             <a href={REPO_URL} target="_blank" rel="noopener" className="btn-ghost">
-              Read the code
+              {t("ctaCode")}
             </a>
           </div>
         </div>
@@ -261,10 +264,10 @@ export function PosterHero() {
       <p
         ref={titleRef}
         aria-hidden="true"
-        className="t-poster relative z-[5] whitespace-nowrap px-[4vw] text-paper md:pl-[3.2vw] md:pr-[3vw]"
+        className="t-poster relative z-[5] whitespace-nowrap px-[4vw] text-fg md:pl-[3.2vw] md:pr-[3vw]"
         style={{
           fontSize: "min(17vw, 24svh)",
-          textShadow: "0 2px 40px rgba(0,0,0,0.35)",
+          textShadow: "var(--shadow-title)",
         }}
       >
         {TITLE.split("").map((letter, index) => (
@@ -284,11 +287,8 @@ export function PosterHero() {
         className="relative z-10 px-[4vw] pb-[4.2svh] max-md:pt-[14px]"
         style={HIDDEN}
       >
-        <div
-          className="t-label grid grid-cols-2 gap-x-3 gap-y-2 max-md:text-[0.6875rem]! max-md:tracking-[0.12em]! md:flex md:flex-wrap md:items-center md:gap-x-[22px] md:gap-y-[10px]"
-          style={{ color: "var(--color-muted)" }}
-        >
-          {CREDITS.map((credit, index) => (
+        <div className="t-label grid grid-cols-2 gap-x-3 gap-y-2 text-muted max-md:text-[0.6875rem]! max-md:tracking-[0.12em]! md:flex md:flex-wrap md:items-center md:gap-x-[22px] md:gap-y-[10px]">
+          {credits.map((credit, index) => (
             <span key={credit} className="flex items-center gap-[22px]">
               {index > 0 ? (
                 <span
@@ -308,12 +308,12 @@ export function PosterHero() {
         className="absolute bottom-[4.2svh] right-[4vw] z-10 hidden flex-col items-center gap-2 md:flex"
         style={HIDDEN}
       >
-        <span className="t-label">Scroll</span>
+        <span className="t-label">{t("scroll")}</span>
         <span
           className="relative block h-[44px] w-px overflow-hidden"
-          style={{ background: "rgba(242,236,230,0.25)" }}
+          style={{ background: "color-mix(in srgb, var(--color-fg) 25%, transparent)" }}
         >
-          <span className="scroll-cue-segment absolute left-0 top-0 block h-[14px] w-px bg-paper" />
+          <span className="scroll-cue-segment absolute left-0 top-0 block h-[14px] w-px bg-fg" />
         </span>
       </div>
     </section>

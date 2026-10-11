@@ -25,7 +25,9 @@ export async function readAdminCompany(wallet: WalletPort, companyId: bigint): P
     if (isPayrollError(err, PayrollErrorCode.CompanyNotFound)) throw new lib.ConsoleError("COMPANY_NOT_FOUND");
     throw err;
   }
-  if (company.admin !== wallet.address) throw new ShownMessage(`This wallet is not the admin of company #${companyId}.`);
+  if (company.admin !== wallet.address) {
+    throw new ShownMessage(`This wallet is not the admin of company #${companyId}.`, { key: "employer.notAdmin", values: { id: companyId.toString() } });
+  }
   return company;
 }
 

@@ -6,7 +6,10 @@
 // Does NOT cover: the deploy itself (lib/worker/passkey.test.ts), whether the join card is up
 // (use-payslips.test.ts), or the cards in a browser.
 import { describe, expect, it } from "vitest";
+import { englishT } from "../../../lib/i18n/english";
 import { finishSetupCopy, showsFinishSetup, showsPayslips } from "./setup-gate";
+
+const t = englishT("worker.finish");
 
 describe("showsFinishSetup", () => {
   it("offers it to an unproven passkey worker with no invite", () => {
@@ -46,7 +49,7 @@ describe("showsPayslips (h)", () => {
 
 describe("finishSetupCopy, the Finish setting up card's words (d)", () => {
   it("asks an on-chain wallet whose birth was not confirmed to check again, and offers a new pay key", () => {
-    expect(finishSetupCopy({ onChain: true, reasonCode: "WALLET_BIRTH_UNKNOWN" })).toEqual({
+    expect(finishSetupCopy({ onChain: true, reasonCode: "WALLET_BIRTH_UNKNOWN" }, t)).toEqual({
       heading: "We could not confirm your wallet yet",
       text: "Your wallet is on the network, but Kalypso has not confirmed how it was first set up, so its address stays hidden. Your payslips and cash-out below still work.",
       button: "Check again",
@@ -55,12 +58,12 @@ describe("finishSetupCopy, the Finish setting up card's words (d)", () => {
   });
 
   it("asks an on-chain wallet that hit a network error to check again, with no new-key link", () => {
-    expect(finishSetupCopy({ onChain: true, reasonCode: "NETWORK" })).toMatchObject({ heading: "We could not confirm your wallet yet", button: "Check again", offerNewKey: false });
+    expect(finishSetupCopy({ onChain: true, reasonCode: "NETWORK" }, t)).toMatchObject({ heading: "We could not confirm your wallet yet", button: "Check again", offerNewKey: false });
   });
 
   it("keeps today's card for a wallet not on chain, whatever the reason", () => {
     for (const reasonCode of [undefined, "NETWORK", "WALLET_BIRTH_UNKNOWN"]) {
-      expect(finishSetupCopy({ onChain: false, reasonCode })).toEqual({
+      expect(finishSetupCopy({ onChain: false, reasonCode }, t)).toEqual({
         heading: "Your wallet is not set up yet",
         text: "Your wallet is not on the network yet, so its address stays hidden until it is and trusts this passkey.",
         button: "Finish setting up",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { shortId } from "@/lib/ledger";
 import { ATTACK_RUN_URL, EXPLORER_URL } from "@/lib/links";
 import { contracts, payrollVersion } from "@/lib/stack";
@@ -74,6 +75,7 @@ function CommandLine({
   command: string;
   onCopied: () => void;
 }) {
+  const t = useTranslations("landing.checkUs");
   const [copied, setCopied] = useState(false);
   const timer = useRef(0);
 
@@ -93,15 +95,15 @@ function CommandLine({
 
   return (
     <div className="group relative">
-      <code className="block w-max whitespace-pre text-paper">
+      <code className="block w-max whitespace-pre text-terminal-fg">
         <span className="select-none">$ </span>
         {shown.join("\n")}
       </code>
       <button
         type="button"
         onClick={copy}
-        aria-label={`Copy command: ${command}`}
-        className="absolute right-0 top-0 flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#0f0b0a] text-muted opacity-0 transition-[opacity,color,background-color] duration-200 hover:bg-[#211d1c] hover:text-paper focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+        aria-label={t("copyCommand", { command })}
+        className="absolute right-0 top-0 flex h-7 w-7 items-center justify-center rounded-[8px] bg-terminal text-terminal-muted opacity-0 transition-[opacity,color,background-color] duration-200 hover:bg-terminal-fg/10 hover:text-terminal-fg focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
@@ -109,32 +111,17 @@ function CommandLine({
   );
 }
 
-const CLAIMS = [
-  {
-    heading: "Nobody can change the rules.",
-    text: "The verifier that checks every proof has no admin left, and neither of our contracts has an admin or an upgrade path. The check reads it from the chain.",
-  },
-  {
-    heading: "The code on chain is this code.",
-    text: `GitHub builds each release and signs a build attestation. The payroll contract running on testnet traces back to release v${payrollVersion} of the public repository.`,
-    contract: true,
-  },
-  {
-    heading: "Attack it.",
-    text: "One command attacks the live showcase company the ways the threat model names, and prints what stopped each attack.",
-  },
-];
-
 const PLAIN_CASE = { textTransform: "none", letterSpacing: "0.04em" } as const;
 
 export function CheckUs() {
+  const t = useTranslations("landing.checkUs");
   const [announcement, setAnnouncement] = useState("");
   const clearTimer = useRef(0);
 
   useEffect(() => () => window.clearTimeout(clearTimer.current), []);
 
   const announce = () => {
-    setAnnouncement("Copied");
+    setAnnouncement(t("copied"));
     window.clearTimeout(clearTimer.current);
     clearTimer.current = window.setTimeout(
       () => setAnnouncement(""),
@@ -142,26 +129,29 @@ export function CheckUs() {
     );
   };
 
+  const claims = [
+    { heading: t("c1Heading"), text: t("c1Text") },
+    { heading: t("c2Heading"), text: t("c2Text", { version: payrollVersion }), contract: true },
+    { heading: t("c3Heading"), text: t("c3Text") },
+  ];
+
   return (
-    <section className="relative bg-ink" style={{ padding: "18vh 4vw" }}>
+    <section className="relative bg-canvas" style={{ padding: "18vh 4vw" }}>
       <div>
-        <p className="t-label">Don&apos;t trust us</p>
-        <h2 className="t-h2 mt-4">Check it yourself.</h2>
-        <p className="t-lead mt-[22px]">
-          Everything Kalypso claims can be checked from a terminal against the
-          live testnet contracts.
-        </p>
+        <p className="t-label">{t("eyebrow")}</p>
+        <h2 className="t-h2 mt-4">{t("title")}</h2>
+        <p className="t-lead mt-[22px]">{t("lead")}</p>
       </div>
 
       <div className="mt-[10vh] grid grid-cols-1 gap-y-14 lg:grid-cols-12 lg:gap-x-[4vw]">
         <div className="min-w-0 lg:col-span-6">
-          {CLAIMS.map((claim, index) => (
+          {claims.map((claim, index) => (
             <div
               key={claim.heading}
               className={`py-8 ${index === 0 ? "pt-0" : "border-t border-line"}`}
             >
               <h3
-                className="font-display text-[1.5rem] font-medium text-paper"
+                className="font-display text-[1.5rem] font-medium text-fg"
                 style={{ fontVariationSettings: '"opsz" 36' }}
               >
                 {claim.heading}
@@ -174,7 +164,7 @@ export function CheckUs() {
                   href={`${EXPLORER_URL}/contract/${contracts.payroll}`}
                   target="_blank"
                   rel="noopener"
-                  aria-label={`Payroll contract ${shortId(contracts.payroll)} on Stellar Expert`}
+                  aria-label={t("contractAria", { id: shortId(contracts.payroll) })}
                   className="link-draw mt-4 font-mono text-[0.875rem]"
                 >
                   {shortId(contracts.payroll)}
@@ -187,9 +177,9 @@ export function CheckUs() {
         <div className="min-w-0 lg:col-span-6">
           <div
             role="group"
-            aria-label="Commands to run"
+            aria-label={t("commandsLabel")}
             className="overflow-x-auto rounded-card border border-line p-[22px] font-mono text-[0.875rem] leading-[1.7]"
-            style={{ background: "#0f0b0a" }}
+            style={{ background: "var(--color-terminal)" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <div aria-hidden="true" className="flex gap-2">
@@ -197,11 +187,11 @@ export function CheckUs() {
                   <span
                     key={dot}
                     className="h-2 w-2 rounded-full"
-                    style={{ background: "rgba(242,236,230,0.15)" }}
+                    style={{ background: "color-mix(in srgb, var(--color-terminal-fg) 15%, transparent)" }}
                   />
                 ))}
               </div>
-              <span className="t-label">testnet</span>
+              <span className="t-label text-terminal-muted">testnet</span>
             </div>
             <div className="flex flex-col gap-1">
               {COMMANDS.map((entry) => (
@@ -216,7 +206,7 @@ export function CheckUs() {
           </div>
 
           <p className="t-label mt-4" style={PLAIN_CASE}>
-            Last full run:{" "}
+            {t("lastRun")}{" "}
             <a
               href={ATTACK_RUN_URL}
               target="_blank"

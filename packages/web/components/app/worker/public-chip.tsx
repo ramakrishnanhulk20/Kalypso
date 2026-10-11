@@ -1,6 +1,8 @@
+import { useTranslations } from "next-intl";
 import { RowChip } from "../row-chip";
 import type { CompanyFacts } from "./worker-lib";
 
+/** The English titles of the two chips, kept for the tests that read them. */
 export const PUBLIC_TITLE = "This company uses the published demo accountant key, so anyone can read its amounts.";
 export const UNKNOWN_TITLE = "This company's settings did not load from the chain, so Kalypso cannot say whether anyone else can read this amount. Reload to check again.";
 
@@ -17,9 +19,10 @@ export function isPublishedAuditor(published: Readonly<Record<string, readonly n
 // Wherever a company bound to the published demo accountant key is shown, its pay is labelled as
 // readable by anyone (C47).
 export function PubliclyReadable() {
+  const t = useTranslations("worker.chips");
   return (
-    <span title={PUBLIC_TITLE} data-public-accountant>
-      <RowChip tone="wait">Publicly readable</RowChip>
+    <span title={t("publicTitle")} data-public-accountant>
+      <RowChip tone="wait">{t("publiclyReadable")}</RowChip>
     </span>
   );
 }
@@ -27,9 +30,10 @@ export function PubliclyReadable() {
 // A company whose settings could not be read must not look private: a missing chip would read as
 // the safe answer (C47).
 export function ReadersUnknown() {
+  const t = useTranslations("worker.chips");
   return (
-    <span title={UNKNOWN_TITLE} data-readers-unknown>
-      <RowChip tone="wait">Readers unknown</RowChip>
+    <span title={t("unknownTitle")} data-readers-unknown>
+      <RowChip tone="wait">{t("readersUnknown")}</RowChip>
     </span>
   );
 }

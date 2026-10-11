@@ -7,30 +7,30 @@
    on <body> while it holds one, because the search dialog and the mobile
    sidebar render in portals directly under <body>. */
 :is(.kalypso-docs, body:has(.kalypso-docs)) {
-  --color-fd-background: #15100f;
-  --color-fd-foreground: #f2ece6;
-  --color-fd-muted: #1d1716;
-  --color-fd-muted-foreground: #a79c94;
-  --color-fd-card: #1d1716;
-  --color-fd-card-foreground: #f2ece6;
-  --color-fd-popover: #1d1716;
-  --color-fd-popover-foreground: #f2ece6;
-  --color-fd-border: rgba(242, 236, 230, 0.1);
-  --color-fd-primary: #c9473a;
-  --color-fd-primary-foreground: #f2ece6;
-  --color-fd-secondary: #261e1c;
-  --color-fd-secondary-foreground: #f2ece6;
-  --color-fd-accent: #261e1c;
-  --color-fd-accent-foreground: #f2ece6;
-  --color-fd-ring: rgba(242, 236, 230, 0.4);
+  --color-fd-background: var(--color-canvas);
+  --color-fd-foreground: var(--color-fg);
+  --color-fd-muted: var(--color-raised);
+  --color-fd-muted-foreground: var(--color-muted);
+  --color-fd-card: var(--color-raised);
+  --color-fd-card-foreground: var(--color-fg);
+  --color-fd-popover: var(--color-raised);
+  --color-fd-popover-foreground: var(--color-fg);
+  --color-fd-border: var(--color-line);
+  --color-fd-primary: var(--color-seal);
+  --color-fd-primary-foreground: var(--color-on-seal);
+  --color-fd-secondary: var(--color-raised-2);
+  --color-fd-secondary-foreground: var(--color-fg);
+  --color-fd-accent: var(--color-raised-2);
+  --color-fd-accent-foreground: var(--color-fg);
+  --color-fd-ring: var(--color-line-strong);
 }
 
 /* neutral.css re-greys these three inside the sidebar with a more specific
    selector, so they are set again here. */
 .kalypso-docs #nd-sidebar {
-  --color-fd-muted: #1d1716;
-  --color-fd-secondary: #261e1c;
-  --color-fd-muted-foreground: #a79c94;
+  --color-fd-muted: var(--color-raised);
+  --color-fd-secondary: var(--color-raised-2);
+  --color-fd-muted-foreground: var(--color-muted);
 }
 
 .kalypso-docs #nd-page > h1 {
@@ -78,14 +78,14 @@
 }
 
 .kalypso-docs .prose a:not([data-card]):hover {
-  color: var(--color-paper);
+  color: var(--color-fg);
 }
 
 .kalypso-docs .prose :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.875em;
   font-weight: 400;
-  background: var(--color-ink-3);
+  background: var(--color-raised-2);
   border: 0;
   border-radius: 4px;
   padding: 0.15em 0.4em;
@@ -97,7 +97,7 @@
 }
 
 .kalypso-docs figure.shiki {
-  background: #0f0b0a;
+  background: var(--code-bg);
   border: 1px solid var(--color-line);
   border-radius: 8px;
   box-shadow: none;
@@ -147,7 +147,7 @@
   margin: 0;
   padding: 3.25rem 1rem 1rem;
   overflow-x: auto;
-  background: var(--color-ink-2);
+  background: var(--color-raised);
   border: 1px solid var(--color-line);
   border-radius: 8px;
 }
@@ -157,7 +157,7 @@
 }
 
 .kalypso-mermaid:focus-visible {
-  outline: 2px solid var(--color-paper);
+  outline: 2px solid var(--color-fg);
   outline-offset: 3px;
 }
 
@@ -182,7 +182,7 @@
   bottom: var(--diagram-scrollbar, 1px);
   width: 48px;
   border-top-right-radius: 7px;
-  background: linear-gradient(to right, transparent, var(--color-ink-2));
+  background: linear-gradient(to right, transparent, var(--color-raised));
   pointer-events: none;
 }
 
@@ -192,7 +192,7 @@
   right: 8px;
   padding: 0.5rem 0.9rem;
   font-size: 0.875rem;
-  background: var(--color-ink-2);
+  background: var(--color-raised);
 }
 
 .kalypso-diagram-full {
@@ -209,9 +209,9 @@
   border: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  color: var(--color-paper);
+  color: var(--color-fg);
   /* Opaque: the page's own text showed through the diagram's lines at 96%. */
-  background: var(--color-ink);
+  background: var(--color-canvas);
 }
 
 .kalypso-diagram-full::backdrop {
@@ -238,7 +238,7 @@
   z-index: 1;
   padding: 0.5rem 0.9rem;
   font-size: 0.875rem;
-  background: var(--color-ink-2);
+  background: var(--color-raised);
 }
 
 /* Centred while it is smaller than the window, and scrolls both ways once it is larger. */
@@ -273,7 +273,7 @@
    2px seal rule and paper text instead. */
 body:has(.kalypso-docs) :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"] {
   background: transparent;
-  color: var(--color-paper);
+  color: var(--color-fg);
   border-radius: 0 8px 8px 0;
   box-shadow: inset 2px 0 0 var(--color-seal);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import type { JoinProgress, JoinStep, WorkerSession } from "@/lib/worker";
 import { CopyButton } from "@/components/app/copy-button";
 import { ErrorNote } from "@/components/app/error-note";
@@ -19,9 +20,8 @@ interface Row {
 }
 
 // A step keeps its place in the list the first time it is reported, whatever it reports next.
-function withProgress(rows: Row[], p: JoinProgress): Row[] {
-  const row: Row = { step: p.step, state: p.state, label: p.label };
-  return rows.some((r) => r.step === p.step) ? rows.map((r) => (r.step === p.step ? row : r)) : [...rows, row];
+function withProgress(rows: Row[], row: Row): Row[] {
+  return rows.some((r) => r.step === row.step) ? rows.map((r) => (r.step === row.step ? row : r)) : [...rows, row];
 }
 
 function Check() {
@@ -47,7 +47,7 @@ function StepRow({ row, current, stopped }: { row: Row; current: boolean; stoppe
       ) : (
         <span aria-hidden="true" className="mt-[5px] h-[14px] w-[14px] shrink-0 rounded-full border border-faint" />
       )}
-      <span className={working && current && !stopped ? "text-paper" : "text-muted"}>{row.label}</span>
+      <span className={working && current && !stopped ? "text-fg" : "text-muted"}>{row.label}</span>
     </li>
   );
 }
@@ -76,9 +76,20 @@ export function JoinCard({
   onSettled: () => void;
   onNewWorker: (worker: WorkerSession, setupFailure?: unknown) => void;
 }) {
+  const t = useTranslations("worker.join");
+  const steps = useTranslations("worker.joinSteps");
+  const locale = useLocale();
   const headingId = useId();
   const [rows, setRows] = useState<Row[]>([]);
   const [latest, setLatest] = useState<JoinStep | null>(null);
+
+  // The lib's own sentence in English; by step and state elsewhere, with the lib's words as the fallback.
+  const labelOf = (p: JoinProgress): string => {
+    const key = `${p.step}_${p.state}`;
+    if (locale === "en" || !steps.has(key)) return p.label;
+    const id = (p as { auditorId?: number }).auditorId;
+    return steps(key, id === undefined ? {} : { id });
+  };
 
   const join = useAction(async (onProgress) => {
     setRows([]);
@@ -86,10 +97,11 @@ export function JoinCard({
     try {
       const result = await shownErrors(() =>
         kit.lib.joinCompany(worker, companyId, kit.lib.createHttpSponsor(), (p) => {
-          setRows((all) => withProgress(all, p));
+          const row: Row = { step: p.step, state: p.state, label: labelOf(p) };
+          setRows((all) => withProgress(all, row));
           setLatest(p.step);
           if (p.step === "accept" && p.state === "done" && p.txHash !== undefined) acceptHash = p.txHash;
-          onProgress({ sentence: p.label, done: 0, total: 1, ...(p.txHash === undefined ? {} : { txHash: p.txHash }) });
+          onProgress({ sentence: row.label, done: 0, total: 1, ...(p.txHash === undefined ? {} : { txHash: p.txHash }) });
         }),
       );
       onJoined(acceptHash);
@@ -101,26 +113,24 @@ export function JoinCard({
   useLeaveWarning(join.running);
 
   return (
-    <section aria-labelledby={headingId} className="rounded-card border border-line bg-ink-2 p-6">
-      <h2 id={headingId} className="break-words font-display text-[1.5rem] font-medium leading-[1.15] text-paper">
-        Join {label}
+    <section aria-labelledby={headingId} className="rounded-card border border-line bg-raised p-6">
+      <h2 id={headingId} className="break-words font-display text-[1.5rem] font-medium leading-[1.15] text-fg">
+        {t("title", { label })}
       </h2>
       {publiclyReadable ? (
         <div className="mt-3">
           <PubliclyReadable />
         </div>
       ) : null}
-      <p className="mt-3 font-sans text-base text-muted">
-        Kalypso will set up your private pay account and accept the invite. It takes about a minute, and it costs you nothing.
-      </p>
+      <p className="mt-3 font-sans text-base text-muted">{t("text")}</p>
       <div className="mt-6">
         <StepButton action={join} className="w-full" onClick={() => void join.start()}>
-          Join {label}
+          {t("button", { label })}
         </StepButton>
       </div>
 
       {rows.length > 0 ? (
-        <ol aria-label="Joining steps" className="mt-5 space-y-3">
+        <ol aria-label={t("stepsLabel")} className="mt-5 space-y-3">
           {rows.map((row) => (
             <StepRow key={row.step} row={row} current={row.step === latest} stopped={join.error !== null} />
           ))}
@@ -134,9 +144,9 @@ export function JoinCard({
           {join.error.code === "NOT_INVITED" && kit.lib.addressProven(worker) ? (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
               <p role="alert" className="min-w-0 font-sans text-[0.9375rem] text-fail">
-                Ask your employer to invite this address: <span className="break-all font-mono text-paper">{worker.address}</span>
+                {t("askInvite")} <span className="break-all font-mono text-fg">{worker.address}</span>
               </p>
-              <CopyButton text={worker.address} what="your address" />
+              <CopyButton text={worker.address} what={t("whatAddress")} />
             </div>
           ) : null}
         </>

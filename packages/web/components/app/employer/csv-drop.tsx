@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { DragEvent } from "react";
+import { useTranslations } from "next-intl";
 import { CSV_DEFAULT_MAX_BYTES } from "@kalypso/core";
 
 // Reads at most one byte past the importer's size limit: a bigger file is then refused by the
@@ -11,6 +12,7 @@ async function textOf(file: File): Promise<string> {
 }
 
 export function CsvDrop({ onText, disabled }: { onText: (text: string) => void; disabled: boolean }) {
+  const t = useTranslations("employer.payroll");
   const [over, setOver] = useState(false);
 
   const take = async (file: File | undefined) => {
@@ -31,10 +33,10 @@ export function CsvDrop({ onText, disabled }: { onText: (text: string) => void; 
       }}
       onDragLeave={() => setOver(false)}
       onDrop={drop}
-      className={`block cursor-pointer rounded-card border border-dashed p-8 text-center transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-[3px] has-[:focus-visible]:outline-paper ${
+      className={`block cursor-pointer rounded-card border border-dashed p-8 text-center transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-[3px] has-[:focus-visible]:outline-fg ${
         over
-          ? "border-[rgba(242,236,230,0.5)] bg-ink-2"
-          : "border-[rgba(242,236,230,0.2)] hover:border-[rgba(242,236,230,0.4)] hover:bg-ink-2"
+          ? "border-fg bg-raised"
+          : "border-line-strong hover:border-fg hover:bg-raised"
       } ${disabled ? "pointer-events-none opacity-40" : ""}`}
     >
       <input
@@ -49,8 +51,8 @@ export function CsvDrop({ onText, disabled }: { onText: (text: string) => void; 
           });
         }}
       />
-      <span className="block font-sans text-base text-paper">Drop a CSV here or choose a file</span>
-      <span className="t-label mt-2 block">address,amount per line</span>
+      <span className="block font-sans text-base text-fg">{t("drop")}</span>
+      <span className="t-label mt-2 block">{t("dropHint")}</span>
     </label>
   );
 }

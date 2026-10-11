@@ -1,5 +1,5 @@
 import { ShownMessage, describeError } from "../errors";
-import type { ShownError } from "../errors";
+import type { ErrorFamily, ShownError } from "../errors";
 
 /** The portal's own errors carry a code and a finished sentence; this is what a screen needs from one. */
 export interface WorkerFailure {
@@ -7,16 +7,19 @@ export interface WorkerFailure {
   hash: string | undefined;
 }
 
+const FAMILY_OF_NAME: Record<string, ErrorFamily> = { WorkerError: "worker", SponsorError: "sponsor" };
+
 /**
  * The lib's WorkerError and SponsorError are not names the shared error describer knows, so they
- * are rewrapped as a ShownMessage that keeps their code and transaction hash. Anything else
- * (Freighter's WalletError, an unknown failure) passes through to the describer unchanged.
+ * are rewrapped as a ShownMessage that keeps their code, their family (for the other languages)
+ * and their transaction hash. Anything else (Freighter's WalletError, an unknown failure) passes
+ * through to the describer unchanged.
  */
 export function asShown(err: unknown): unknown {
   const name = (err as { name?: unknown } | null)?.name;
-  if (name !== "WorkerError" && name !== "SponsorError") return err;
+  if (typeof name !== "string" || !(name in FAMILY_OF_NAME)) return err;
   const { code, message, hash } = err as { code: string; message: string; hash?: string };
-  return Object.assign(new ShownMessage(message), { code, hash });
+  return Object.assign(new ShownMessage(message), { code, hash, family: FAMILY_OF_NAME[name] });
 }
 
 /** Runs a step and rewraps whatever it throws, so the shared action hook shows the lib's own sentence. */

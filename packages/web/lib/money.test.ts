@@ -17,6 +17,14 @@ describe("displayUsdc", () => {
   it("groups the whole part and keeps every fraction digit", () => {
     expect(displayUsdc(12345678901234n)).toBe("1,234,567.8901234");
   });
+
+  it("writes the locale's separators, with Latin digits everywhere", () => {
+    expect(displayUsdc(12345678901234n, "es")).toBe("1.234.567,8901234");
+    expect(displayUsdc(12345678901234n, "pt")).toBe("1.234.567,8901234");
+    expect(displayUsdc(12345678901234n, "fr")).toMatch(/^1[  ]234[  ]567,8901234$/);
+    expect(displayUsdc(12345678901234n, "zh")).toBe("1,234,567.8901234");
+    expect(displayUsdc(1n, "es")).toBe("0,0000001");
+  });
 });
 
 describe("parseTypedUsdc", () => {

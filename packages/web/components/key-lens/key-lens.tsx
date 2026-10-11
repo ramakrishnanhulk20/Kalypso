@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import gsap from "gsap";
 import type { SealedPayroll } from "@kalypso/core";
 import { useLensMotion } from "@/hooks/use-lens-motion";
@@ -23,26 +24,14 @@ import {
   loadingLabel,
 } from "./status";
 
-const KEYS: { value: KeyMode; label: string }[] = [
-  { value: "accountant", label: "Accountant's key" },
-  { value: "stranger", label: "A stranger's key" },
-];
+const KEY_MODES: KeyMode[] = ["accountant", "stranger"];
 
 const PLAIN_CASE = { textTransform: "none", letterSpacing: "0.04em" } as const;
 const DISPLAY_36 = { fontVariationSettings: '"opsz" 36' } as const;
 
-function liveMessage(
-  openAll: boolean,
-  mode: KeyMode,
-  payroll: SealedPayroll | null,
-) {
-  if (!openAll || !payroll) return "";
-  return mode === "accountant"
-    ? "Showing every amount opened with the accountant's key"
-    : `A stranger's key opened none of the ${payroll.payments.length} payments`;
-}
-
 export function KeyLens() {
+  const t = useTranslations("landing.lens");
+  const status = useTranslations("landing.status");
   const sectionRef = useRef<HTMLElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -71,13 +60,15 @@ export function KeyLens() {
   const payments = (payroll ?? rowsSource)?.payments ?? null;
   const amounts = useMemo(() => amountsFrom(payroll), [payroll]);
   const failed = phase === "error";
-  const label = loadingLabel(mode, phase, done, total);
+  const label = loadingLabel(status, mode, phase, done, total);
   const chipLabel = loadingLabel(
+    status,
     "accountant",
     accountant.phase,
     accountant.done,
     accountant.total,
   );
+  const liveMessage = !openAll || !payroll ? "" : mode === "accountant" ? t("liveAll") : t("liveNone", { count: payroll.payments.length });
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -184,38 +175,34 @@ export function KeyLens() {
     <section
       id="lens"
       ref={sectionRef}
-      className="relative bg-ink"
+      className="relative bg-canvas"
       style={{ padding: "18vh 4vw 16vh" }}
     >
       <div className="relative grid grid-cols-1 lg:grid-cols-12 lg:gap-x-[4vw]">
         <div className="contents lg:sticky lg:top-[14vh] lg:col-span-5 lg:block lg:self-start">
           <div className="order-1">
-            <p className="t-label">Live from Stellar testnet</p>
-            <h2 className="t-h2 mt-4">Try to read the salaries.</h2>
-            <p className="t-lead mt-[22px]">
-              This is Andes Studio&apos;s real payroll, paid through Kalypso on
-              Stellar testnet. Anyone can see each payment happened. Nobody can
-              see how much. Drag the accountant&apos;s key over it.
-            </p>
+            <p className="t-label">{t("eyebrow")}</p>
+            <h2 className="t-h2 mt-4">{t("title")}</h2>
+            <p className="t-lead mt-[22px]">{t("lead")}</p>
           </div>
 
           <div
             role="radiogroup"
-            aria-label="Which key"
+            aria-label={t("keyLabel")}
             className="order-2 mt-8 flex flex-wrap gap-2"
           >
-            {KEYS.map((key) => (
-              <label key={key.value} className="relative cursor-pointer">
+            {KEY_MODES.map((value) => (
+              <label key={value} className="relative cursor-pointer">
                 <input
                   type="radio"
                   name="lens-key"
-                  value={key.value}
-                  checked={mode === key.value}
-                  onChange={() => setMode(key.value)}
+                  value={value}
+                  checked={mode === value}
+                  onChange={() => setMode(value)}
                   className="peer sr-only"
                 />
-                <span className="block rounded-button border border-line px-4 py-[0.6rem] font-sans text-[0.9375rem] text-muted transition-colors hover:text-paper peer-checked:border-[rgba(242,236,230,0.28)] peer-checked:bg-ink-3 peer-checked:text-paper peer-focus-visible:outline-2 peer-focus-visible:outline-offset-[3px] peer-focus-visible:outline-paper">
-                  {key.label}
+                <span className="block rounded-button border border-line-strong px-4 py-[0.6rem] font-sans text-[0.9375rem] text-muted transition-colors hover:text-fg peer-checked:border-fg peer-checked:bg-raised-2 peer-checked:text-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-[3px] peer-focus-visible:outline-fg">
+                  {value === "accountant" ? t("keyAccountant") : t("keyStranger")}
                 </span>
               </label>
             ))}
@@ -231,15 +218,14 @@ export function KeyLens() {
               aria-hidden="true"
               className="h-[10px] w-[10px] rounded-full bg-seal"
             />
-            {openAll ? "Show through the lens only" : "Open every amount"}
+            {openAll ? t("lensOnly") : t("openAll")}
           </button>
 
           <p
             className="t-label order-4 mt-7 max-w-[30rem] max-md:order-3"
             style={PLAIN_CASE}
           >
-            Opened in your browser with the demo accountant key we published on
-            purpose. Nothing leaves this page.
+            {t("note")}
           </p>
 
           <a
@@ -248,7 +234,7 @@ export function KeyLens() {
             rel="noopener"
             className="link-draw group order-5 mt-[14px] justify-self-start text-[0.9375rem] max-md:order-4"
           >
-            Run the same attack from your terminal
+            {t("attackLink")}
             <svg
               width="12"
               height="12"
@@ -270,8 +256,8 @@ export function KeyLens() {
           <div
             ref={cardRef}
             data-open-all={openAll}
-            className="ledger-card relative overflow-hidden rounded-card border border-line bg-ink-2"
-            style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}
+            className="ledger-card relative overflow-hidden rounded-card border border-line bg-raised"
+            style={{ boxShadow: "var(--shadow-card)" }}
           >
             <div className="relative flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-line px-[22px] py-[18px]">
               <div>
@@ -282,12 +268,12 @@ export function KeyLens() {
                   {showcase.label}
                 </h3>
                 <p className="t-label mt-1">
-                  Company {String(showcase.companyId)} · Payroll{" "}
+                  {t("company", { id: String(showcase.companyId) })}{" "}
                   <a
                     href={`${EXPLORER_URL}/contract/${contracts.payroll}`}
                     target="_blank"
                     rel="noopener"
-                    className="transition-colors hover:text-paper"
+                    className="transition-colors hover:text-fg"
                   >
                     {shortId(contracts.payroll)}
                   </a>
@@ -350,7 +336,7 @@ export function KeyLens() {
       </div>
 
       <div role="status" className="sr-only">
-        {liveMessage(openAll, mode, payroll)}
+        {liveMessage}
       </div>
     </section>
   );

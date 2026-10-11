@@ -1,0 +1,55 @@
+---
+title: "Salarié"
+description: "Rejoignez l'entreprise depuis votre lien d'invitation avec Face ID ou un portefeuille, lisez vos fiches de paie scellées et retirez votre argent auprès de l'ancre de test de Stellar."
+---
+
+Votre paie se trouve sur [/worker](/worker). Il vous faut le lien d'invitation de votre employeur, et soit un téléphone ou un ordinateur avec une clé d'accès (Face ID, une empreinte ou le code de l'appareil), soit Freighter sur Testnet. Le sponsor des frais de Kalypso paie les frais d'adhésion et de déplacement de votre paie, donc avec Face ID il n'y a rien à alimenter. Un compte Freighter doit déjà exister sur le testnet.
+
+## Se connecter
+
+1. Ouvrez le lien d'invitation. Un bandeau intitulé **Invitation**, en haut, indique quelle entreprise vous a invité : le nom de l'entreprise, puis « vous a invité à recevoir votre paie via Kalypso. »
+2. La première fois sur cet appareil, choisissez **Nouveau ici ? Créez votre clé de paie**. Votre appareil vous demande de confirmer deux fois. Votre clé de paie est créée sur l'appareil à partir de la nouvelle clé d'accès, et Kalypso configure votre portefeuille, les frais étant payés par le sponsor. Le bouton affiche « En attente de votre appareil, puis configuration de votre portefeuille » pendant que cela se fait.
+3. À votre retour, choisissez **Se connecter avec Face ID**. Pour un portefeuille, choisissez **Utiliser un portefeuille à la place**, puis **Connecter Freighter**, et signez deux fois le message de clé de Kalypso.
+4. Sous **Connecté**, la page affiche votre adresse, avec un bouton de copie, une fois que Kalypso a confirmé depuis la chaîne que le portefeuille est le vôtre. Avant cela, elle affiche « Portefeuille pas encore configuré ». **Se déconnecter** oublie la session dans cet onglet, et votre clé d'accès reste sur l'appareil.
+
+## Rejoindre l'entreprise
+
+5. Choisissez le bouton **Rejoindre** suivi du nom de votre entreprise. Ses étapes se cochent une à une, de la vérification de l'invitation à son acceptation, en environ une minute, et cela ne vous coûte rien. Votre appareil ou Freighter vous demande d'approuver en chemin.
+6. Si vous voyez « Cette entreprise n'a pas invité ce compte. », la carte affiche « Demandez à votre employeur d'inviter cette adresse : » avec votre adresse et un bouton de copie. Envoyez l'adresse à votre employeur. Dès qu'il l'invite, choisissez à nouveau le bouton **Rejoindre**.
+
+## Lire votre paie
+
+7. **Votre solde** affiche votre paie en USDC, avec la ligne « Scellé sur la chaîne. Ouvert sur cet appareil avec votre clé. » Chaque fiche de paie affiche le mois et l'entreprise, le montant en USDC, une ligne **Payé dans** avec la transaction qui l'a payée, et une ligne **Entreprise**.
+8. Une pastille « Lisible publiquement » sur une fiche de paie signifie que l'entreprise utilise la clé de comptable de démonstration publiée, donc tout le monde peut lire ses montants. Une pastille « Lecteurs inconnus » signifie que Kalypso n'a pas pu lire les réglages de l'entreprise, donc il ne peut pas dire si quelqu'un d'autre peut lire ce montant. Rechargez pour vérifier à nouveau.
+9. « Historique incomplet » signifie qu'une partie de votre historique n'a pas encore pu être vérifiée par rapport à la chaîne. Une ligne en dessous dit ce qui ne correspond pas, et chaque montant encore affiché a passé cette vérification. Sans fiche de paie et avec un historique complet, la page affiche « Aucune fiche de paie pour l'instant. Elles apparaissent ici après le lancement de la paie par votre employeur. »
+
+## Sur un nouvel appareil
+
+Kalypso retrouve vos entreprises sur la chaîne, pas seulement dans les notes de ce navigateur. Après votre connexion, il lit les propres événements d'adhésion du contrat de paie pour votre portefeuille et ne garde que les entreprises dont la liste de salariés sur la chaîne confirme que vous les avez rejointes. Sur un nouvel appareil, vos fiches de paie s'affichent donc sans rouvrir votre lien d'invitation.
+
+Votre adresse s'affiche sous **Connecté** une fois que Kalypso a confirmé comment votre portefeuille a été configuré au départ, en lisant sur la chaîne la transaction qui l'a créé. Kalypso retient l'adresse jusque-là exprès : quelqu'un qui aurait appris l'identifiant de votre clé d'accès aurait pu y créer un portefeuille avant vous, depuis son propre code, et une adresse affichée trop tôt pourrait être la sienne. Vos fiches de paie et le retrait fonctionnent en attendant.
+
+Pendant l'attente, une carte intitulée **Nous n'avons pas encore pu confirmer votre portefeuille** affiche « Votre portefeuille est sur le réseau, mais Kalypso n'a pas confirmé comment il a été configuré au départ, donc son adresse reste masquée. Vos fiches de paie et le retrait ci-dessous fonctionnent toujours. » Choisissez **Vérifier à nouveau** dans une minute. Si Kalypso ne peut toujours pas le confirmer, la carte propose aussi **Créer plutôt une nouvelle clé de paie**. Une nouvelle clé de paie est une nouvelle clé d'accès avec une nouvelle adresse, que votre employeur doit inviter, donc ne l'utilisez que si vous préférez ne pas attendre.
+
+Si votre portefeuille n'est pas encore sur le réseau, la carte est intitulée **Votre portefeuille n'est pas encore configuré** et son bouton affiche **Terminer la configuration**.
+
+## Retirer votre argent
+
+10. Sous **Déplacer vers votre compte de retrait**, saisissez un montant dans la zone **Montant** ou choisissez **Max.** La page répète ce qu'elle a lu (« Vous déplacez 1 500,00 USDC. ») et le bouton affiche **Déplacer 1 500,00 USDC**. La zone accepte une virgule ou un point comme séparateur décimal (« 1,5 » et « 1.5 » valent tous deux un et demi) et refuse les séparateurs de milliers : tapez 4200,50, sans rien entre les milliers. Choisissez le bouton. Votre paie quitte le solde scellé sous forme d'USDC en clair, et la page affiche « Déplacé. » seulement après avoir lu le nouveau solde sur la chaîne. Avec Face ID, le compte de retrait vient de la même clé d'accès, et friendbot lui donne des XLM de test la première fois. Avec Freighter, c'est votre propre compte de portefeuille. Le montant que vous déplacez est public.
+11. Sous **Retirer auprès de l'ancre**, choisissez **Ouvrir l'ancre**. L'ancre de test de Stellar s'ouvre dans une fenêtre contextuelle. Remplissez son formulaire, et son statut s'affiche sous le bouton.
+12. Quand l'ancre est prête, une zone intitulée **L'ancre demande** affiche le montant, puis **À**, **Mémo**, **Frais de l'ancre** et **Vous recevez**, le tout tiré de l'enregistrement de l'ancre elle-même. Vérifiez le montant, puis choisissez **Approuver et envoyer** dans les cinq minutes. Le dernier statut affiche « Terminé. L'ancre a versé les fonds. » Sur testnet, aucun argent réel ne bouge. Choisissez **Retirer à nouveau** pour en commencer un autre.
+
+## Quand quelque chose ne va pas
+
+- « Cette clé d'accès ne peut pas créer de clé privée Kalypso. » Votre fournisseur de clés d'accès n'a pas PRF, dont Kalypso a besoin. Essayez Chrome ou Safari sur un téléphone ou un ordinateur récent, ou utilisez un portefeuille. La prise en charge de PRF varie selon les appareils et les fournisseurs, et Kalypso n'a pas été vérifié sur chacun.
+- « Kalypso ne trouve pas le portefeuille de cette clé d'accès. Si vous l'avez créée sur un autre appareil, terminez d'abord de rejoindre l'entreprise depuis cet autre appareil. » Le portefeuille n'est pas encore sur le réseau et ce navigateur n'a aucune trace de sa création, donc terminez l'adhésion sur l'appareil où vous avez créé la clé d'accès.
+- « Cette adresse a été prise avant la configuration de votre portefeuille. Créez une nouvelle clé de paie. » ou « Cette clé d'accès n'est pas celle qui contrôle ce portefeuille. » Le portefeuille de quelqu'un d'autre se trouve à cette adresse, donc Kalypso ne l'utilisera pas. Choisissez **Créer une nouvelle clé de paie**, puis demandez à votre employeur d'inviter la nouvelle adresse.
+- Le sponsor crée au plus trois portefeuilles Face ID par jour et par connexion internet. Au-delà, utilisez Freighter ou attendez un jour.
+- Un message qui se termine par « Kalypso vérifie la chaîne avant de réessayer. » pendant l'adhésion : choisissez à nouveau **Rejoindre**, et ce qui est déjà fait est sauté.
+- « Le sponsor des frais ne peut pas payer ce déplacement pour le moment » s'affiche avec **Payer les frais vous-même**. Cela déplace le même montant et prélève les petits frais de réseau sur les XLM de test de votre compte de retrait.
+- « Le service de retrait a modifié sa demande après que vous l'avez vue, donc rien n'a été envoyé. Recommencez le retrait. » Choisissez **Recommencer**.
+- Avec Face ID, votre portefeuille ne fait confiance qu'à la clé d'accès qui l'a créé. Si cette clé d'accès a disparu de tous les appareils, personne, Kalypso compris, ne peut récupérer la paie.
+
+## Ce que vous voyez, et ce que vous ne voyez pas
+
+Vous ne voyez que vos propres fiches de paie et votre solde, jamais la paie d'un collègue ni le solde de l'entreprise. Votre employeur et Kalypso ne voient jamais votre clé. N'importe qui peut voir que l'entreprise a payé votre adresse et quand, ainsi que le montant que vous déplacez. L'ancre voit ce que vous retirez. Kalypso enregistre aussi une clé d'audit sous un identifiant qui vous appartient et en jette aussitôt le secret, donc la copie de l'auditeur de votre paie ne s'ouvre pour personne.

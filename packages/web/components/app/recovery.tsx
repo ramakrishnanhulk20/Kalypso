@@ -2,6 +2,10 @@
 
 import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
+import { useMoneyLocale } from "@/components/key-lens/ledger-table";
+import type { Locale } from "@/lib/i18n/locales";
+import type { PlainT } from "@/lib/i18n/types";
 import { displayUsdc } from "@/lib/money";
 import type { WalletPort } from "@/lib/wallet/port";
 import type { RebuiltTreasury } from "@/lib/employer";
@@ -24,19 +28,20 @@ export function useRecovery(): Recovery | null {
   return useContext(RecoveryContext);
 }
 
-export function expectedText(deviceExpected: bigint | undefined): string {
-  return deviceExpected === undefined ? "nothing saved" : `${displayUsdc(deviceExpected)} USDC`;
+/** "nothing saved" or the figure this device had saved. t is the app namespace. */
+export function expectedText(deviceExpected: bigint | undefined, locale: Locale, t: PlainT): string {
+  return deviceExpected === undefined ? t("nothingSaved") : `${displayUsdc(deviceExpected, locale)} USDC`;
 }
 
 // The two figures are both shown whenever they differ, because a device that expected something
 // else means the treasury moved in a way this browser did not record.
 export function RebuildResult({ result }: { result: RebuiltTreasury }) {
+  const t = useTranslations("app");
+  const locale = useMoneyLocale();
   return (
     <div role="status" className="font-sans text-[0.9375rem] text-muted">
-      <p>
-        Rebuilt from chain: <span className="text-paper">{displayUsdc(result.value)} USDC</span>.
-      </p>
-      {result.matchesDevice ? null : <p className="mt-1">This device expected {expectedText(result.deviceExpected)}.</p>}
+      <p>{t("rebuilt", { amount: displayUsdc(result.value, locale) })}</p>
+      {result.matchesDevice ? null : <p className="mt-1">{t("deviceExpected", { expected: expectedText(result.deviceExpected, locale, t) })}</p>}
     </div>
   );
 }

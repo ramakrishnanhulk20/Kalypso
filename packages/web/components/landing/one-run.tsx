@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
+import { useTranslations } from "next-intl";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { motion } from "motion/react";
@@ -9,19 +10,13 @@ import { useFirstPayment } from "./first-payment";
 import { PayslipCard } from "./payslip-card";
 import { POSES, paintPose } from "./payslip-paint";
 import type { Pose } from "./payslip-paint";
-import { STEPS } from "./run-steps";
+import { STEP_NUMBERS, stepsFor } from "./run-steps";
 
 gsap.registerPlugin(ScrollTrigger);
 
 const EXPO_OUT = "expo.out";
 
 const HIDDEN: CSSProperties = { opacity: 0, visibility: "hidden" };
-
-// GSAP blends colour strings, so the dot colours are the tokens written out:
-// paper at 0.2, --color-seal, and paper at 0.5.
-const DOT_UPCOMING = "rgba(242,236,230,0.2)";
-const DOT_ACTIVE = "rgb(201,71,58)";
-const DOT_PASSED = "rgba(242,236,230,0.5)";
 
 // Seconds on the master timeline at which each step is fully in place. The gap
 // before a step is the longest thing that happens in it: the 0.8s scramble, the
@@ -59,7 +54,7 @@ function buildRun(stage: HTMLElement, card: HTMLElement, pose: Pose) {
     onUpdate: () => paintPose(card, pose),
   });
 
-  STEPS.slice(0, -1).forEach((_, index) => {
+  STEP_NUMBERS.slice(0, -1).forEach((_, index) => {
     const at = STEP_TIME[index] ?? 0;
     const [textOut, textIn] = [texts[index], texts[index + 1]];
     if (textOut && textIn) {
@@ -101,29 +96,12 @@ function buildRun(stage: HTMLElement, card: HTMLElement, pose: Pose) {
         );
     }
 
+    // The dots' colours and sizes live in CSS on data-state (globals.css), so they follow the
+    // theme; the timeline only flips the state, and a set() reverts when scrubbed backwards.
     const dotOut = dots[index];
-    if (dotOut) {
-      timeline.fromTo(
-        dotOut,
-        { backgroundColor: DOT_ACTIVE, scale: 1.5 },
-        {
-          backgroundColor: DOT_PASSED,
-          scale: 1,
-          duration: 0.3,
-          immediateRender: index === 0,
-        },
-        at,
-      );
-    }
+    if (dotOut) timeline.set(dotOut, { attr: { "data-state": "passed" } }, at);
     const dotIn = dots[index + 1];
-    if (dotIn) {
-      timeline.fromTo(
-        dotIn,
-        { backgroundColor: DOT_UPCOMING, scale: 1 },
-        { backgroundColor: DOT_ACTIVE, scale: 1.5, duration: 0.3 },
-        at,
-      );
-    }
+    if (dotIn) timeline.set(dotIn, { attr: { "data-state": "active" } }, at);
   });
 
   const [paymentA, paymentB, paymentC] = payment;
@@ -220,6 +198,8 @@ function buildRun(stage: HTMLElement, card: HTMLElement, pose: Pose) {
 }
 
 export function OneRun() {
+  const t = useTranslations("landing.oneRun");
+  const steps = stepsFor(t);
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const pose = useRef<Pose>({ ...POSES[1] });
@@ -277,8 +257,8 @@ export function OneRun() {
           onUpdate: () =>
             goTo(
               Math.min(
-                STEPS.length - 1,
-                Math.floor(progress.value * STEPS.length),
+                STEP_NUMBERS.length - 1,
+                Math.floor(progress.value * STEP_NUMBERS.length),
               ),
             ),
         });
@@ -309,10 +289,10 @@ export function OneRun() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="relative bg-ink">
+    <section ref={sectionRef} className="relative bg-canvas">
       <div style={{ padding: "16vh 4vw 0" }}>
-        <p className="t-label">How it works</p>
-        <h2 className="t-h2 mt-4">One salary, start to finish.</h2>
+        <p className="t-label">{t("eyebrow")}</p>
+        <h2 className="t-h2 mt-4">{t("title")}</h2>
       </div>
 
       <div
@@ -326,9 +306,9 @@ export function OneRun() {
           >
             <span
               className="absolute left-[3.5px] top-0 h-full w-px"
-              style={{ background: "rgba(242,236,230,0.12)" }}
+              style={{ background: "color-mix(in srgb, var(--color-fg) 12%, transparent)" }}
             />
-            {STEPS.map((step, index) => (
+            {steps.map((step, index) => (
               <div
                 key={step.n}
                 className="absolute left-0 flex -translate-y-1/2 items-center gap-3"
@@ -336,11 +316,8 @@ export function OneRun() {
               >
                 <span
                   data-dot
+                  data-state={index === 0 ? "active" : "upcoming"}
                   className="block h-2 w-2 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor: index === 0 ? DOT_ACTIVE : DOT_UPCOMING,
-                    transform: index === 0 ? "scale(1.5)" : undefined,
-                  }}
                 />
                 <span className="t-label leading-none">{`0${step.n}`}</span>
               </div>
@@ -348,15 +325,15 @@ export function OneRun() {
           </div>
 
           <div className="ml-8 grid min-w-0 flex-1">
-            {STEPS.map((step, index) => (
+            {steps.map((step, index) => (
               <div
                 key={step.n}
                 data-step-text
                 className="col-start-1 row-start-1"
                 style={index === 0 ? undefined : HIDDEN}
               >
-                <p className="t-label">Step {step.n}</p>
-                <h3 className="mt-3 font-display text-paper" style={STEP_HEADING}>
+                <p className="t-label">{t("step", { n: step.n })}</p>
+                <h3 className="mt-3 font-display text-fg" style={STEP_HEADING}>
                   {step.heading}
                 </h3>
                 <p className="t-lead mt-5 max-w-[30rem]">{step.text}</p>
@@ -371,7 +348,7 @@ export function OneRun() {
       </div>
 
       <div className="flex flex-col gap-[18vh] px-[4vw] pb-[12vh] pt-[10vh] motion-safe:lg:hidden">
-        {STEPS.map((step) => (
+        {steps.map((step) => (
           <motion.article
             key={step.n}
             data-rise
@@ -380,8 +357,8 @@ export function OneRun() {
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           >
-            <p className="t-label">Step {step.n}</p>
-            <h3 className="mt-3 font-display text-paper" style={STEP_HEADING}>
+            <p className="t-label">{t("step", { n: step.n })}</p>
+            <h3 className="mt-3 font-display text-fg" style={STEP_HEADING}>
               {step.heading}
             </h3>
             <p className="t-lead mt-5 max-w-[30rem]">{step.text}</p>

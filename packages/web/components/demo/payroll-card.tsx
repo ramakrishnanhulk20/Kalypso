@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import type { SealedPayment } from "@kalypso/core";
+import { useTranslations } from "next-intl";
 import { LedgerTable } from "@/components/key-lens/ledger-table";
 import { LoadingLine, ProgressLine, StatusChip } from "@/components/key-lens/status";
 import { shortId } from "@/lib/ledger";
@@ -24,19 +25,19 @@ type PayrollCardProps = {
   onRetry: () => void;
 };
 
-const CHIP_LABEL = "Reading sealed payments from Stellar testnet";
-
 // The landing's ledger card with the lens taken away: the revealed layer sits over the sealed one,
 // unclipped, so the key's answer is the whole table. The revealed layer sets the height, because
 // its subtotal can take two lines on a phone and the sealed one then sits behind it.
 export function PayrollCard({ title, companyId, chip, opening, payments, amounts, failed, onRetry }: PayrollCardProps) {
+  const t = useTranslations("landing.lens");
+  const status = useTranslations("landing.status");
   const loading = opening !== null;
   const revealed = payments !== null && !failed;
   return (
     <div
       data-open-all="true"
-      className="ledger-card relative overflow-hidden rounded-card border border-line bg-ink-2"
-      style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}
+      className="ledger-card relative overflow-hidden rounded-card border border-line bg-raised"
+      style={{ boxShadow: "var(--shadow-card)" }}
     >
       <div className="relative flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-line px-[22px] py-[18px]">
         <div>
@@ -44,18 +45,18 @@ export function PayrollCard({ title, companyId, chip, opening, payments, amounts
             {title}
           </h3>
           <p className="t-label mt-1">
-            Company {String(companyId)} · Payroll{" "}
+            {t("company", { id: String(companyId) })}{" "}
             <a
               href={`${EXPLORER_URL}/contract/${contracts.payroll}`}
               target="_blank"
               rel="noopener"
-              className="transition-colors hover:text-paper"
+              className="transition-colors hover:text-fg"
             >
               {shortId(contracts.payroll)}
             </a>
           </p>
         </div>
-        <StatusChip phase={chip.phase} complete={chip.complete} label={CHIP_LABEL} />
+        <StatusChip phase={chip.phase} complete={chip.complete} label={status("reading")} />
         <ProgressLine phase={loading ? "history" : "done"} done={0} total={0} />
       </div>
 

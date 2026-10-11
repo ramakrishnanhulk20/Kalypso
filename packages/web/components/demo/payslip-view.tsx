@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 import type { WorkerView } from "@kalypso/core";
+import { useTranslations } from "next-intl";
+import { useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { StatusChip } from "@/components/key-lens/status";
 import { shortId } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
@@ -19,8 +21,9 @@ const AMOUNT_STYLE = {
 function Frame({ children }: { children: ReactNode }) {
   return (
     <div
-      className="w-full max-w-[560px] rounded-card border border-line bg-ink-2 p-7"
-      style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}
+      data-view="payslip"
+      className="w-full max-w-[560px] rounded-card border border-line bg-raised p-7"
+      style={{ boxShadow: "var(--shadow-card)" }}
     >
       {children}
     </div>
@@ -37,12 +40,13 @@ function Line({ name, children }: { name: string; children: ReactNode }) {
 }
 
 function Skeleton() {
+  const t = useTranslations("sandbox.payslip");
   return (
     <Frame>
       <span className="skeleton-bar block w-32" />
       <span className="skeleton-bar mt-6 block h-[2.5rem] w-48" />
       <div className="mt-6">
-        {["Company", "Paid in", "Balance", "Opened with"].map((name) => (
+        {[t("company"), t("paidIn"), t("balance"), t("openedWith")].map((name) => (
           <Line key={name} name={name}>
             <span className="skeleton-bar ml-auto block w-24" />
           </Line>
@@ -63,6 +67,10 @@ type PayslipViewProps = {
 };
 
 export function PayslipView({ worker, companyLabel, runId, read, opening, onRetry }: PayslipViewProps) {
+  const t = useTranslations("sandbox.payslip");
+  const common = useTranslations("common");
+  const locale = useMoneyLocale();
+
   if (read === undefined || read.status === "loading") {
     return (
       <div>
@@ -79,7 +87,7 @@ export function PayslipView({ worker, companyLabel, runId, read, opening, onRetr
       <Frame>
         <p className="font-sans text-base text-muted">{read.message}</p>
         <button type="button" className="btn-ghost mt-4" onClick={onRetry}>
-          Try again
+          {common("tryAgain")}
         </button>
       </Frame>
     );
@@ -95,48 +103,48 @@ export function PayslipView({ worker, companyLabel, runId, read, opening, onRetr
       <Frame>
         {payslip ? (
           <>
-            <p className="t-label">Payslip · {payslip.periodLabel}</p>
+            <p className="t-label">{t("title", { period: payslip.periodLabel })}</p>
             <p className="mt-4 flex items-baseline gap-3">
-              <span className="font-display font-medium text-paper" style={AMOUNT_STYLE}>
-                {displayUsdc(payslip.amount)}
+              <span className="font-display font-medium text-fg" style={AMOUNT_STYLE}>
+                {displayUsdc(payslip.amount, locale)}
               </span>
               <span className="t-label">USDC</span>
             </p>
             <div className="mt-6">
-              <Line name="Company">
-                <span className="font-sans text-[0.9375rem] text-paper">{companyLabel}</span>
+              <Line name={t("company")}>
+                <span className="font-sans text-[0.9375rem] text-fg">{companyLabel}</span>
               </Line>
-              <Line name="Paid in">
+              <Line name={t("paidIn")}>
                 <a
                   href={`${EXPLORER_URL}/tx/${payslip.txHash}`}
                   target="_blank"
                   rel="noopener"
-                  aria-label={`Open payment ${shortId(payslip.txHash)} on Stellar Expert`}
+                  aria-label={common("openPayment", { id: shortId(payslip.txHash) })}
                   className="link-draw font-mono text-[0.9375rem]"
                 >
                   {shortId(payslip.txHash)}
                 </a>
               </Line>
-              <Line name="Balance">
+              <Line name={t("balance")}>
                 {verified ? (
                   <>
-                    <span className="font-sans text-[0.9375rem] text-paper">{displayUsdc(balance)}</span>{" "}
+                    <span className="font-sans text-[0.9375rem] text-fg">{displayUsdc(balance, locale)}</span>{" "}
                     <span className="t-label">USDC</span>
                   </>
                 ) : (
-                  <span className="font-sans text-[0.9375rem] text-muted">Not verified</span>
+                  <span className="font-sans text-[0.9375rem] text-muted">{t("notVerified")}</span>
                 )}
               </Line>
-              <Line name="Opened with">
-                <span className="font-sans text-[0.9375rem] text-paper">Worker {worker}&apos;s own key</span>
+              <Line name={t("openedWith")}>
+                <span className="font-sans text-[0.9375rem] text-fg">{t("ownKey", { n: worker })}</span>
               </Line>
             </div>
           </>
         ) : (
           <>
-            <p className="font-sans text-base text-muted">No payslip showed up in this worker&apos;s history.</p>
+            <p className="font-sans text-base text-muted">{t("none")}</p>
             <button type="button" className="btn-ghost mt-4" onClick={onRetry}>
-              Try again
+              {common("tryAgain")}
             </button>
           </>
         )}
@@ -147,8 +155,8 @@ export function PayslipView({ worker, companyLabel, runId, read, opening, onRetr
           <StatusChip phase="done" complete={false} label="" />
         </div>
       )}
-      <p className="t-label mt-4 max-w-[560px]" style={{ ...PLAIN_CASE, color: "var(--color-muted)" }}>
-        The other workers&apos; amounts are not in this view: this key cannot open them.
+      <p className="t-label mt-4 max-w-[560px] text-muted" style={PLAIN_CASE}>
+        {t("note")}
       </p>
     </div>
   );

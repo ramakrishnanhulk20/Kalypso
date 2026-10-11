@@ -1,0 +1,37 @@
+---
+title: "Comptable"
+description: "Enregistrez votre clé de comptable, donnez à l'employeur votre identifiant, votre adresse et votre code, puis ouvrez et exportez les comptes d'une entreprise sur /accountant."
+---
+
+La vue comptable, sur [/accountant](/accountant), fonctionne avec Freighter réglé sur Testnet. Votre clé est créée dans ce navigateur à partir de deux signatures de votre portefeuille, donc elle ne quitte jamais le navigateur et le même portefeuille la reconstruit toujours. Vous payez une seule fois de petits frais en XLM de test, environ 0.07, pour l'enregistrer : alimentez donc d'abord le compte avec friendbot.
+
+## Enregistrer votre clé
+
+1. Ouvrez la page et choisissez **Connecter Freighter**.
+2. Sous **Votre clé**, choisissez **Dériver ma clé**. Freighter vous demande de signer deux fois le même message, ce qui prouve que votre portefeuille reconstruit chaque fois la même clé. Votre **Code de confirmation** s'affiche : 16 caractères en quatre groupes. Rien n'est envoyé.
+3. Choisissez **Enregistrer ma clé** et approuvez une transaction. Le registre d'audit de Kalypso stocke votre clé et renvoie un nouvel identifiant. Vous seul, en tant que propriétaire, pouvez changer la clé sous cet identifiant.
+4. La zone intitulée **Donnez ceci à l'employeur** affiche votre **Identifiant du comptable** et votre **Adresse**, chacun avec un bouton de copie. Envoyez les deux à l'employeur.
+5. Quand l'employeur les vérifie, son écran affiche un code de confirmation. Lisez-lui le vôtre et assurez-vous que chaque caractère correspond. Un code différent signifie que l'identifiant qu'il a saisi contient la clé de quelqu'un d'autre, et qu'il doit s'arrêter.
+
+## Ouvrir les comptes
+
+6. Sous **Ouvrir les comptes d'une entreprise**, saisissez l'**Identifiant de l'entreprise** que l'employeur vous donne et choisissez **Ouvrir les comptes**. Freighter demande les deux signatures de clé si vous ne les avez pas encore données sur cette page. Kalypso vérifie d'abord auprès du registre que votre clé détient l'identifiant pour lequel la paie de cette entreprise est scellée.
+7. La carte se remplit à mesure que votre navigateur lit l'historique de paie et ouvre chaque paiement avec votre clé. Chaque ligne affiche le cycle, le salarié, la transaction et le montant, avec un sous-total par cycle et un total quand il y a deux cycles ou plus. La pastille affiche « Vérifié et complet » seulement quand chaque cycle et chaque paiement que la chaîne compte ont été trouvés et vérifiés. Sinon elle affiche « Historique incomplet ».
+8. Choisissez **Exporter en CSV**. Un fichier nommé d'après l'identifiant de l'entreprise et la date du jour est enregistré sur votre ordinateur, avec une ligne par paiement : identifiant du cycle, période, salarié, montant en USDC et hash de la transaction. Kalypso refuse d'exporter des comptes qui ne sont pas complets, donc un fichier ne ressemble jamais à toute la paie quand ce n'est pas le cas. Une cellule qu'un tableur exécuterait comme une formule est d'abord neutralisée.
+
+Envie d'essayer avant qu'une vraie entreprise vous nomme ? La clé de l'entreprise de démonstration est publique sur la [page d'accueil](/#lens), où la loupe ouvre ses comptes.
+
+## Quand quelque chose ne va pas
+
+- « Les comptes de cette entreprise sont scellés pour un identifiant de comptable que la clé de ce portefeuille ne détient pas, donc ils ne peuvent pas être ouverts avec elle. » Connectez le portefeuille avec lequel vous vous êtes enregistré. Si c'est déjà lui, l'entreprise a été créée sous l'identifiant d'un autre comptable.
+- « Aucune entreprise n'existe sous cet identifiant sur le contrat de paie. » Vérifiez l'identifiant auprès de l'employeur.
+- « Le compte de ce portefeuille n'existe pas encore sur le testnet. » Alimentez-le avec friendbot, puis enregistrez-vous.
+- « Les comptes sont incomplets, donc rien n'a été exporté » et la raison qui suit. Réessayez dans une minute, car les registres les plus récents n'ont peut-être pas encore été lus.
+- « Freighter n'a pas signé, donc rien n'a été envoyé. » Vous avez refusé une demande. Choisissez à nouveau le bouton.
+- « Passez Freighter sur Testnet, puis réessayez. » Kalypso ne tourne que sur le testnet Stellar.
+
+## Ce que vous voyez, et ce que vous ne voyez pas
+
+Vous voyez chaque montant payé par chaque entreprise dont la paie est scellée pour votre identifiant. Par conception, votre clé ouvre aussi le solde de la trésorerie après chaque paiement, même si cet écran ne liste que les paiements. Votre clé ne fait que lire : elle ne peut déplacer aucun argent. Vous ne pouvez pas lire le solde propre d'un salarié, car chaque salarié enregistre une clé d'audit qui lui est propre. Qui peut lire la paie d'une entreprise se lit d'après le propriétaire actuel de son identifiant dans le registre, jamais d'après le comptable enregistré à la création de l'entreprise.
+
+Si votre clé fuit, celui qui la détient peut lire tout ce qui a jamais été scellé pour elle. Le registre ne laisse que vous la remplacer, par son appel `rotate_key`, et cet écran ne le propose pas. Une nouvelle clé ne protège que les paiements suivants.

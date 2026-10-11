@@ -2,14 +2,15 @@
 
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { LensRing } from "@/components/key-lens/lens-ring";
-import { sealedText } from "@/components/key-lens/ledger-table";
+import { sealedText, useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { SealMark } from "@/components/seal-mark";
 import { shortId } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
 import { displayUsdc } from "@/lib/money";
 import type { FirstPayment } from "./first-payment";
-import { READABLE_BY } from "./run-steps";
+import { readableFor } from "./run-steps";
 import {
   CHAR_COUNT,
   POSES,
@@ -25,7 +26,7 @@ const DISPLAY_36: CSSProperties = { fontVariationSettings: '"opsz" 36' };
 const PAYMENT_AT_STEP = [0, 1, 2, 2, 2];
 
 const CHAR_CLASS =
-  "font-display text-[1.75rem] font-medium text-paper data-[s=cycle]:font-mono data-[s=cycle]:text-[0.8125rem] data-[s=cycle]:font-normal data-[s=cycle]:text-muted data-[s=hex]:font-mono data-[s=hex]:text-[0.8125rem] data-[s=hex]:font-normal data-[s=hex]:text-faint sm:data-[s=cycle]:text-[0.9375rem] sm:data-[s=hex]:text-[0.9375rem]";
+  "font-display text-[1.75rem] font-medium text-fg data-[s=cycle]:font-mono data-[s=cycle]:text-[0.8125rem] data-[s=cycle]:font-normal data-[s=cycle]:text-muted data-[s=hex]:font-mono data-[s=hex]:text-[0.8125rem] data-[s=hex]:font-normal data-[s=hex]:text-faint sm:data-[s=cycle]:text-[0.9375rem] sm:data-[s=hex]:text-[0.9375rem]";
 
 function Bar({ className = "w-28" }: { className?: string }) {
   return <span className={`skeleton-bar block ${className}`} />;
@@ -98,6 +99,9 @@ type PayslipCardProps = {
 };
 
 export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
+  const t = useTranslations("landing.oneRun");
+  const common = useTranslations("common");
+  const locale = useMoneyLocale();
   const cardRef = useRef<HTMLDivElement>(null);
   const ringPositionRef = useRef<HTMLDivElement>(null);
   const ringBodyRef = useRef<HTMLDivElement>(null);
@@ -109,6 +113,7 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
   const showStamp = live || at >= 3;
   const showRing = live || at === 4;
   const showOpened = live || at >= 4;
+  const amount = first ? displayUsdc(first.amount, locale) : undefined;
 
   useLayoutEffect(() => {
     onMeasureRef.current = onMeasure;
@@ -136,7 +141,7 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
       href={`${EXPLORER_URL}/tx/${first.payment.txHash}`}
       target="_blank"
       rel="noopener"
-      aria-label={`Open payment ${shortId(first.payment.txHash)} on Stellar Expert`}
+      aria-label={common("openPayment", { id: shortId(first.payment.txHash) })}
       className="link-draw font-mono text-[0.9375rem]"
     >
       {shortId(first.payment.txHash)}
@@ -153,21 +158,23 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
     "--lcx": "0px",
     "--lcy": "0px",
     "--lr": "0px",
-    boxShadow: "0 30px 80px rgba(0,0,0,0.45)",
+    boxShadow: "var(--shadow-card)",
   } as CSSProperties;
 
   return (
     <div
       ref={cardRef}
       data-payslip={live ? "live" : at}
-      data-amount={first ? displayUsdc(first.amount) : undefined}
+      data-amount={amount}
       data-sealed={first ? sealedText(first.payment) : undefined}
-      className="relative w-full max-w-[560px] rounded-card border border-line bg-ink-2 p-5 sm:p-7 [&_.lens-ring-pos]:pointer-events-none [&_.lens-ring-pos]:touch-auto [&_[data-lens-ring]_.t-label]:hidden"
+      data-speech-opened={amount === undefined ? undefined : t("speechOpened", { amount })}
+      data-speech-sealed={t("speechSealed")}
+      className="relative w-full max-w-[560px] rounded-card border border-line bg-raised p-5 sm:p-7 [&_.lens-ring-pos]:pointer-events-none [&_.lens-ring-pos]:touch-auto [&_[data-lens-ring]_.t-label]:hidden"
       style={cardStyle}
     >
-      <Row label="Worker" height={24} first>
+      <Row label={t("rowWorker")} height={24} first>
         {first ? (
-          <span className="font-mono text-[0.9375rem] leading-6 text-paper">
+          <span className="font-mono text-[0.9375rem] leading-6 text-fg">
             {shortId(first.payment.worker)}
           </span>
         ) : (
@@ -177,9 +184,9 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
         )}
       </Row>
 
-      <Row label="Amount" height={36}>
+      <Row label={t("rowAmount")} height={36}>
         <div className="relative h-9">
-          {first ? (
+          {first && amount !== undefined ? (
             <>
               <div
                 aria-hidden="true"
@@ -209,10 +216,10 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
                   <span className="whitespace-nowrap leading-9">
                     <span
                       data-part="opened-number"
-                      className="font-display text-[1.75rem] font-medium text-paper"
+                      className="font-display text-[1.75rem] font-medium text-fg"
                       style={DISPLAY_36}
                     >
-                      {displayUsdc(first.amount)}
+                      {amount}
                     </span>
                     <span className="t-label ml-2">USDC</span>
                   </span>
@@ -230,43 +237,41 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
           <div className="mt-2 flex">
             <div
               data-part="chip"
-              className="inline-flex min-h-6 items-center gap-2 rounded-[6px] bg-ink-3 px-2 py-1"
+              className="inline-flex min-h-6 items-center gap-2 rounded-[6px] bg-raised-2 px-2 py-1"
               style={live ? HIDDEN : undefined}
             >
               <span
                 aria-hidden="true"
                 className="h-2 w-2 shrink-0 rounded-full bg-seal"
               />
-              <span className="t-label leading-[1.35]">
-                Zero-knowledge proof attached
-              </span>
+              <span className="t-label leading-[1.35]">{t("proofChip")}</span>
             </div>
           </div>
         ) : null}
       </Row>
 
-      <Row label="Payment" height={24}>
+      <Row label={t("rowPayment")} height={24}>
         <Swap
           name="payment"
           only={live ? undefined : PAYMENT_AT_STEP[at - 1]}
           items={[
             <span key="a" className="font-sans text-[0.9375rem] text-muted">
-              not sent yet
+              {t("notSent")}
             </span>,
             <span key="b" className="font-sans text-[0.9375rem] text-muted">
-              being sealed
+              {t("sealing")}
             </span>,
             txLink,
           ]}
         />
       </Row>
 
-      <Row label="Readable by" height={24}>
+      <Row label={t("rowReadable")} height={24}>
         <Swap
           name="readable"
           only={live ? undefined : at - 1}
-          items={READABLE_BY.map((text) => (
-            <span key={text} className="font-sans text-[0.9375rem] text-paper">
+          items={readableFor(t).map((text) => (
+            <span key={text} className="font-sans text-[0.9375rem] text-fg">
               {text}
             </span>
           ))}
@@ -277,13 +282,10 @@ export function PayslipCard({ first, step, onMeasure }: PayslipCardProps) {
         <div className="pointer-events-none absolute -top-6 right-1 z-10 flex items-center gap-3">
           <span
             data-part="stamp-label"
-            className="t-label"
-            style={{
-              color: "var(--color-ok)",
-              ...(live ? HIDDEN : undefined),
-            }}
+            className="t-label text-ok"
+            style={live ? HIDDEN : undefined}
           >
-            Paid
+            {t("paid")}
           </span>
           <div
             data-part="stamp-mark"

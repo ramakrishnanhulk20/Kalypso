@@ -3,13 +3,10 @@
 // open shows "Total withheld" in the wait colour with its title, and a key that opened nothing keeps
 // "No key fits". Does NOT cover the table's layout or how the landing lens, /demo and the books pass
 // the complete flag in; the live before and after check in scratchpad/rd covers those.
-import { createElement, isValidElement } from "react";
-import type { ReactNode } from "react";
-// The project does not install react-dom's type package; this test only needs the markup string.
-// @ts-expect-error TS7016
-import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SealedPayment } from "@kalypso/core";
+import { renderEnglish, textOf, titlesOf } from "../../test/i18n";
 
 // The test runner has no "@/" alias, so the table's own imports are pointed at the same files.
 const screen = vi.hoisted(() => ({ wide: true }));
@@ -17,6 +14,7 @@ vi.mock("@/hooks/use-wide-screen", () => ({ useWideScreen: () => screen.wide }))
 vi.mock("@/lib/ledger", () => import("../../lib/ledger"));
 vi.mock("@/lib/links", () => import("../../lib/links"));
 vi.mock("@/lib/money", () => import("../../lib/money"));
+vi.mock("@/lib/i18n/locales", () => import("../../lib/i18n/locales"));
 
 const { LedgerTable, WITHHELD_TITLE, WithheldTotal, totalOf } = await import("./ledger-table");
 const { paymentKey, shortId } = await import("../../lib/ledger");
@@ -33,21 +31,6 @@ const payment = (runId: bigint, n: number, amount: bigint | null): SealedPayment
 const opened = (payments: SealedPayment[]) => new Map(payments.map((p) => [paymentKey(p), p.amount]));
 
 const run = [payment(2n, 1, 4_200_0000000n), payment(2n, 2, 3_650_0000000n), payment(2n, 3, 5_100_0000000n)];
-
-type Seen = { text: string; titles: string[]; colours: string[] };
-
-function seen(node: ReactNode, into: Seen = { text: "", titles: [], colours: [] }): Seen {
-  if (typeof node === "string" || typeof node === "number") into.text += String(node);
-  else if (Array.isArray(node)) node.forEach((child: ReactNode) => seen(child, into));
-  else if (isValidElement<{ children?: ReactNode; title?: string; style?: { color?: string } }>(node)) {
-    const { props, type } = node;
-    if (typeof type === "function") return seen((type as (p: unknown) => ReactNode)(props), into);
-    if (props.title) into.titles.push(props.title);
-    if (props.style?.color) into.colours.push(props.style.color);
-    seen(props.children, into);
-  }
-  return into;
-}
 
 describe("totalOf", () => {
   it("sums a run only when the history is complete and every payment opened", () => {
@@ -78,18 +61,18 @@ describe("totalOf", () => {
 
 describe("WithheldTotal", () => {
   it("says Total withheld in the wait colour and explains why in its title", () => {
-    const shown = seen(WithheldTotal());
-    expect(shown.text).toBe("Total withheld");
-    expect(shown.titles).toEqual([WITHHELD_TITLE]);
+    const markup = renderEnglish(createElement(WithheldTotal));
+    expect(textOf(markup)).toBe("Total withheld");
+    expect(titlesOf(markup)).toEqual([WITHHELD_TITLE]);
     expect(WITHHELD_TITLE).toBe("Some payments could not be read, so no total is shown.");
-    expect(shown.colours).toEqual(["var(--color-wait)"]);
+    expect(markup).toContain("text-wait");
   });
 });
 
 describe("LedgerTable transaction links", () => {
   const markup = (wide: boolean, interactive: boolean): string => {
     screen.wide = wide;
-    return renderToStaticMarkup(
+    return renderEnglish(
       createElement(LedgerTable, { layer: "sealed", payments: run, amounts: opened(run), complete: true, failed: false, onRetry: () => undefined, interactive }),
     );
   };

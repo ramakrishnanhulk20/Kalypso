@@ -18,7 +18,7 @@ export function Panel({ eyebrow, title, children }: { eyebrow: string; title: st
           titleId={id}
           eyebrow={eyebrow}
           title={title}
-          titleClassName="mt-3 font-display text-[1.75rem] font-medium leading-[1.15] text-paper"
+          titleClassName="mt-3 font-display text-[1.75rem] font-medium leading-[1.15] text-fg"
           titleStyle={DISPLAY_48}
           className="lg:col-span-4"
         />

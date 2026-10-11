@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { ButtonAction } from "./use-action";
 
 type StepButtonProps = {
@@ -24,6 +25,7 @@ function Check() {
 // of many seconds always says what it is waiting for. A button's own text is not announced as it
 // changes, so the same sentence goes to a hidden live region beside it.
 export function StepButton({ action, onClick, children, variant = "seal", disabled = false, className = "" }: StepButtonProps) {
+  const t = useTranslations("common");
   const { running, progress, flash } = action;
   return (
     <>
@@ -42,14 +44,14 @@ export function StepButton({ action, onClick, children, variant = "seal", disabl
         ) : flash ? (
           <>
             <Check />
-            <span>Done</span>
+            <span>{t("done")}</span>
           </>
         ) : (
           children
         )}
       </button>
       <span role="status" className="sr-only">
-        {running ? (progress ?? "") : flash ? "Done" : ""}
+        {running ? (progress ?? "") : flash ? t("done") : ""}
       </span>
     </>
   );

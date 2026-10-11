@@ -1,25 +1,33 @@
 // Covers the Move box (C54): typed text goes through the one typed-amount parser, so "1,5" is
-// refused rather than read as 15, a movable amount is repeated back before the send, and paying the
-// fee yourself is offered only after the sponsor refused or went quiet.
+// refused in English rather than read as 15 (and is one and a half in Spanish), a movable amount is
+// repeated back before the send, and paying the fee yourself is offered only after the sponsor
+// refused or went quiet.
 // Does NOT cover: the button itself in a browser, or the withdraw (lib/worker/cashout.test.ts).
 import { describe, expect, it } from "vitest";
+import { englishT } from "../../../lib/i18n/english";
 import { SponsorError } from "../../../lib/worker/sponsor";
 import { WorkerError } from "../../../lib/worker/errors";
 import { offersSelfPay, readMove } from "./move-amount";
 import { shownFrom } from "./shown";
 
+const t = englishT("worker.cashOut");
+
 describe("readMove", () => {
   it("reads a grouped amount and repeats it, as parsed, in the sentence and on the button", () => {
-    expect(readMove("1,500", null)).toEqual({ amount: 15_000_000_000n, problem: null, confirm: "You are moving 1,500.00 USDC.", label: "Move 1,500.00 USDC" });
+    expect(readMove("1,500", null, "en", t)).toEqual({ amount: 15_000_000_000n, problem: null, confirm: "You are moving 1,500.00 USDC.", label: "Move 1,500.00 USDC" });
   });
 
   it("refuses a comma used as a decimal point instead of reading 1,5 as 15", () => {
-    expect(readMove("1,5", null)).toMatchObject({ amount: null, problem: "INVALID_AMOUNT", confirm: null, label: "Move" });
+    expect(readMove("1,5", null, "en", t)).toMatchObject({ amount: null, problem: "INVALID_AMOUNT", confirm: null, label: "Move" });
+  });
+
+  it("reads 1,5 as one and a half in Spanish and shows it back the Spanish way", () => {
+    expect(readMove("1,5", null, "es", t)).toEqual({ amount: 15_000_000n, problem: null, confirm: "You are moving 1,50 USDC.", label: "Move 1,50 USDC" });
   });
 
   it("refuses more than the balance holds, and shows nothing for an empty box", () => {
-    expect(readMove("12", 100_000_000n)).toMatchObject({ problem: "INSUFFICIENT_FUNDS", confirm: null, label: "Move" });
-    expect(readMove("  ", null)).toEqual({ amount: null, problem: null, confirm: null, label: "Move" });
+    expect(readMove("12", 100_000_000n, "en", t)).toMatchObject({ problem: "INSUFFICIENT_FUNDS", confirm: null, label: "Move" });
+    expect(readMove("  ", null, "en", t)).toEqual({ amount: null, problem: null, confirm: null, label: "Move" });
   });
 });
 

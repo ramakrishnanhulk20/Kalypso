@@ -1,9 +1,12 @@
+// Film grain over everything. Overlay blending reads as grain on ink and as paper texture on the
+// light canvas; the opacity is a token, lighter by day, so it never muddies the paper.
 export function Grain() {
   return (
     <svg
       aria-hidden="true"
       focusable="false"
-      className="pointer-events-none fixed inset-0 z-50 h-full w-full opacity-[0.07] mix-blend-overlay"
+      className="pointer-events-none fixed inset-0 z-50 h-full w-full mix-blend-overlay"
+      style={{ opacity: "var(--grain-opacity)" }}
     >
       <filter id="kalypso-grain">
         <feTurbulence

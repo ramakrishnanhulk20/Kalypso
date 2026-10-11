@@ -9,6 +9,7 @@ type SealMarkProps = {
   className?: string;
 };
 
+// The wax keeps its colour in both themes (globals.css --wax-*): it is an object, not a surface.
 export function SealMark({ size, className }: SealMarkProps) {
   // Each copy needs its own gradient id, or hiding one copy breaks the others.
   const gradientId = `seal-wax-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -24,9 +25,9 @@ export function SealMark({ size, className }: SealMarkProps) {
     >
       <defs>
         <radialGradient id={gradientId} cx="38%" cy="32%">
-          <stop offset="0%" stopColor="#d85a4c" />
-          <stop offset="70%" stopColor="#c9473a" />
-          <stop offset="100%" stopColor="#a8392e" />
+          <stop offset="0%" style={{ stopColor: "var(--wax-hi)" }} />
+          <stop offset="70%" style={{ stopColor: "var(--wax)" }} />
+          <stop offset="100%" style={{ stopColor: "var(--wax-deep)" }} />
         </radialGradient>
       </defs>
       <path d={WAX_BODY} fill={`url(#${gradientId})`} />
@@ -35,12 +36,12 @@ export function SealMark({ size, className }: SealMarkProps) {
         cy="32"
         r="19.5"
         fill="none"
-        stroke="#8e2e25"
+        stroke="var(--wax-rim)"
         strokeWidth="1.4"
       />
       <g
         fill="none"
-        stroke="#8e2e25"
+        stroke="var(--wax-rim)"
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -54,7 +55,7 @@ export function SealMark({ size, className }: SealMarkProps) {
         cy="22"
         rx="7"
         ry="4"
-        fill="#ffffff"
+        fill="var(--gloss)"
         opacity="0.1"
         transform="rotate(-30 24 22)"
       />

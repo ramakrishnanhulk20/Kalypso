@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import gsap from "gsap";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { shortId } from "@/lib/ledger";
@@ -11,6 +12,8 @@ import { titleOf } from "./shots";
 const PLAIN_CASE = { textTransform: "none", letterSpacing: "0.04em" } as const;
 
 function Entry({ entry }: { entry: FeedEntry }) {
+  const common = useTranslations("common");
+  const shots = useTranslations("sandbox.shots");
   const ref = useRef<HTMLLIElement>(null);
   const reduceMotion = useReducedMotion();
 
@@ -35,25 +38,26 @@ function Entry({ entry }: { entry: FeedEntry }) {
         href={`${EXPLORER_URL}/tx/${entry.hash}`}
         target="_blank"
         rel="noopener"
-        aria-label={`Open transaction ${shortId(entry.hash)} on Stellar Expert`}
+        aria-label={common("openTransaction", { id: shortId(entry.hash) })}
         className="link-draw font-mono text-[0.875rem]"
       >
         {shortId(entry.hash)}
       </a>
       <p className="t-label mt-1" style={PLAIN_CASE}>
-        {titleOf(entry.step)}
+        {titleOf(shots, entry.step)}
       </p>
     </li>
   );
 }
 
 export function ChainFeed({ entries }: { entries: FeedEntry[] }) {
+  const t = useTranslations("sandbox.run");
   return (
-    <aside aria-label="On chain">
-      <h2 className="t-label">On chain</h2>
+    <aside aria-label={t("feedLabel")}>
+      <h2 className="t-label">{t("feedLabel")}</h2>
       <div data-lenis-prevent className="mt-4 md:max-h-[60vh] md:overflow-auto">
         {entries.length === 0 ? (
-          <p className="t-label border-t border-line pt-3">Transactions appear here as they land.</p>
+          <p className="t-label border-t border-line pt-3">{t("feedEmpty")}</p>
         ) : (
           <ol>
             {entries.map((entry) => (

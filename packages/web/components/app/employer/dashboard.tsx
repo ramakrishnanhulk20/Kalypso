@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { Company } from "@kalypso/core";
 import type { RebuiltTreasury } from "@/lib/employer";
 import { ErrorNote } from "@/components/app/error-note";
@@ -29,25 +30,29 @@ function short4(address: string): string {
 type Read = { phase: "loading" } | { phase: "done"; company: Company; publiclyReadable: boolean } | { phase: "failed"; error: ShownError };
 
 function Facts({ treasury, accountantId, readable }: { treasury: string; accountantId: number | null; readable: boolean }) {
+  const t = useTranslations("employer.dashboard");
   const plain = { textTransform: "none", letterSpacing: "0.04em" } as const;
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-2">
       <a href={`${EXPLORER_URL}/account/${treasury}`} target="_blank" rel="noopener" className={FACT} style={plain}>
-        Treasury {short4(treasury)}
+        {t("treasury", { short: short4(treasury) })}
       </a>
       <AccountantFact accountantId={accountantId} publiclyReadable={readable} />
       <a href={`${EXPLORER_URL}/contract/${contracts.payroll}`} target="_blank" rel="noopener" className={FACT} style={plain}>
-        Payroll contract {shortId(contracts.payroll)}
+        {t("payrollContract", { short: shortId(contracts.payroll) })}
       </a>
     </div>
   );
 }
 
 export function Dashboard({ company }: { company: SavedCompany }) {
+  const t = useTranslations("employer.dashboard");
   const wallet = useWallet();
   const companyId = useMemo(() => BigInt(company.id), [company.id]);
   const [read, setRead] = useState<Read>({ phase: "loading" });
   const [tick, setTick] = useState(0);
+  // Reading the company again after a failure, without touching the panels' own refresh count.
+  const [attempt, setAttempt] = useState(0);
   // The result of a rebuild made from an error note. The balance error it answered goes away once the
   // balance reads again, and the rebuilt figure and any mismatch must not go with it.
   const [recovered, setRecovered] = useState<RebuiltTreasury | null>(null);
@@ -72,14 +77,14 @@ export function Dashboard({ company }: { company: SavedCompany }) {
     return () => {
       current = false;
     };
-  }, [wallet, companyId]);
+  }, [wallet, companyId, attempt]);
 
   const recovery = useMemo(() => ({ wallet, companyId, onRebuilt }), [wallet, companyId, onRebuilt]);
 
   return (
     <RecoveryProvider value={recovery}>
       <PageHeading
-        eyebrow={`Company #${company.id}`}
+        eyebrow={t("eyebrow", { id: company.id })}
         title={read.phase === "done" ? read.company.label : company.label}
         titleClassName="t-h2 mt-4 [overflow-wrap:anywhere]"
         titleStyle={TITLE_SIZE}
@@ -93,7 +98,14 @@ export function Dashboard({ company }: { company: SavedCompany }) {
         leadClassName=""
         className="pb-[6vh]"
       />
-      {read.phase === "failed" ? <ErrorNote error={read.error} /> : null}
+      {read.phase === "failed" ? (
+        <div>
+          <ErrorNote error={read.error} />
+          <button type="button" className="btn-ghost mt-4" onClick={() => setAttempt((n) => n + 1)}>
+            {t("retry")}
+          </button>
+        </div>
+      ) : null}
       {read.phase === "done" ? (
         <>
           <TreasuryPanel companyId={companyId} tick={tick} refresh={refresh} recovered={recovered} />

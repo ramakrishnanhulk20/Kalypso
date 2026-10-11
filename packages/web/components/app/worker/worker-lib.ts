@@ -57,7 +57,8 @@ async function build(): Promise<WorkerKit> {
       try {
         const company = await core.getCompany(port, config.contracts.payroll, companyId);
         const facts = {
-          label: cleanChainText(company.label) || `Company #${key}`,
+          // A company with an empty name shows its number alone, which reads the same in every language.
+          label: cleanChainText(company.label) || `#${key}`,
           publiclyReadable: isPublishedAuditor(core.PUBLISHED_DEMO_AUDITOR_IDS, config.contracts.auditor, company.auditorId),
         };
         known.set(key, facts);

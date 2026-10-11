@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { SandboxStep } from "@/lib/sandbox/engine";
-import { FRESH_RUN, progressFraction, reduceRun, rowStatus, secondsLeft, stepNumber, timeLeftLabel } from "./run-state";
+import { englishT } from "../../lib/i18n/english";
+import { FRESH_RUN, liveSentence, progressFraction, reduceRun, rowStatus, secondsLeft, stepNumber, timeLeftLabel } from "./run-state";
 import type { RunAction, RunState } from "./run-state";
 import { SHOTS, TOTAL_SECONDS } from "./shots";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
+const run = englishT("sandbox.run");
+const progress = englishT("sandbox.progress");
 
 function play(actions: RunAction[], from: RunState = FRESH_RUN): RunState {
   return actions.reduce(reduceRun, from);
@@ -29,9 +32,10 @@ describe("reduceRun", () => {
     expect(rowStatus(state, 2)).toBe("waiting");
   });
 
-  it("keeps the engine's own sentence untouched", () => {
+  it("keeps the engine's own sentence untouched, and its step and counts beside it", () => {
     const state = play([{ type: "begin" }, event("keys", 0)]);
     expect(state.label).toBe("label for keys");
+    expect(state.progress).toEqual({ step: "keys", done: 0, total: 1 });
   });
 
   it("does not move backwards while the engine fast-forwards through finished work", () => {
@@ -48,13 +52,15 @@ describe("reduceRun", () => {
     expect(state.feed.map((entry) => entry.step)).toEqual(["fund", "fund"]);
   });
 
-  it("marks the step the run stopped in, and clears it on the next begin", () => {
-    const stopped = play([{ type: "begin" }, event("keys", 0), event("fund", 1_000), { type: "fail", message: "No." }]);
+  it("marks the step the run stopped in, keeps the error's code, and clears both on the next begin", () => {
+    const stopped = play([{ type: "begin" }, event("keys", 0), event("fund", 1_000), { type: "fail", message: "No.", code: "SUBMIT_REFUSED" }]);
     expect(rowStatus(stopped, 1)).toBe("failed");
     expect(stopped.error).toBe("No.");
+    expect(stopped.errorCode).toBe("SUBMIT_REFUSED");
     expect(stopped.running).toBe(false);
     const again = reduceRun(stopped, { type: "begin" });
     expect(again.error).toBeNull();
+    expect(again.errorCode).toBeNull();
     expect(rowStatus(again, 1)).toBe("current");
   });
 
@@ -63,6 +69,22 @@ describe("reduceRun", () => {
     expect(state.frontier).toBe(SHOTS.length);
     expect(state.seconds.pay).toBe(4);
     expect(progressFraction(state, 9_000)).toBe(1);
+  });
+});
+
+describe("the live line in each language", () => {
+  it("shows the engine's own words in English and a sentence by step elsewhere", () => {
+    const state = play([{ type: "begin" }, { type: "progress", at: 0, progress: { step: "workers", label: "Registering worker 2's own audit key", done: 2, total: 3 } }]);
+    expect(liveSentence(state, "en", progress)).toBe("Registering worker 2's own audit key");
+    expect(liveSentence(state, "es", progress)).toBe("Setting up worker 2 of 3: audit key, token account, invite and acceptance");
+    expect(liveSentence(FRESH_RUN, "es", progress)).toBe("");
+  });
+
+  it("has a sentence for every step the engine reports", () => {
+    for (const step of [...SHOTS.map((shot) => shot.key), "done" as const]) {
+      const state = play([{ type: "progress", at: 0, progress: { step, label: "x", done: 0, total: 1 } }]);
+      expect(liveSentence(state, "fr", progress)).not.toBe("");
+    }
   });
 });
 
@@ -81,16 +103,16 @@ describe("time and progress", () => {
   });
 
   it("rounds minutes left up, and says under a minute below 60 seconds", () => {
-    expect(timeLeftLabel(0)).toBe("about 3 min left");
-    expect(timeLeftLabel(2)).toBe("about 3 min left");
-    expect(timeLeftLabel(3)).toBe("about 2 min left");
-    expect(timeLeftLabel(6)).toBe("about 2 min left");
-    expect(timeLeftLabel(7)).toBe("under a minute left");
-    expect(timeLeftLabel(SHOTS.length)).toBe("under a minute left");
+    expect(timeLeftLabel(run, 0)).toBe("about 3 min left");
+    expect(timeLeftLabel(run, 2)).toBe("about 3 min left");
+    expect(timeLeftLabel(run, 3)).toBe("about 2 min left");
+    expect(timeLeftLabel(run, 6)).toBe("about 2 min left");
+    expect(timeLeftLabel(run, 7)).toBe("under a minute left");
+    expect(timeLeftLabel(run, SHOTS.length)).toBe("under a minute left");
   });
 
   it("changes when a step finishes, never before", () => {
-    const labels = Array.from({ length: SHOTS.length }, (_, frontier) => timeLeftLabel(frontier));
+    const labels = Array.from({ length: SHOTS.length }, (_, frontier) => timeLeftLabel(run, frontier));
     expect(new Set(labels.slice(0, 3)).size).toBe(1);
     expect(labels[3]).not.toBe(labels[2]);
   });

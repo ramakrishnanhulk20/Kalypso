@@ -1,0 +1,51 @@
+---
+title: "Vue d'ensemble"
+description: "Ce qu'est Kalypso, à qui il s'adresse, et ce qui reste privé ou non."
+---
+
+Kalypso tient son nom de la Kalypso grecque (Καλυψώ), « celle qui cache ».
+
+Kalypso, c'est la paie sur Stellar où personne ne lit les salaires, sauf ceux qui doivent les lire. Une entreprise paie son équipe en USDC. Le registre public montre que chaque paiement a eu lieu, jamais son montant. Chaque salarié lit uniquement sa propre paie, et le comptable de l'entreprise détient une clé qui lit chaque montant que l'entreprise a payé.
+
+Il repose sur le jeton confidentiel d'OpenZeppelin pour Stellar, que la Stellar Development Foundation cite pour la paie. Kalypso y ajoute un contrat de paie, un registre des clés d'audit et une bibliothèque cliente qui prouve chaque paiement dans le navigateur. Trois écrans le mettent en œuvre : l'employeur paie depuis un tableur, chaque salarié rejoint l'entreprise avec Face ID ou un portefeuille et retire son argent auprès d'une ancre, et le comptable ouvre et exporte les comptes. Il tourne aujourd'hui sur le testnet Stellar.
+
+## À qui il s'adresse
+
+À toute entreprise qui paie une équipe à distance en USDC. Un paiement USDC ordinaire sur une chaîne publique montre son montant à quiconque dispose d'un explorateur de blocs, donc chaque salaire payé ainsi est public. Kalypso garde le paiement sur la chaîne et le montant scellé, et le comptable peut toujours lire les comptes.
+
+## Les trois clés
+
+| Clé | Détenue par | Ce qu'elle ouvre |
+|---|---|---|
+| Clé de trésorerie | L'employeur | Déplace l'argent de l'entreprise et lit le solde de la trésorerie elle-même. Le contrat de paie paie chaque salarié au plus une fois par cycle, et seulement avec la signature de cette clé. |
+| Clé de paie | Chaque salarié, seul | Les fiches de paie et le solde de ce salarié. Rien d'autre dans la paie. |
+| Clé du comptable | Le comptable de l'entreprise | Chaque montant que l'entreprise a payé, et le solde de la trésorerie après chaque paiement. Elle ne peut pas déplacer d'argent. |
+
+Le comptable enregistre sa propre clé dans le registre d'audit de Kalypso, et lui seul peut la changer. Aucune clé détenue par Kalypso ne peut lire les salaires d'une vraie entreprise ni déplacer son argent.
+
+## Ce qui reste privé, et ce qui ne l'est pas
+
+Privé : chaque montant de salaire et chaque solde.
+
+Public, par conception :
+
+- Qui paie qui, et quand. La liste des salariés de chaque entreprise est sur la chaîne, donc le nombre de salariés est public aussi.
+- Les montants de dépôt et de retrait. Le dépôt qui alimente la trésorerie montre à peu près ce que coûte la paie, et un salarié qui retire exactement sa paie la révèle.
+- Le comptable voit chaque montant que l'entreprise paie. C'est à cela que sert sa clé.
+
+Non défendu :
+
+- Une clé qui fuit ouvre tout ce qui a jamais été chiffré pour elle. Changer la clé ne protège que les paiements futurs.
+- Le contrat ne peut pas savoir si un montant caché est le bon salaire. Après chaque paiement, le moteur de cycle de Kalypso vérifie que seuls les montants approuvés ont quitté la trésorerie, donc un mauvais montant est détecté après coup, et non empêché.
+- Une extension de portefeuille ou un ordinateur compromis, un utilisateur qui signe le message de clé de Kalypso sur un site d'hameçonnage, et l'émetteur d'USDC qui gèle les fonds mis en commun.
+- Des failles dans le jeton confidentiel d'OpenZeppelin, ses circuits ou son vérificateur, qui sont récents et non audités.
+
+Kalypso fonctionne uniquement sur testnet et n'a pas été audité par un cabinet de sécurité. Les [pages de sécurité](/docs/security/overview) disent comment il a été vérifié et comment le vérifier vous-même.
+
+## Pour aller plus loin
+
+- [Prise en main](/docs/getting-started) : lancez une paie dans votre navigateur, sans portefeuille.
+- Les guides pour [l'employeur](/docs/guides/employer), [le salarié](/docs/guides/worker) et [le comptable](/docs/guides/accountant) : chaque écran, pas à pas.
+- [Comment ça marche](/docs/how-it-works)
+- [Contrats et adresses](/docs/contracts)
+- [FAQ](/docs/faq)

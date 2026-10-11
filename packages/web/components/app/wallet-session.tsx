@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { WalletPort } from "@/lib/wallet/port";
 import { loadEmployer } from "./loaders";
 
@@ -35,6 +36,7 @@ export function WalletProvider({ wallet, children }: { wallet: WalletPort; child
 
 // Wraps a whole page, header included, so the header's wallet chip and the gate share one wallet.
 export function WalletSession({ children }: { children: ReactNode }) {
+  const t = useTranslations("app");
   const [wallet, setWallet] = useState<WalletPort | null>(null);
   const [devNote, setDevNote] = useState<string | null>(null);
   const [devExtras, setDevExtras] = useState<ReactNode>(null);
@@ -45,7 +47,7 @@ export function WalletSession({ children }: { children: ReactNode }) {
     if (process.env.NODE_ENV !== "production") {
       if (new URLSearchParams(window.location.search).get("wallet") !== "throwaway") return;
       let current = true;
-      setDevNote("Preparing a development wallet");
+      setDevNote(t("devPreparing"));
       import("./dev-wallet").then(
         async (dev) => {
           try {
@@ -55,15 +57,17 @@ export function WalletSession({ children }: { children: ReactNode }) {
             setDevNote(null);
             setWallet(made);
           } catch (err) {
-            if (current) setDevNote(err instanceof Error ? err.message : "The development wallet could not be made.");
+            if (current) setDevNote(err instanceof Error ? err.message : t("devFailed"));
           }
         },
-        () => current && setDevNote("The development wallet module did not load."),
+        () => current && setDevNote(t("devModuleFailed")),
       );
       return () => {
         current = false;
       };
     }
+    // The development note's words never change while the page is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const disconnect = useCallback(() => {

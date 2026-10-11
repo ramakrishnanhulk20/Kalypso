@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { ErrorNote } from "@/components/app/error-note";
 import { Checkbox, TextField } from "@/components/app/fields";
 import { loadEmployer } from "@/components/app/loaders";
@@ -24,11 +25,11 @@ function Section({ number, title, locked, children }: { number: number; title: s
       <div className="flex items-center gap-3">
         <span
           aria-hidden="true"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line font-mono text-[0.8125rem] text-muted"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-strong font-mono text-[0.8125rem] text-muted"
         >
           {number}
         </span>
-        <h2 className="font-display text-[1.25rem] font-medium text-paper" style={DISPLAY_36}>
+        <h2 className="font-display text-[1.25rem] font-medium text-fg" style={DISPLAY_36}>
           {title}
         </h2>
       </div>
@@ -38,6 +39,7 @@ function Section({ number, title, locked, children }: { number: number; title: s
 }
 
 export function SetupWizard({ onCreated }: { onCreated: (company: SavedCompany) => void }) {
+  const t = useTranslations("employer.wizard");
   const wallet = useWallet();
   const [idText, setIdText] = useState("");
   const [address, setAddress] = useState("");
@@ -56,11 +58,10 @@ export function SetupWizard({ onCreated }: { onCreated: (company: SavedCompany) 
   const checked = check.value;
   const bytes = labelBytes(name);
   const nameValid = bytes >= 1 && bytes <= MAX_LABEL_BYTES;
-  const nameError =
-    bytes > MAX_LABEL_BYTES || (nameTouched && bytes === 0) ? "The company name must be 1 to 64 bytes long." : null;
+  const nameError = bytes > MAX_LABEL_BYTES || (nameTouched && bytes === 0) ? t("nameError") : null;
 
   const create = useAction(async (onProgress) => {
-    if (!checked) throw new Error("The accountant has not been checked.");
+    if (!checked) throw new Error(t("notChecked"));
     const lib = await loadEmployer();
     const made = await lib.setUpCompany(
       wallet,
@@ -80,14 +81,12 @@ export function SetupWizard({ onCreated }: { onCreated: (company: SavedCompany) 
   const thirdOpen = secondOpen && nameValid;
 
   return (
-    <div className="mx-auto w-full max-w-[640px] rounded-card border border-line bg-ink-2 p-7 sm:p-9" style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}>
-      <Section number={1} title="Your accountant" locked={false}>
-        <p className="font-sans text-base text-muted">
-          Ask your accountant to open the accountant page, register their key and send you two things: their accountant id and their address.
-        </p>
+    <div className="mx-auto w-full max-w-[640px] rounded-card border border-line bg-raised p-7 sm:p-9" style={{ boxShadow: "var(--shadow-card)" }}>
+      <Section number={1} title={t("accountant")} locked={false}>
+        <p className="font-sans text-base text-muted">{t("accountantText")}</p>
         <div className="mt-5 flex flex-col gap-4">
           <TextField
-            label="Accountant id"
+            label={t("idLabel")}
             inputMode="numeric"
             value={idText}
             disabled={check.running || create.running}
@@ -97,7 +96,7 @@ export function SetupWizard({ onCreated }: { onCreated: (company: SavedCompany) 
             }}
           />
           <TextField
-            label="Accountant address"
+            label={t("addressLabel")}
             mono
             placeholder="G..."
             value={address}
@@ -110,41 +109,37 @@ export function SetupWizard({ onCreated }: { onCreated: (company: SavedCompany) 
         </div>
         <div className="mt-5">
           <StepButton action={check} disabled={create.running} onClick={() => void check.start()}>
-            Check
+            {t("check")}
           </StepButton>
         </div>
         {check.error ? <ErrorNote error={check.error} /> : null}
         {checked ? (
-          <div className="mt-5 rounded-button bg-ink-3 p-4">
-            <p className="t-label">Confirmation code</p>
-            <p className="mt-2 font-mono text-[1.25rem] text-paper">{checked.shortKeyHex}</p>
-            <p className="mt-3 font-sans text-[0.9375rem] text-muted">
-              Ask your accountant to read you the code on their screen. Continue only if it matches.
-            </p>
-            <Checkbox className="mt-4" label="The code matches" checked={matches} onChange={(event) => setMatches(event.target.checked)} />
+          <div className="mt-5 rounded-button bg-raised-2 p-4">
+            <p className="t-label">{t("code")}</p>
+            <p className="mt-2 font-mono text-[1.25rem] text-fg">{checked.shortKeyHex}</p>
+            <p className="mt-3 font-sans text-[0.9375rem] text-muted">{t("codeText")}</p>
+            <Checkbox className="mt-4" label={t("matches")} checked={matches} onChange={(event) => setMatches(event.target.checked)} />
           </div>
         ) : null}
       </Section>
 
-      <Section number={2} title="Company name" locked={!secondOpen}>
+      <Section number={2} title={t("name")} locked={!secondOpen}>
         <TextField
-          label="Name shown on payslips"
+          label={t("nameLabel")}
           value={name}
           error={nameError}
           disabled={create.running}
           onChange={(event) => setName(event.target.value)}
           onBlur={() => setNameTouched(true)}
-          hint={<span className="t-label">{bytes}/{MAX_LABEL_BYTES}</span>}
+          hint={<span className="t-label">{t("counter", { n: bytes, max: MAX_LABEL_BYTES })}</span>}
         />
       </Section>
 
-      <Section number={3} title="Create" locked={!thirdOpen}>
-        <p className="font-sans text-base text-muted">
-          Freighter will ask you to approve two transactions: registering the treasury with the confidential token, and creating the company.
-        </p>
+      <Section number={3} title={t("create")} locked={!thirdOpen}>
+        <p className="font-sans text-base text-muted">{t("createText")}</p>
         <div className="mt-5">
           <StepButton action={create} disabled={!thirdOpen} onClick={() => void create.start()}>
-            Create the company
+            {t("createButton")}
           </StepButton>
         </div>
         {create.error ? <ErrorNote error={create.error} /> : null}

@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { SealedPayment } from "@kalypso/core";
+import { useLocale, useTranslations } from "next-intl";
 import { useWideScreen } from "@/hooks/use-wide-screen";
+import { isLocale } from "@/lib/i18n/locales";
 import { buildLedgerRows, paymentKey, shortId } from "@/lib/ledger";
 import type { LedgerRow } from "@/lib/ledger";
 import { EXPLORER_URL } from "@/lib/links";
@@ -31,6 +33,7 @@ const CELL = "px-[22px] py-[14px] leading-6";
 const HEAD_CELL = "t-label px-[22px] py-3 text-left font-normal";
 const DISPLAY_36 = { fontVariationSettings: '"opsz" 36' } satisfies CSSProperties;
 
+/** The English title of the withheld total, kept for the tests that read it. */
 export const WITHHELD_TITLE = "Some payments could not be read, so no total is shown.";
 
 export function sealedText(payment: SealedPayment): string {
@@ -66,20 +69,27 @@ export function totalOf(
   return { kind: "total", value: sum };
 }
 
+/** The page's locale as the money helpers expect it. */
+export function useMoneyLocale() {
+  const locale = useLocale();
+  return isLocale(locale) ? locale : "en";
+}
+
 export function NoKeyFits() {
+  const t = useTranslations("landing.ledger");
   return (
-    <span className="font-mono text-[0.875rem] text-fail">No key fits</span>
+    <span className="font-mono text-[0.875rem] text-fail">{t("noKeyFits")}</span>
   );
 }
 
 export function WithheldTotal() {
+  const t = useTranslations("landing.ledger");
   return (
     <span
-      className="font-mono text-[0.875rem] md:whitespace-nowrap"
-      style={{ color: "var(--color-wait)" }}
-      title={WITHHELD_TITLE}
+      className="font-mono text-[0.875rem] text-wait md:whitespace-nowrap"
+      title={t("withheldTitle")}
     >
-      Total withheld
+      {t("withheld")}
     </span>
   );
 }
@@ -126,14 +136,15 @@ function TxLink({
   children: ReactNode;
   className: string;
 }) {
+  const t = useTranslations("common");
   if (!interactive) return <span className={className}>{children}</span>;
   return (
     <a
       href={`${EXPLORER_URL}/tx/${txHash}`}
       target="_blank"
       rel="noopener"
-      aria-label={`Open payment ${shortId(txHash)} on Stellar Expert`}
-      className={`${className} transition-colors hover:text-paper`}
+      aria-label={t("openPayment", { id: shortId(txHash) })}
+      className={`${className} transition-colors hover:text-fg`}
     >
       {children}
     </a>
@@ -154,6 +165,8 @@ function PaymentRow({
   /** From the md breakpoint up the transaction sits in its own column, below it under the worker. */
   wide: boolean;
 }) {
+  const t = useTranslations("landing.ledger");
+  const locale = useMoneyLocale();
   const { payment } = row;
   const lens = layer === "revealed";
   const amount = amounts?.get(row.id) ?? null;
@@ -179,7 +192,7 @@ function PaymentRow({
           className="whitespace-nowrap font-display text-[1.125rem] font-medium leading-none"
           style={DISPLAY_36}
         >
-          {displayUsdc(amount)}
+          {displayUsdc(amount, locale)}
         </span>{" "}
         <span className="t-label leading-none">USDC</span>
       </>
@@ -198,7 +211,7 @@ function PaymentRow({
         </span>
       </td>
       <td className={CELL}>
-        <span className="whitespace-nowrap font-mono text-[0.875rem] text-paper">
+        <span className="whitespace-nowrap font-mono text-[0.875rem] text-fg">
           {shortId(payment.worker)}
         </span>
         {wide ? null : (
@@ -208,7 +221,7 @@ function PaymentRow({
               txHash={payment.txHash}
               className="underline decoration-line underline-offset-2"
             >
-              tx {payment.txHash.slice(0, 4)}…{payment.txHash.slice(-4)}
+              {t("tx", { short: `${payment.txHash.slice(0, 4)}…${payment.txHash.slice(-4)}` })}
             </TxLink>
           </span>
         )}
@@ -240,13 +253,15 @@ function SubtotalRow({
   amounts: Map<string, bigint | null> | null;
   complete: boolean;
 }) {
+  const t = useTranslations("landing.ledger");
+  const locale = useMoneyLocale();
   const lens = layer === "revealed";
-  const label = `${row.periodLabel} total`;
+  const label = t("subtotal", { period: row.periodLabel });
 
   let amountCell: ReactNode;
   if (!lens) {
     amountCell = (
-      <span className="font-mono text-[0.875rem] text-faint">sealed</span>
+      <span className="font-mono text-[0.875rem] text-faint">{t("sealed")}</span>
     );
   } else if (amounts === null) {
     amountCell = <PendingBar />;
@@ -259,7 +274,7 @@ function SubtotalRow({
         <WithheldTotal />
       ) : (
         <span className="font-display text-[1rem] font-semibold leading-none text-seal-hi max-md:leading-[1.35] md:whitespace-nowrap">
-          Total <span className="max-md:block">{displayUsdc(total.value)} USDC</span>
+          {t("total")} <span className="max-md:block">{displayUsdc(total.value, locale)} USDC</span>
         </span>
       );
   }
@@ -267,8 +282,7 @@ function SubtotalRow({
   return (
     <tr
       data-ledger-row={row.index}
-      className={`border-t border-line ${lens ? "lens-tint-subtotal" : ""}`}
-      style={lens ? undefined : { background: "rgba(242,236,230,0.02)" }}
+      className={`border-t border-line ${lens ? "lens-tint-subtotal" : "subtotal-row"}`}
     >
       <td className={`${CELL} max-md:hidden`}>
         <span className="t-label whitespace-nowrap">{label}</span>
@@ -293,6 +307,8 @@ export function LedgerTable({
   onRetry,
   interactive = true,
 }: LedgerTableProps) {
+  const t = useTranslations("landing.ledger");
+  const common = useTranslations("common");
   const lens = layer === "revealed";
   const wide = useWideScreen();
   const rows = useMemo(
@@ -308,15 +324,15 @@ export function LedgerTable({
         className="w-full border-collapse"
         style={{ tableLayout: "fixed" }}
         data-layer={layer}
-        aria-label="Payments"
+        aria-label={t("label")}
       >
         <thead>
           <tr className={lens ? "lens-tint" : undefined}>
-            <th className={`${HEAD_CELL} w-[22%] max-md:hidden`}>Run</th>
-            <th className={`${HEAD_CELL} w-[26%] max-md:w-[58%]`}>Worker</th>
-            <th className={`${HEAD_CELL} w-[22%] max-md:hidden`}>Payment</th>
+            <th className={`${HEAD_CELL} w-[22%] max-md:hidden`}>{t("run")}</th>
+            <th className={`${HEAD_CELL} w-[26%] max-md:w-[58%]`}>{t("worker")}</th>
+            <th className={`${HEAD_CELL} w-[22%] max-md:hidden`}>{t("payment")}</th>
             <th className={`${HEAD_CELL} w-[30%] text-right max-md:w-[42%]`}>
-              Amount
+              {t("amount")}
             </th>
           </tr>
         </thead>
@@ -349,11 +365,9 @@ export function LedgerTable({
       </table>
       {failed && !lens ? (
         <div className="flex min-h-[318px] flex-col items-center justify-center gap-4 border-t border-line px-[22px] py-10 text-center">
-          <p className="font-sans text-muted">
-            Couldn&apos;t reach Stellar testnet just now.
-          </p>
+          <p className="font-sans text-muted">{t("unreachable")}</p>
           <button type="button" className="btn-ghost" onClick={onRetry}>
-            Try again
+            {common("tryAgain")}
           </button>
         </div>
       ) : null}

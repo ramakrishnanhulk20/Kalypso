@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { RebuiltTreasury, TreasuryBalance } from "@/lib/employer";
 import { ErrorNote } from "@/components/app/error-note";
 import type { ShownError } from "@/components/app/errors";
@@ -14,6 +15,7 @@ import { TxLink } from "@/components/app/tx-link";
 import { useAction } from "@/components/app/use-action";
 import { useLeaveWarning } from "@/components/app/use-leave-warning";
 import { useWallet } from "@/components/app/wallet-session";
+import { useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { displayUsdc } from "@/lib/money";
 import { depositAmount } from "./deposit-amount";
 
@@ -53,10 +55,13 @@ export function TreasuryPanel({
   refresh: () => void;
   recovered: RebuiltTreasury | null;
 }) {
+  const t = useTranslations("employer.treasury");
+  const app = useTranslations("app");
+  const locale = useMoneyLocale();
   const wallet = useWallet();
   const balance = useBalance(companyId, tick);
   const [amountText, setAmountText] = useState("");
-  const deposit = depositAmount(amountText);
+  const deposit = depositAmount(amountText, locale, t);
   const { amount } = deposit;
 
   // The click passes the amount its own render showed on the button, so the deposit is that figure.
@@ -83,24 +88,29 @@ export function TreasuryPanel({
     funded !== undefined && !funded.matchesDevice && funded.deviceExpected !== undefined && funded.deviceExpected + funded.deposited !== funded.value;
 
   return (
-    <Panel eyebrow="01" title="Treasury">
+    <Panel eyebrow={t("eyebrow")} title={t("title")}>
       <Block>
         {balance.phase === "loading" ? (
           <div role="status">
             <span className="skeleton-bar block" style={{ height: 40, width: 220 }} />
             <p className="t-label mt-3" style={{ textTransform: "none", letterSpacing: "0.04em" }}>
-              Opening your treasury with your key
+              {t("opening")}
             </p>
           </div>
         ) : balance.phase === "done" ? (
           <div>
-            <p className="font-display text-[clamp(2rem,4vw,3rem)] font-medium leading-none text-paper" style={DISPLAY_144}>
-              {displayUsdc(balance.balance.value)}
+            <p className="font-display text-[clamp(2rem,4vw,3rem)] font-medium leading-none text-fg" style={DISPLAY_144}>
+              {displayUsdc(balance.balance.value, locale)}
             </p>
-            <p className="t-label mt-3">USDC · sealed on chain, opened with your key</p>
+            <p className="t-label mt-3">{t("sealedLabel")}</p>
           </div>
         ) : (
-          <ErrorNote error={balance.error} />
+          <div>
+            <ErrorNote error={balance.error} />
+            <button type="button" className="btn-ghost mt-4" onClick={refresh}>
+              {t("readAgain")}
+            </button>
+          </div>
         )}
         {recovered ? (
           <div className="mt-4">
@@ -109,10 +119,10 @@ export function TreasuryPanel({
         ) : null}
       </Block>
 
-      <Block label="Add funds" className="mt-12">
+      <Block label={t("addFunds")} className="mt-12">
         <div className="flex flex-wrap items-start gap-4">
           <TextField
-            label="Amount (USDC)"
+            label={t("amountLabel")}
             inputMode="decimal"
             value={amountText}
             error={deposit.error}
@@ -133,43 +143,37 @@ export function TreasuryPanel({
             </StepButton>
           </div>
         </div>
-        {deposit.confirm ? <p className="mt-3 font-sans text-[0.9375rem] text-paper">{deposit.confirm}</p> : null}
+        {deposit.confirm ? <p className="mt-3 font-sans text-[0.9375rem] text-fg">{deposit.confirm}</p> : null}
         {fund.error ? <ErrorNote error={fund.error} /> : null}
         {funded ? (
           <div role="status" className="mt-4 space-y-2 font-sans text-[0.9375rem] text-muted">
-            {funded.resumed ? (
-              <p>
-                A deposit from earlier finished first: <span className="text-paper">{displayUsdc(funded.deposited)} USDC</span> was added. Nothing
-                new was deposited.
-              </p>
-            ) : null}
+            {funded.resumed ? <p>{t("resumed", { amount: displayUsdc(funded.deposited, locale) })}</p> : null}
             {deviceDiffers ? (
-              <p>
-                The chain holds <span className="text-paper">{displayUsdc(funded.value)} USDC</span>; this device expected {expectedText(funded.deviceExpected)}.
-                The chain&apos;s value is now saved.
-              </p>
+              <p>{t("differs", { amount: displayUsdc(funded.value, locale), expected: expectedText(funded.deviceExpected, locale, app) })}</p>
             ) : null}
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="t-label">Deposit</span>
+              <span className="t-label">{t("deposit")}</span>
               <TxLink hash={funded.depositTx} />
-              <span className="t-label">Merge</span>
+              <span className="t-label">{t("merge")}</span>
               <TxLink hash={funded.mergeTx} />
             </p>
           </div>
         ) : null}
         <p className="mt-5 max-w-[36rem] font-sans text-[0.9375rem] text-muted">
-          Need test USDC? Swap test XLM for USDC on the{" "}
-          <a href="https://lab.stellar.org" target="_blank" rel="noopener" className="link-draw text-[0.9375rem] text-paper">
-            Stellar Laboratory
-          </a>{" "}
-          or any testnet DEX, then add it here.
+          {t.rich("needUsdc", {
+            lab: (chunks) => (
+              <a href="https://lab.stellar.org" target="_blank" rel="noopener" className="link-draw text-[0.9375rem] text-fg">
+                {chunks}
+              </a>
+            ),
+          })}
         </p>
       </Block>
 
       <Block className="mt-12">
         <details className="group">
-          <summary className="t-label inline-flex cursor-pointer list-none items-center gap-2 transition-colors hover:text-paper [&::-webkit-details-marker]:hidden">
-            Treasury tools
+          <summary className="t-label inline-flex cursor-pointer list-none items-center gap-2 transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
+            {t("tools")}
             <svg
               width="10"
               height="10"
@@ -187,7 +191,7 @@ export function TreasuryPanel({
           </summary>
           <div className="mt-4">
             <StepButton variant="ghost" action={rebuild} onClick={() => void rebuild.start()}>
-              Rebuild from chain
+              {app("rebuild")}
             </StepButton>
             {rebuild.error ? <ErrorNote error={rebuild.error} /> : null}
             {rebuild.value ? (

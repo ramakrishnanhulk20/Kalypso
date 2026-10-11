@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { HistoryGap } from "@kalypso/core";
+import { englishT } from "../../../lib/i18n/english";
 import { cleanChainText, companyIdFromQuery, gapSentences, shortAddress } from "./text";
+
+const t = englishT("worker.gaps");
 
 describe("the company in an invite link", () => {
   it("reads a whole number", () => {
@@ -17,7 +20,7 @@ describe("the company in an invite link", () => {
 
 describe("text that came from the chain", () => {
   it("turns control and direction characters into spaces and collapses runs", () => {
-    expect(cleanChainText("Andes\u202EStudio\u0007  Ltd")).toBe("Andes Studio Ltd");
+    expect(cleanChainText("Andes‮Studio\u0007  Ltd")).toBe("Andes Studio Ltd");
   });
 
   it("caps the length", () => {
@@ -38,10 +41,14 @@ describe("history gaps in plain words", () => {
       { reason: "payslip_missing", companyId: 7n, runId: 202610n },
       { reason: "payslip_missing", companyId: 7n, runId: 202610n },
     ];
-    const sentences = gapSentences(gaps);
+    const sentences = gapSentences(gaps, t);
     expect(sentences).toHaveLength(2);
     expect(sentences[0]).toBe("The chain lists 2 companies for you, but this device has joined 1.");
     expect(sentences[1]).toContain("run 202610 of company #7");
+  });
+
+  it("picks the singular when the count is one", () => {
+    expect(gapSentences([{ reason: "company_count_mismatch", expected: 1, found: 0 }], t)[0]).toBe("The chain lists 1 company for you, but this device has joined 0.");
   });
 
   it("has a sentence for every reason core can report", () => {
@@ -54,6 +61,6 @@ describe("history gaps in plain words", () => {
       { reason: "ledger_mismatch", companyId: 1n, runId: 3n },
       { reason: "paid_count_mismatch", companyId: 1n, runId: 3n, expected: 2, found: 1 },
     ];
-    expect(gapSentences(every)).toHaveLength(every.length);
+    expect(gapSentences(every, t)).toHaveLength(every.length);
   });
 });

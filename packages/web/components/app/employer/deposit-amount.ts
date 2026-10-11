@@ -1,6 +1,7 @@
-import { displayUsdc, parseTypedUsdc } from "@/lib/money";
-
-export const INVALID_AMOUNT = "Enter an amount above zero, like 4200 or 4,200.50.";
+import type { Locale } from "@/lib/i18n/locales";
+import type { PlainT } from "@/lib/i18n/types";
+import { editableUsdc, parseAmount } from "@/lib/i18n/amount";
+import { displayUsdc } from "@/lib/money";
 
 export interface DepositAmount {
   /** The stroops to deposit, or null when the field is empty or refused. */
@@ -12,10 +13,14 @@ export interface DepositAmount {
 }
 
 // The typed text is read once by the one strict parser, and that single value is what the
-// sentence, the button and the deposit all use, so "1,5" can never be shown as one thing and sent as another.
-export function depositAmount(text: string): DepositAmount {
-  const amount = parseTypedUsdc(text);
-  if (amount === null) return { amount, error: text.trim() === "" ? null : INVALID_AMOUNT, confirm: null, button: "Add to treasury" };
-  const shown = displayUsdc(amount);
-  return { amount, error: null, confirm: `You are adding ${shown} USDC.`, button: `Add ${shown} USDC` };
+// sentence, the button and the deposit all use, so "1,5" can never be shown as one thing and sent
+// as another. t is the employer.treasury namespace.
+export function depositAmount(text: string, locale: Locale, t: PlainT): DepositAmount {
+  const amount = parseAmount(text, locale);
+  if (amount === null) {
+    const error = text.trim() === "" ? null : t("invalid", { plain: "4200", grouped: editableUsdc(42_005_000_000n, locale) });
+    return { amount, error, confirm: null, button: t("addButton") };
+  }
+  const shown = displayUsdc(amount, locale);
+  return { amount, error: null, confirm: t("confirm", { amount: shown }), button: t("addAmount", { amount: shown }) };
 }

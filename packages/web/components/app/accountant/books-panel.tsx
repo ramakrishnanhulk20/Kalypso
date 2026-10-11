@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { PayrollCard } from "@/components/demo/payroll-card";
 import { ErrorNote } from "@/components/app/error-note";
 import { TextField } from "@/components/app/fields";
@@ -11,7 +12,7 @@ import { Block, Panel } from "@/components/app/panel";
 import { StepButton } from "@/components/app/step-button";
 import { useAction } from "@/components/app/use-action";
 import { useWallet } from "@/components/app/wallet-session";
-import { NoKeyFits, WithheldTotal, totalOf } from "@/components/key-lens/ledger-table";
+import { NoKeyFits, WithheldTotal, totalOf, useMoneyLocale } from "@/components/key-lens/ledger-table";
 import { amountsFrom } from "@/lib/ledger";
 import { displayUsdc } from "@/lib/money";
 
@@ -30,6 +31,8 @@ function download(filename: string, csv: string): void {
 }
 
 export function BooksPanel() {
+  const t = useTranslations("accountant.books");
+  const locale = useMoneyLocale();
   const wallet = useWallet();
   const [text, setText] = useState("");
   const [asked, setAsked] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export function BooksPanel() {
 
   const books = open.value;
   const exportCsv = useAction(async () => {
-    if (!books) throw new Error("No books are open.");
+    if (!books) throw new Error(t("noBooks"));
     const lib = await loadAccountant();
     const file = await lib.exportBooks(wallet, { companyId: books.companyId });
     download(file.filename, file.csv);
@@ -59,7 +62,7 @@ export function BooksPanel() {
   const grand = books && amounts ? totalOf(books.payments, amounts, books.complete) : null;
 
   return (
-    <Panel eyebrow="02" title="Open a company's books">
+    <Panel eyebrow={t("eyebrow")} title={t("title")}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -67,7 +70,7 @@ export function BooksPanel() {
         }}
       >
         <TextField
-          label="Company id"
+          label={t("idLabel")}
           inputMode="numeric"
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -75,7 +78,7 @@ export function BooksPanel() {
         />
         <div className="mt-4">
           <StepButton action={open} onClick={() => void open.start()}>
-            Open the books
+            {t("open")}
           </StepButton>
         </div>
       </form>
@@ -84,26 +87,26 @@ export function BooksPanel() {
       {showCard ? (
         <div className="mt-10">
           <PayrollCard
-            title={books?.label ?? `Company ${asked ?? ""}`}
+            title={books?.label ?? t("company", { id: asked ?? "" })}
             companyId={books?.companyId ?? BigInt(asked ?? "0")}
             chip={books ? { phase: "done", complete: books.complete } : { phase: "history", complete: false }}
-            opening={loading ? (open.progress ?? "Opening the books with your key in your browser") : null}
+            opening={loading ? (open.progress ?? t("opening")) : null}
             payments={payments}
             amounts={amounts}
             failed={false}
             onRetry={() => void open.start()}
           />
           {books && books.payments.length === 0 ? (
-            <p className="mt-4 font-sans text-[0.9375rem] text-muted">This company has not made a payment yet.</p>
+            <p className="mt-4 font-sans text-[0.9375rem] text-muted">{t("noPayments")}</p>
           ) : null}
           {books ? (
             <>
               {runCount >= 2 && grand ? (
                 <div className="mt-5 flex items-baseline justify-between border-t border-line pt-[14px]">
-                  <span className="font-sans text-base text-paper">Total</span>
+                  <span className="font-sans text-base text-fg">{t("total")}</span>
                   {grand.kind === "total" ? (
                     <span>
-                      <span className="font-display text-[1.25rem] font-semibold text-paper">{displayUsdc(grand.value)}</span>{" "}
+                      <span className="font-display text-[1.25rem] font-semibold text-fg">{displayUsdc(grand.value, locale)}</span>{" "}
                       <span className="t-label">USDC</span>
                     </span>
                   ) : grand.kind === "withheld" ? (
@@ -115,9 +118,9 @@ export function BooksPanel() {
               ) : null}
               <Block className="mt-6">
                 <StepButton variant="ghost" action={exportCsv} onClick={() => void exportCsv.start()}>
-                  Export CSV
+                  {t("export")}
                 </StepButton>
-                {exportCsv.value ? <p className="mt-3 font-sans text-[0.9375rem] text-muted">Saved {exportCsv.value}</p> : null}
+                {exportCsv.value ? <p className="mt-3 font-sans text-[0.9375rem] text-muted">{t("saved", { filename: exportCsv.value })}</p> : null}
                 {exportCsv.error ? <ErrorNote error={exportCsv.error} /> : null}
               </Block>
             </>
@@ -126,11 +129,13 @@ export function BooksPanel() {
       ) : null}
 
       <p className="mt-10 font-sans text-[0.9375rem] text-muted">
-        Want to see it first? The demo company&apos;s key is public on the{" "}
-        <Link href="/#lens" className="text-paper underline decoration-line underline-offset-[3px] transition-colors hover:decoration-paper">
-          home page
-        </Link>
-        .
+        {t.rich("seeFirst", {
+          link: (chunks) => (
+            <Link href="/#lens" className="text-fg underline decoration-line underline-offset-[3px] transition-colors hover:decoration-fg">
+              {chunks}
+            </Link>
+          ),
+        })}
       </p>
     </Panel>
   );

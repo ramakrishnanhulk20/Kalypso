@@ -5,20 +5,25 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// The swatches read the live tokens, so this sheet shows whichever theme is on.
 const SWATCHES = [
-  { name: "--color-ink", value: "#15100f" },
-  { name: "--color-ink-2", value: "#1d1716" },
-  { name: "--color-ink-3", value: "#261e1c" },
-  { name: "--color-line", value: "rgba(242,236,230,0.10)" },
-  { name: "--color-paper", value: "#f2ece6" },
-  { name: "--color-muted", value: "#a79c94" },
-  { name: "--color-faint", value: "#6e645e" },
-  { name: "--color-seal", value: "#c9473a" },
-  { name: "--color-seal-hi", value: "#d85a4c" },
-  { name: "--color-seal-deep", value: "#8e2e25" },
-  { name: "--color-ok", value: "#7fb8a4" },
-  { name: "--color-wait", value: "#8e9db3" },
-  { name: "--color-fail", value: "#a89be8" },
+  "--color-canvas",
+  "--color-raised",
+  "--color-raised-2",
+  "--color-line",
+  "--color-line-strong",
+  "--color-fg",
+  "--color-muted",
+  "--color-faint",
+  "--color-seal",
+  "--color-seal-hi",
+  "--color-seal-hover",
+  "--color-seal-deep",
+  "--color-on-seal",
+  "--color-ok",
+  "--color-wait",
+  "--color-fail",
+  "--color-terminal",
 ];
 
 export default function Lab() {
@@ -30,14 +35,13 @@ export default function Lab() {
 
       <section className="flex flex-col gap-20 px-[4vw] py-24">
         <div className="flex flex-wrap gap-6">
-          {SWATCHES.map((swatch) => (
-            <div key={swatch.name} className="flex flex-col gap-2">
+          {SWATCHES.map((name) => (
+            <div key={name} className="flex flex-col gap-2">
               <div
                 className="h-[80px] w-[120px] rounded-card border border-line"
-                style={{ background: `var(${swatch.name})` }}
+                style={{ background: `var(${name})` }}
               />
-              <p className="t-label">{swatch.name}</p>
-              <p className="t-label">{swatch.value}</p>
+              <p className="t-label">{name}</p>
             </div>
           ))}
         </div>

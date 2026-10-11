@@ -1,3 +1,4 @@
+import type { PlainT } from "@/lib/i18n/types";
 import type { InviteState } from "./use-invite";
 
 /**
@@ -30,24 +31,19 @@ export interface FinishSetupCopy {
 }
 
 /**
- * The Finish setting up card's words. A wallet not on chain yet keeps today's card. A wallet on
- * chain whose birth is not confirmed says so plainly, says the payslips below still work, and asks
- * to check again; when the reason is that its birth could not be confirmed, it also offers a new
- * pay key, for a worker who would rather not wait.
+ * The Finish setting up card's words (t is the worker.finish namespace). A wallet not on chain yet
+ * keeps today's card. A wallet on chain whose birth is not confirmed says so plainly, says the
+ * payslips below still work, and asks to check again; when the reason is that its birth could not
+ * be confirmed, it also offers a new pay key, for a worker who would rather not wait.
  */
-export function finishSetupCopy(p: { onChain: boolean; reasonCode: string | undefined }): FinishSetupCopy {
+export function finishSetupCopy(p: { onChain: boolean; reasonCode: string | undefined }, t: PlainT): FinishSetupCopy {
   if (!p.onChain) {
-    return {
-      heading: "Your wallet is not set up yet",
-      text: "Your wallet is not on the network yet, so its address stays hidden until it is and trusts this passkey.",
-      button: "Finish setting up",
-      offerNewKey: false,
-    };
+    return { heading: t("notOnChainHeading"), text: t("notOnChainText"), button: t("notOnChainButton"), offerNewKey: false };
   }
   return {
-    heading: "We could not confirm your wallet yet",
-    text: "Your wallet is on the network, but Kalypso has not confirmed how it was first set up, so its address stays hidden. Your payslips and cash-out below still work.",
-    button: "Check again",
+    heading: t("unconfirmedHeading"),
+    text: t("unconfirmedText"),
+    button: t("unconfirmedButton"),
     offerNewKey: p.reasonCode === "WALLET_BIRTH_UNKNOWN",
   };
 }

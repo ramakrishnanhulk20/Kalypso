@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { PageHeading } from "@/components/app/page-heading";
 import type { SandboxResult } from "@/lib/sandbox/engine";
 import { amountsFrom } from "@/lib/ledger";
@@ -9,7 +10,7 @@ import { EXPLORER_URL } from "@/lib/links";
 import { contracts } from "@/lib/stack";
 import { afterPaint } from "./after-paint";
 import type { Engine } from "./engine";
-import { KEYS, KeySwitcher } from "./key-switcher";
+import { KeySwitcher } from "./key-switcher";
 import type { KeyId } from "./key-switcher";
 import { PayrollCard } from "./payroll-card";
 import { PayslipView } from "./payslip-view";
@@ -24,6 +25,8 @@ type ResultViewProps = {
 };
 
 export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
+  const t = useTranslations("sandbox.result");
+  const common = useTranslations("common");
   const [selected, setSelected] = useState<KeyId>(DEFAULT_KEY);
 
   const accountant = useKeyRead(useCallback(() => engine.openAsAccountant(), [engine]));
@@ -51,9 +54,10 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
     pendingOpens.current.add(afterPaint(() => reads[id].open()));
   };
 
-  const label = `Sandbox ${result.treasury.slice(0, 4)}`;
-  const who = KEYS.find((key) => key.id === selected)?.who ?? "";
-  const opening = `Opening with ${who}'s key in your browser`;
+  const label = t("sandboxLabel", { short: result.treasury.slice(0, 4) });
+  const workerIndex = selected === "worker1" ? 1 : selected === "worker2" ? 2 : 3;
+  const opening =
+    selected === "accountant" ? t("openingAccountant") : selected === "stranger" ? t("openingStranger") : t("openingWorker", { n: workerIndex });
 
   const asAccountant = accountant.read;
   const chip =
@@ -67,16 +71,11 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
   const tableLoading = tableRead === undefined || tableRead.status === "loading";
   const payroll = tableRead?.status === "done" ? tableRead.value : null;
   const payments = (payroll ?? (asAccountant?.status === "done" ? asAccountant.value : null))?.payments ?? null;
-  const workerIndex = selected === "worker1" ? 1 : selected === "worker2" ? 2 : 3;
   const workerRead = selected === "worker1" ? worker1 : selected === "worker2" ? worker2 : worker3;
 
   return (
     <section>
-      <PageHeading
-        eyebrow="Done · on Stellar testnet"
-        title="Your payroll is on chain."
-        lead="Anyone can see that three people were paid. Only the keys below can open how much. Every key here lives in this browser and was used only here."
-      />
+      <PageHeading eyebrow={t("eyebrow")} title={t("title")} lead={t("lead")} />
 
       <div className="mt-8 flex flex-wrap items-center gap-6">
         <a
@@ -85,7 +84,7 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
           rel="noopener"
           className="link-draw text-[0.9375rem]"
         >
-          Company treasury on stellar.expert
+          {t("treasuryLink")}
         </a>
         <a
           href={`${EXPLORER_URL}/contract/${contracts.payroll}`}
@@ -93,10 +92,10 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
           rel="noopener"
           className="link-draw text-[0.9375rem]"
         >
-          Payroll contract
+          {t("payrollLink")}
         </a>
         <button type="button" className="link-draw text-[0.9375rem]" onClick={onStartOver}>
-          Start over
+          {common("startOver")}
         </button>
       </div>
 
@@ -129,11 +128,11 @@ export function ResultView({ result, engine, onStartOver }: ResultViewProps) {
       </div>
 
       <div className="mt-[12vh] flex flex-wrap items-center gap-x-8 gap-y-4">
-        <p className="font-display text-[1.5rem] font-medium text-paper" style={{ fontVariationSettings: '"opsz" 36' }}>
-          That is Kalypso.
+        <p className="font-display text-[1.5rem] font-medium text-fg" style={{ fontVariationSettings: '"opsz" 36' }}>
+          {t("closing")}
         </p>
         <Link href="/docs/how-it-works" className="btn-ghost">
-          Read how it works
+          {t("readHow")}
         </Link>
       </div>
     </section>

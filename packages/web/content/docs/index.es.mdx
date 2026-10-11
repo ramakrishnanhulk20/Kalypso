@@ -1,0 +1,51 @@
+---
+title: Visión general
+description: "Qué es Kalypso, para quién es y qué queda privado y qué no."
+---
+
+Kalypso toma su nombre de la Kalypso griega (Καλυψώ), "la que oculta".
+
+Kalypso es nómina en Stellar donde nadie puede leer los sueldos, salvo quienes deben poder. Una empresa paga a su equipo en USDC. El libro mayor público muestra que cada pago ocurrió, nunca cuánto. Cada trabajador lee solo su propio pago, y el contador de la empresa tiene una clave que lee todos los montos que la empresa pagó.
+
+Está construido sobre el token confidencial de OpenZeppelin para Stellar, que la Stellar Development Foundation lista para nómina. Kalypso añade un contrato de nómina, un registro de claves de auditoría y una biblioteca cliente que prueba cada pago en el navegador. Tres pantallas lo ponen en uso: el empleador paga desde una planilla, cada trabajador se une con Face ID o una billetera y retira en un anchor, y el contador abre y exporta los libros. Hoy funciona en Stellar testnet.
+
+## Para quién es
+
+Cualquier empresa que pague a un equipo remoto en USDC. Un pago normal en USDC en una cadena pública muestra su monto a cualquiera que tenga un explorador de bloques, así que todo sueldo pagado así es público. Kalypso deja el pago en la cadena y el monto sellado, y el contador aún puede leer los libros.
+
+## Las tres claves
+
+| Clave | En manos de | Qué abre |
+|---|---|---|
+| Clave de la tesorería | El empleador | Mueve el dinero de la empresa y lee el saldo propio de la tesorería. El contrato de nómina paga a cada trabajador como máximo una vez por ciclo, y solo con la firma de esta clave. |
+| Clave del trabajador | Cada trabajador, solo | Los comprobantes de pago y el saldo de ese trabajador. Nada más de la nómina. |
+| Clave del contador | El contador de la empresa | Cada monto que pagó la empresa, y el saldo de la tesorería después de cada pago. No puede mover dinero. |
+
+El contador registra su propia clave en el registro de auditoría de Kalypso, y solo él puede cambiarla. Ninguna clave en poder de Kalypso puede leer los sueldos de una empresa real ni mover su dinero.
+
+## Qué queda privado y qué no
+
+Privado: cada monto de sueldo y cada saldo.
+
+Público, por diseño:
+
+- Quién paga a quién, y cuándo. La lista de trabajadores de cada empresa está en la cadena, así que la cantidad de trabajadores también es pública.
+- Los montos de depósito y de retiro. El depósito que financia la tesorería muestra más o menos cuánto cuesta la nómina, y un trabajador que retira exactamente su pago lo revela.
+- El contador ve cada monto que paga la empresa. Para eso es su clave.
+
+No defendido:
+
+- Una clave filtrada abre todo lo que se haya cifrado alguna vez para ella. Rotar la clave solo protege los pagos futuros.
+- El contrato no puede saber si un monto oculto es el sueldo correcto. Después de cada pago, el motor de ciclos de Kalypso comprueba que salieron de la tesorería exactamente los montos aprobados, así que un monto equivocado se detecta después del hecho, no se impide.
+- Una extensión de billetera o un computador comprometidos, un usuario que firma el mensaje de clave de Kalypso en un sitio de phishing, y que el emisor del USDC congele los fondos agrupados.
+- Fallas en el token confidencial de OpenZeppelin, en sus circuitos o en su verificador, que son nuevos y no están auditados.
+
+Kalypso es solo testnet y no ha sido auditado por una firma de seguridad. Las [páginas de seguridad](/docs/security/overview) explican cómo se comprobó y cómo comprobarlo tú mismo.
+
+## Adónde ir después
+
+- [Primeros pasos](/docs/getting-started): ejecuta una nómina en tu navegador sin billetera.
+- Guías para el [empleador](/docs/guides/employer), el [trabajador](/docs/guides/worker) y el [contador](/docs/guides/accountant): cada pantalla, paso a paso.
+- [Cómo funciona](/docs/how-it-works)
+- [Contratos y direcciones](/docs/contracts)
+- [Preguntas frecuentes](/docs/faq)

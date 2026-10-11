@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import type { SandboxResult } from "@/lib/sandbox/engine";
+import { useLeaveWarning } from "@/components/app/use-leave-warning";
 import { loadEngine } from "./engine";
 import type { Engine } from "./engine";
 import { Intro } from "./intro";
@@ -13,19 +15,15 @@ import type { Salaries } from "./salary-card";
 
 type View = "boot" | "intro" | "run" | "result";
 
-const UNEXPECTED = "Something unexpected stopped the sandbox. Your progress is saved; try again.";
-const CONFIRM_START_OVER = "Start over? This sandbox's company stays on testnet, but this browser forgets it.";
-
-function describe(err: unknown): string {
-  return err instanceof Error && err.name === "SandboxError" ? err.message : UNEXPECTED;
-}
-
 // Stopping a run on purpose (leaving the page, starting over) is not a failure to show.
 function isStopped(err: unknown): boolean {
   return err instanceof Error && (err.name === "AbortError" || err.name === "SandboxResetError");
 }
 
 export function DemoApp() {
+  const t = useTranslations("sandbox.run");
+  const errors = useTranslations("errors.sandbox");
+  const locale = useLocale();
   const [view, setView] = useState<View>("boot");
   const [result, setResult] = useState<SandboxResult | null>(null);
   const [engine, setEngine] = useState<Engine | null>(null);
@@ -33,6 +31,20 @@ export function DemoApp() {
   const salaries = useRef<Salaries | null>(null);
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(false);
+
+  // The engine's own sentence in English; by code in any other language (the engine is not translated).
+  const describe = useCallback(
+    (err: unknown): { message: string; code: string | null } => {
+      if (err instanceof Error && err.name === "SandboxError") {
+        const code = (err as { code?: unknown }).code;
+        const known = typeof code === "string" ? code : null;
+        if (locale !== "en" && known !== null && errors.has(known)) return { message: errors(known), code: known };
+        return { message: err.message, code: known };
+      }
+      return { message: t("unexpected"), code: null };
+    },
+    [errors, locale, t],
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -67,44 +79,39 @@ export function DemoApp() {
     };
   }, []);
 
-  const running = run.running;
-  useEffect(() => {
-    if (!running) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [running]);
+  useLeaveWarning(run.running);
 
   useEffect(() => {
     if (view !== "boot") window.scrollTo({ top: 0 });
   }, [view]);
 
-  const runWith = useCallback(async (amounts: Salaries) => {
-    const stop = new AbortController();
-    controller.current = stop;
-    dispatch({ type: "begin" });
-    try {
-      const loaded = await loadEngine();
-      const finished = await loaded.runSandbox({
-        amounts,
-        signal: stop.signal,
-        onProgress: (progress) => {
-          if (mounted.current && !stop.signal.aborted) dispatch({ type: "progress", progress, at: Date.now() });
-        },
-      });
-      if (!mounted.current || stop.signal.aborted) return;
-      setEngine(loaded);
-      dispatch({ type: "stop" });
-      setResult(finished);
-      setView("result");
-    } catch (err) {
-      if (!mounted.current || stop.signal.aborted || isStopped(err)) return;
-      dispatch({ type: "fail", message: describe(err) });
-    }
-  }, []);
+  const runWith = useCallback(
+    async (amounts: Salaries) => {
+      const stop = new AbortController();
+      controller.current = stop;
+      dispatch({ type: "begin" });
+      try {
+        const loaded = await loadEngine();
+        const finished = await loaded.runSandbox({
+          amounts,
+          signal: stop.signal,
+          onProgress: (progress) => {
+            if (mounted.current && !stop.signal.aborted) dispatch({ type: "progress", progress, at: Date.now() });
+          },
+        });
+        if (!mounted.current || stop.signal.aborted) return;
+        setEngine(loaded);
+        dispatch({ type: "stop" });
+        setResult(finished);
+        setView("result");
+      } catch (err) {
+        if (!mounted.current || stop.signal.aborted || isStopped(err)) return;
+        const shown = describe(err);
+        dispatch({ type: "fail", message: shown.message, code: shown.code });
+      }
+    },
+    [describe],
+  );
 
   const start = useCallback(
     (amounts: Salaries) => {
@@ -120,7 +127,7 @@ export function DemoApp() {
   }, [runWith]);
 
   const startOver = useCallback(async () => {
-    if (!window.confirm(CONFIRM_START_OVER)) return;
+    if (!window.confirm(t("confirmStartOver"))) return;
     controller.current?.abort();
     try {
       (await loadEngine()).reset();
@@ -131,7 +138,7 @@ export function DemoApp() {
     dispatch({ type: "clear" });
     setResult(null);
     setView("intro");
-  }, []);
+  }, [t]);
 
   return (
     <div className="mx-auto w-full max-w-[1240px]" style={{ minHeight: "60vh" }}>

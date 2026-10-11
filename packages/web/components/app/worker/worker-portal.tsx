@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { WorkerSession } from "@/lib/worker";
 import { ErrorNote } from "@/components/app/error-note";
 import { describeError } from "@/components/app/errors";
@@ -25,6 +26,7 @@ import type { WorkerKit } from "./worker-lib";
 // The whole worker page. The session lives in this component's state only, so closing the tab
 // or pressing Sign out forgets it; the passkey stays with the device and signs in again.
 export function WorkerPortal() {
+  const t = useTranslations("worker");
   const [kit, setKit] = useState<WorkerKit | null>(null);
   const [loadError, setLoadError] = useState<ShownError | null>(null);
   const [worker, setWorker] = useState<WorkerSession | null>(null);
@@ -43,7 +45,7 @@ export function WorkerPortal() {
   // changes after a join, which is when this browser writes the company down.
   const recorded = useMemo(() => (kit && worker ? kit.joinedCompanies(worker.address) : []), [kit, worker, tick]);
 
-  const invite = useInvite(kit);
+  const { invite, retry: retryInvite } = useInvite(kit);
   const proven = kit !== null && worker !== null && kit.lib.addressProven(worker);
   const onChain = kit !== null && worker !== null && kit.lib.walletOnChain(worker);
   // The payslips are read even while an invite waits, as if its join card were up: that read finds
@@ -79,7 +81,7 @@ export function WorkerPortal() {
 
   return (
     <div>
-      <InviteStrip invite={invite} />
+      <InviteStrip invite={invite} onRetry={retryInvite} />
 
       {worker === null || kit === null ? (
         <>
@@ -92,7 +94,7 @@ export function WorkerPortal() {
         </>
       ) : (
         <div key={worker.address}>
-          <h1 className="sr-only">Your pay</h1>
+          <h1 className="sr-only">{t("srTitle")}</h1>
           <SessionBar address={kit.lib.addressProven(worker) ? worker.address : null} onSignOut={signOut} />
 
           {justJoined ? (

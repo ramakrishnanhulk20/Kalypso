@@ -6,7 +6,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 // The same field the sandbox's salary card uses: ink-3, 8px radius, a brighter border on focus.
 // 16px text so a phone never zooms in on focus.
 export const FIELD =
-  "w-full rounded-button border border-line bg-ink-3 px-3 py-[0.65rem] font-sans text-base text-paper placeholder:text-faint transition-colors hover:border-[rgba(242,236,230,0.2)] focus:border-[rgba(242,236,230,0.4)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-paper aria-[invalid=true]:border-fail";
+  "w-full rounded-button border border-line-strong bg-raised-2 px-3 py-[0.65rem] font-sans text-base text-fg placeholder:text-faint transition-colors hover:border-muted focus:border-fg focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-fg aria-[invalid=true]:border-fail";
 
 type FieldFrameProps = {
   label: ReactNode;
@@ -21,7 +21,7 @@ function FieldFrame({ label, id, error, hint, className = "", children }: FieldF
   return (
     <div className={className}>
       <div className="flex items-baseline justify-between gap-4">
-        <label htmlFor={id} className="font-sans text-base text-paper">
+        <label htmlFor={id} className="font-sans text-base text-fg">
           {label}
         </label>
         {hint}
@@ -128,9 +128,9 @@ export function Checkbox({ label, className = "", ...rest }: CheckboxProps) {
         {...rest}
         id={id}
         type="checkbox"
-        className="peer h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[4px] accent-[var(--color-seal)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-paper"
+        className="peer h-[18px] w-[18px] shrink-0 cursor-pointer rounded-[4px] accent-[var(--color-seal)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-fg"
       />
-      <label htmlFor={id} className="cursor-pointer font-sans text-base text-muted transition-colors hover:text-paper peer-checked:text-paper">
+      <label htmlFor={id} className="cursor-pointer font-sans text-base text-muted transition-colors hover:text-fg peer-checked:text-fg">
         {label}
       </label>
     </div>

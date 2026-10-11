@@ -1,0 +1,129 @@
+---
+title: "Prise en main"
+description: "Lancez une paie dans votre navigateur sans portefeuille, lisez la démonstration en direct, utilisez les trois vrais écrans avec votre propre portefeuille, puis clonez le dépôt et vérifiez chaque affirmation depuis votre terminal."
+---
+
+Il y a quatre façons d'entrer : un bac à sable qui n'exige rien d'installé, la démonstration en direct sur la page d'accueil, les trois vrais écrans, et le dépôt.
+
+## Essayer sans portefeuille : le bac à sable
+
+Le bac à sable, à l'adresse [/demo](/demo), crée une petite entreprise sur le testnet Stellar dans votre navigateur et la paie via Kalypso avec de vraies preuves à divulgation nulle de connaissance. Il n'exige ni portefeuille ni inscription, et dure environ 3 minutes sur un ordinateur portable. Les téléphones plus lents mettent plus longtemps. Saisissez trois salaires sous « La paie de ce mois » et choisissez **Lancer le bac à sable**. La page déroule alors dix étapes. Chaque transaction envoyée est réelle, et chacune s'ouvre sur stellar.expert :
+
+1. Clés : votre navigateur crée cinq comptes testnet jetables, l'employeur (dont le compte est la trésorerie), le comptable et trois salariés.
+2. Argent de test : friendbot alimente les cinq en XLM de test.
+3. USDC : la trésorerie ouvre une ligne de confiance USDC, et les cinq comptes achètent des USDC de test pour elle sur la DEX Stellar : les trois salaires plus 2 %, de sorte que son dépôt public n'est jamais le total exact de la paie.
+4. Comptable : le comptable enregistre sa propre clé d'audit dans le registre d'audit de Kalypso et reçoit un identifiant.
+5. Trésorerie : la trésorerie s'enregistre auprès du jeton confidentiel sous cet identifiant, avec une preuve construite dans votre navigateur. Le propriétaire et la clé de l'identifiant sont vérifiés sur la chaîne avant qu'elle signe.
+6. Entreprise : le contrat de paie crée l'entreprise en nommant son comptable.
+7. Salariés : chaque salarié enregistre sa propre clé d'audit, s'enregistre auprès du jeton, est invité et accepte.
+8. Alimentation : la trésorerie dépose les USDC dans le jeton confidentiel et les fusionne dans son solde utilisable.
+9. Cycle : le cycle de ce mois s'ouvre pour trois salariés. Son identifiant est le mois, par exemple 202610 pour octobre 2026.
+10. Paie : votre navigateur prouve trois paiements confidentiels et les envoie via le même moteur de cycle qu'utilise une vraie entreprise.
+
+Quand c'est fini, la page affiche « Votre paie est sur la chaîne. » et l'ouvre avec la clé du comptable. Choisissez une autre clé pour voir ce que voit chaque personne :
+
+- **Salarié 1**, **Salarié 2** ou **Salarié 3** : la fiche de paie de ce salarié et son solde vérifié.
+- **Comptable** : chaque paiement, avec son montant.
+- **Inconnu** : une clé neuve que personne ne détient, donc chaque paiement reste scellé.
+
+Chaque étape est enregistrée dans votre navigateur au fur et à mesure. Fermez l'onglet ou rechargez, revenez et choisissez **Reprendre** : chaque étape lit d'abord la chaîne et saute ce qui s'y trouve déjà, et une transaction envoyée avant le rechargement est retrouvée grâce à son hash enregistré, jamais envoyée deux fois. Si une étape s'arrête, la page la nomme et propose **Réessayer**. Un seul bac à sable tourne par navigateur à la fois. **Recommencer** fait oublier celui-ci à ce navigateur, tandis que son entreprise reste sur le testnet. Les clés sont des clés testnet jetables qui ne vivent que dans ce navigateur.
+
+## Lire la démonstration avec la loupe
+
+La section « Essayez de lire les salaires » de la page d'accueil lit Andes Studio (demo), l'entreprise 0 du contrat de paie v0.1.1, directement depuis le testnet Stellar : 6 salariés, deux cycles (« September 2026 » et « October 2026 », les noms écrits sur la chaîne) et 12 paiements scellés.
+
+- Choisissez la clé du comptable et faites glisser la loupe sur le registre. Les montants s'ouvrent dans votre navigateur avec la clé du comptable de démonstration que nous avons publiée exprès. Cette clé ne lit que cette entreprise de démonstration.
+- Choisissez la clé d'un inconnu et les mêmes paiements restent scellés.
+- « Ouvrir tous les montants » ouvre tout le registre d'un coup.
+
+Rien ne quitte la page. Chaque ligne renvoie vers sa transaction sur Stellar Expert, où ce même paiement n'affiche aucun montant.
+
+## Utiliser les trois vrais écrans
+
+Le bac à sable joue tous les rôles à votre place. Les vrais écrans répartissent la même paie entre trois personnes, chacune détenant sa propre clé :
+
+- [Guide de l'employeur](/docs/guides/employer) : créez une entreprise sur /employer, alimentez sa trésorerie, invitez l'équipe et payez un mois depuis un CSV.
+- [Guide du salarié](/docs/guides/worker) : rejoignez l'entreprise depuis le lien d'invitation sur /worker avec Face ID ou Freighter, lisez vos fiches de paie et retirez votre argent auprès de l'ancre de test.
+- [Guide du comptable](/docs/guides/accountant) : enregistrez votre clé sur /accountant, donnez votre identifiant à l'employeur, puis ouvrez et exportez les comptes.
+
+L'employeur et le comptable ont chacun besoin de Freighter réglé sur Testnet, avec un compte alimenté par friendbot. Un salarié qui se connecte avec Face ID n'a besoin de rien d'alimenté.
+
+## Parcours développeur [#developer-path]
+
+Il vous faut Git, Node.js 24 (le serveur exige la 24 ; les scripts testnet exigent la 22.9 ou une version plus récente), une chaîne d'outils Rust pour les contrats (la CI utilise Rust 1.99.0), et la [CLI stellar](https://github.com/stellar/stellar-cli) 28.1.0 pour la vérification de l'attestation de build.
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/Kalypso.git
+cd Kalypso
+```
+
+Chaque bloc de commandes ci-dessous part de la racine du dépôt.
+
+### Lancer les tests
+
+Le 10 octobre, les suites comptaient 115 tests de paie et 43 tests d'audit (`cargo test`), 555 tests du cœur à 98,46 % de couverture de lignes, 316 tests du serveur à 97,99 %, 404 tests de l'application web et 11 tests pour les scripts testnet, soit 1 444 au total. Les 316 tests du serveur tournent aussi une seconde fois via le pilote Postgres de production, avec `npm run test:wire`.
+
+```bash
+cd packages/contracts && cargo test
+```
+
+```bash
+cd packages/core && npm install && npm test
+```
+
+```bash
+cd packages/server && npm install && npm test
+```
+
+```bash
+cd packages/server && npm run test:wire
+```
+
+```bash
+cd packages/web && npm install && npm test
+```
+
+```bash
+cd packages/contracts/scripts && npm ci && npm test
+```
+
+### Vérifier que la paie en direct vient de ce dépôt
+
+```bash
+stellar contract info build --id CBUIUWF6PLCQHTLYUCYIKB34DCFXJG722N2JWE44LVICRCEY34KK7XVZ --network testnet
+```
+
+Elle répond avec `.github/workflows/release.yml` au tag `v0.1.1`, commit `03dea9094ce7225fbe15845d2e265561c67b562c`, construit sur un runner hébergé par GitHub.
+
+### Vérifier la pile depuis l'état de la chaîne [#check-the-stack-from-chain-state]
+
+`check:testnet` lit l'état de la chaîne et lance 18 contrôles : personne, nous compris, ne peut changer les preuves que le vérificateur accepte ; aucun de nos contrats n'a d'administrateur ni de mise à jour possible ; le code sur la chaîne est le code publié ; et chaque contrat a au moins 14 jours avant d'être archivé. Il lui faut le contrat de paie de la version v0.1.1 et le registre d'audit de la version v0.1.0, chacun dans son propre dossier :
+
+```bash
+mkdir -p release/v0.1.1 release/v0.1.0
+curl -fL -o release/v0.1.1/kalypso_payroll.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.1/kalypso_payroll.wasm
+curl -fL -o release/v0.1.0/kalypso_auditor.wasm https://github.com/ramakrishnanhulk20/Kalypso/releases/download/v0.1.0/kalypso_auditor.wasm
+cd packages/contracts/scripts && npm ci
+npm run check:testnet -- --wasm-dir ../../../release/v0.1.1 --auditor-wasm-dir ../../../release/v0.1.0
+```
+
+Les mêmes fichiers sont sur la [page des versions](https://github.com/ramakrishnanhulk20/Kalypso/releases). Une exécution réussie se termine par `18 of 18 checks passed. RESULT: PASS`.
+
+### Attaquer l'entreprise de démonstration
+
+`prove:testnet` attaque sur le testnet les promesses de l'entreprise de démonstration et affiche ce qui a arrêté chaque attaque. Il lance 13 contrôles et n'exige aucune clé.
+
+```bash
+cd packages/core && npm ci && npm run build
+cd ../contracts/scripts && npm ci && npm run prove:testnet -- --archive https://kalypso-payroll.vercel.app/api/archive/
+```
+
+Sans le fichier privé du seed, les montants sont vérifiés avec la clé du comptable de démonstration publiée et la moitié salarié de P10 est sautée, donc l'exécution d'un inconnu se termine avec 12 réussis et 1 sauté. Les contrôles d'historique lisent le RPC, qui conserve environ les 7 derniers jours. L'option `--archive` ci-dessus lit les registres plus anciens dans l'archive d'événements en direct de Kalypso, donc les contrôles d'historique continuent de fonctionner au-delà de cette fenêtre ; son état de santé est public sur [/api/archive/v1/health](https://kalypso-payroll.vercel.app/api/archive/v1/health). La dernière exécution complète est sur [Rapport d'attaque](/docs/security/attack-run).
+
+### Garder la pile en vie
+
+```bash
+cd packages/contracts/scripts && npm ci && npm run keepalive:testnet
+```
+
+Cela prolonge la durée de vie du stockage des quatre contrats et de leur code, de 60 jours par défaut (`-- --days <n>` pour la changer), pour qu'aucun ne soit archivé pendant qu'on le juge. N'importe qui peut payer une prolongation, et elle ne change rien d'autre. Elle paie depuis l'identité de la CLI stellar nommée par `DEPLOYER` (par défaut `kalypso-deployer`) dans `packages/contracts/.stellar`, qui doit exister et détenir des XLM testnet. `check:testnet` échoue dès qu'un contrat a moins de 14 jours restants.

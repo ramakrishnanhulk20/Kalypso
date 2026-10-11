@@ -10,7 +10,7 @@ export function NavTitle() {
     <span className="logo-link inline-flex items-center gap-2.5">
       <SealMark size={22} />
       <span
-        className="font-display text-[1.125rem] font-medium text-paper"
+        className="font-display text-[1.125rem] font-medium text-fg"
         style={{ fontVariationSettings: '"opsz" 36', letterSpacing: "-0.01em" }}
       >
         Kalypso

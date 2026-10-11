@@ -40,7 +40,7 @@ async function makeDevWallet(onNote: (note: string) => void): Promise<WalletPort
 
 export function devBadge() {
   return (
-    <p className="t-label pointer-events-none fixed bottom-4 left-4 z-50 rounded-button border border-line bg-ink-2 px-2 py-1">
+    <p className="t-label pointer-events-none fixed bottom-4 left-4 z-50 rounded-button border border-line bg-raised px-2 py-1">
       dev wallet
     </p>
   );

@@ -1,38 +1,174 @@
 @import "tailwindcss";
 @import "./fumadocs.css";
 
-@theme {
-  --color-ink: #15100f;
-  --color-ink-2: #1d1716;
-  --color-ink-3: #261e1c;
-  --color-line: rgba(242, 236, 230, 0.1);
-  --color-paper: #f2ece6;
-  --color-muted: #a79c94;
-  --color-faint: #6e645e;
-  --color-seal: #c9473a;
-  --color-seal-hi: #d85a4c;
-  --color-seal-deep: #8e2e25;
-  --color-ok: #7fb8a4;
-  --color-wait: #8e9db3;
-  --color-fail: #a89be8;
+/* The colour tokens, named by what they do. Light values sit on :root, dark values on html.dark
+   (next-themes writes that class before first paint), and the media block below repeats the dark
+   values for a visitor with scripts off. The two dark blocks must stay identical:
+   scratchpad/fable-ui/contrast.mjs reads the html.dark one. */
+:root {
+  --canvas: #f2ece6;
+  --raised: #f8f4ef;
+  --raised-2: #e9e1d8;
+  --fg: #15100f;
+  --muted: #5c524c;
+  --faint: #675d56;
+  --line: rgba(21, 16, 15, 0.12);
+  --line-strong: rgba(21, 16, 15, 0.5);
+  --seal: #c9473a;
+  --seal-hi: #a83a2e;
+  --seal-hover: #b23d31;
+  --seal-deep: #8e2e25;
+  --on-seal: #fffaf5;
+  --ok: #276a56;
+  --wait: #4a5b75;
+  --fail: #5f4fc0;
+  /* Shadows are lighter on paper: a 45% black shadow reads as dirt there. */
+  --shadow-card: 0 30px 80px rgba(21, 16, 15, 0.14);
+  --shadow-menu: 0 20px 50px rgba(21, 16, 15, 0.16);
+  --shadow-ring: 0 18px 30px rgba(21, 16, 15, 0.28);
+  --shadow-glass: inset 0 0 26px rgba(21, 16, 15, 0.2);
+  --shadow-title: 0 2px 40px rgba(21, 16, 15, 0.12);
+  /* The terminal panel and code blocks: a dark panel in both themes, the way a printed book shows code. */
+  --terminal: #1d1716;
+  --terminal-fg: #f2ece6;
+  --terminal-muted: #a79c94;
+  --terminal-line: rgba(242, 236, 230, 0.12);
+  /* Highlighted code follows the theme (github-light on paper), unlike the terminal panel. */
+  --code-bg: #e9e1d8;
+  /* The hero scene by day: paper sky, a warm band at the horizon, the sea as ink wash. */
+  --scene-sky-top: #f8f4ef;
+  --scene-sky-low: #ead9ca;
+  --scene-sea-near: #e4d9cd;
+  --scene-sea-far: #c6b3a3;
+  --scene-glint: #3a2e2a;
+  --grain-opacity: 0.05;
+}
+
+html.dark {
+  --canvas: #15100f;
+  --raised: #1d1716;
+  --raised-2: #261e1c;
+  --fg: #f2ece6;
+  --muted: #a79c94;
+  --faint: #958982;
+  --line: rgba(242, 236, 230, 0.1);
+  --line-strong: rgba(242, 236, 230, 0.42);
+  --seal: #c9473a;
+  --seal-hi: #de6659;
+  --seal-hover: #bd4136;
+  --seal-deep: #8e2e25;
+  --on-seal: #fffaf5;
+  --ok: #7fb8a4;
+  --wait: #8e9db3;
+  --fail: #a89be8;
+  --shadow-card: 0 30px 80px rgba(0, 0, 0, 0.45);
+  --shadow-menu: 0 20px 50px rgba(0, 0, 0, 0.5);
+  --shadow-ring: 0 18px 30px rgba(0, 0, 0, 0.55);
+  --shadow-glass: inset 0 0 26px rgba(0, 0, 0, 0.55);
+  --shadow-title: 0 2px 40px rgba(0, 0, 0, 0.35);
+  --terminal: #0f0b0a;
+  --terminal-fg: #f2ece6;
+  --terminal-muted: #a79c94;
+  --terminal-line: rgba(242, 236, 230, 0.1);
+  --code-bg: #0f0b0a;
+  --scene-sky-top: #0f0b0b;
+  --scene-sky-low: #331714;
+  --scene-sea-near: #1b100e;
+  --scene-sea-far: #0f0b0b;
+  --scene-glint: #403330;
+  --grain-opacity: 0.07;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --canvas: #15100f;
+    --raised: #1d1716;
+    --raised-2: #261e1c;
+    --fg: #f2ece6;
+    --muted: #a79c94;
+    --faint: #958982;
+    --line: rgba(242, 236, 230, 0.1);
+    --line-strong: rgba(242, 236, 230, 0.42);
+    --seal: #c9473a;
+    --seal-hi: #de6659;
+    --seal-hover: #bd4136;
+    --seal-deep: #8e2e25;
+    --on-seal: #fffaf5;
+    --ok: #7fb8a4;
+    --wait: #8e9db3;
+    --fail: #a89be8;
+    --shadow-card: 0 30px 80px rgba(0, 0, 0, 0.45);
+    --shadow-menu: 0 20px 50px rgba(0, 0, 0, 0.5);
+    --shadow-ring: 0 18px 30px rgba(0, 0, 0, 0.55);
+    --shadow-glass: inset 0 0 26px rgba(0, 0, 0, 0.55);
+    --shadow-title: 0 2px 40px rgba(0, 0, 0, 0.35);
+    --terminal: #0f0b0a;
+    --terminal-fg: #f2ece6;
+    --terminal-muted: #a79c94;
+    --terminal-line: rgba(242, 236, 230, 0.1);
+    --code-bg: #0f0b0a;
+    --scene-sky-top: #0f0b0b;
+    --scene-sky-low: #331714;
+    --scene-sea-near: #1b100e;
+    --scene-sea-far: #0f0b0b;
+    --scene-glint: #403330;
+    --grain-opacity: 0.07;
+  }
+}
+
+/* Physical objects keep their colour in both themes: the wax seal, the stranger's iron ring. */
+:root {
+  --wax-hi: #d85a4c;
+  --wax: #c9473a;
+  --wax-deep: #a8392e;
+  --wax-rim: #8e2e25;
+  --iron-hi: #8a7f78;
+  --iron: #6e645e;
+  --iron-deep: #4e4642;
+  --iron-rim: #3a3330;
+  --gloss: #ffffff;
+}
+
+/* Tailwind utilities follow the tokens, so bg-canvas or text-fg flips with the theme. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-raised: var(--raised);
+  --color-raised-2: var(--raised-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-seal: var(--seal);
+  --color-seal-hi: var(--seal-hi);
+  --color-seal-hover: var(--seal-hover);
+  --color-seal-deep: var(--seal-deep);
+  --color-on-seal: var(--on-seal);
+  --color-ok: var(--ok);
+  --color-wait: var(--wait);
+  --color-fail: var(--fail);
+  --color-terminal: var(--terminal);
+  --color-terminal-fg: var(--terminal-fg);
+  --color-terminal-muted: var(--terminal-muted);
 
   --radius-button: 8px;
   --radius-card: 12px;
-}
 
-/* next/font sets these variables on <html>. Inline mode points Tailwind at
-   them without declaring them a second time. The Geist package fixes its own
-   variable names, so sans and mono are bridged here. */
-@theme inline {
+  /* next/font sets these variables on <html>. The Geist package fixes its own
+     variable names, so sans and mono are bridged here. */
   --font-display: var(--font-display);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @layer base {
+  html {
+    background: var(--color-canvas);
+  }
+
   body {
-    background: var(--color-ink);
-    color: var(--color-paper);
+    background: var(--color-canvas);
+    color: var(--color-fg);
     font-family: var(--font-sans);
     font-size: 1.0625rem;
     line-height: 1.6;
@@ -42,7 +178,60 @@
 
   ::selection {
     background: var(--color-seal);
-    color: var(--color-paper);
+    color: var(--color-on-seal);
+  }
+}
+
+/* Chinese typography. Outside every layer so it wins over the utilities: the system CJK faces
+   after the Latin ones (Geist and Fraunces carry no Han glyphs, so the browser falls through),
+   no tracking, no uppercase, taller lines. */
+html:lang(zh) body,
+html:lang(zh) .font-sans {
+  font-family: var(--font-geist-sans), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  line-height: 1.75;
+}
+
+html:lang(zh) .font-display,
+html:lang(zh) .t-poster,
+html:lang(zh) .t-h2 {
+  font-family: var(--font-display), "Songti SC", "Noto Serif SC", "SimSun", serif;
+}
+
+html:lang(zh) :is(.t-h2, .font-display, h1, h2, h3) {
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+html:lang(zh) .t-label,
+html:lang(zh) .t-label-plain {
+  text-transform: none;
+  letter-spacing: 0.06em;
+}
+
+html:lang(zh) .font-mono {
+  font-family: var(--font-geist-mono), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", monospace;
+}
+
+/* The step rail on the landing: the active dot is seal and larger, a passed one half-strength. */
+[data-dot] {
+  background-color: color-mix(in srgb, var(--color-fg) 20%, transparent);
+  transition:
+    background-color 300ms ease-out,
+    transform 300ms ease-out;
+}
+
+[data-dot][data-state="active"] {
+  background-color: var(--color-seal);
+  transform: scale(1.5);
+}
+
+[data-dot][data-state="passed"] {
+  background-color: color-mix(in srgb, var(--color-fg) 50%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-dot] {
+    transition: none;
   }
 }
 
@@ -83,6 +272,14 @@
   color: var(--color-faint);
 }
 
+/* A label in sentence case: the same voice without the tracking. */
+@utility t-label-plain {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--color-faint);
+}
+
 @layer components {
   .btn-seal,
   .btn-ghost {
@@ -96,7 +293,7 @@
     font-size: 0.9375rem;
     font-weight: 500;
     line-height: 1.6;
-    color: var(--color-paper);
+    color: var(--color-fg);
     text-decoration: none;
     cursor: pointer;
     transition:
@@ -107,28 +304,29 @@
 
   .btn-seal {
     background-color: var(--color-seal);
+    color: var(--color-on-seal);
     /* Matches .btn-ghost's 1px border so the two sit at the same height side by side. */
     border: 1px solid transparent;
   }
 
   .btn-seal:hover {
-    background-color: var(--color-seal-hi);
+    background-color: var(--color-seal-hover);
     transform: translateY(-1px);
   }
 
   .btn-ghost {
     background-color: transparent;
-    border: 1px solid var(--color-line);
+    border: 1px solid var(--color-line-strong);
   }
 
   .btn-ghost:hover {
-    border-color: rgba(242, 236, 230, 0.28);
+    border-color: var(--color-fg);
     transform: translateY(-1px);
   }
 
   .btn-seal:focus-visible,
   .btn-ghost:focus-visible {
-    outline: 2px solid var(--color-paper);
+    outline: 2px solid var(--color-fg);
     outline-offset: 3px;
   }
 
@@ -202,7 +400,7 @@
     right: 0;
     bottom: -3px;
     height: 1px;
-    background: var(--color-paper);
+    background: var(--color-fg);
     transform: scaleX(0);
     transform-origin: left;
     transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -210,7 +408,7 @@
 
   .link-draw:hover,
   .link-draw:focus-visible {
-    color: var(--color-paper);
+    color: var(--color-fg);
   }
 
   .link-draw:hover::after,
@@ -220,8 +418,10 @@
 
   .link-draw:focus-visible,
   a:focus-visible,
-  button:focus-visible {
-    outline: 2px solid var(--color-paper);
+  button:focus-visible,
+  select:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--color-fg);
     outline-offset: 3px;
   }
 
@@ -241,11 +441,11 @@
   .skeleton-bar {
     height: 8px;
     border-radius: 8px;
-    background-color: rgba(242, 236, 230, 0.06);
+    background-color: color-mix(in srgb, var(--color-fg) 6%, transparent);
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(242, 236, 230, 0.09) 50%,
+      color-mix(in srgb, var(--color-fg) 9%, transparent) 50%,
       transparent 100%
     );
     background-repeat: no-repeat;
@@ -301,16 +501,15 @@
   }
 
   .lens-tint {
-    background:
-      linear-gradient(rgba(201, 71, 58, 0.06), rgba(201, 71, 58, 0.06)),
-      var(--color-ink-2);
+    background: color-mix(in srgb, var(--color-seal) 6%, var(--color-raised));
   }
 
   .lens-tint-subtotal {
-    background:
-      linear-gradient(rgba(201, 71, 58, 0.06), rgba(201, 71, 58, 0.06)),
-      linear-gradient(rgba(242, 236, 230, 0.02), rgba(242, 236, 230, 0.02)),
-      var(--color-ink-2);
+    background: color-mix(in srgb, var(--color-seal) 6%, color-mix(in srgb, var(--color-fg) 2%, var(--color-raised)));
+  }
+
+  .subtotal-row {
+    background: color-mix(in srgb, var(--color-fg) 2%, transparent);
   }
 
   @media (min-width: 768px) {
@@ -388,14 +587,16 @@
     height: 14px;
     flex: none;
     border-radius: 9999px;
-    border: 1.5px solid rgba(242, 236, 230, 0.28);
+    border: 1.5px solid var(--color-line-strong);
     border-top-color: var(--spinner-top, var(--color-seal));
     animation: spin-ring 0.8s linear infinite;
   }
 
-  /* A seal-coloured segment cannot be seen on a seal-coloured button, so paper stands in there. */
+  /* A seal-coloured segment cannot be seen on a seal-coloured button, so the button's text colour stands in there. */
   .btn-seal .spinner {
-    --spinner-top: var(--color-paper);
+    --spinner-top: var(--color-on-seal);
+    border-color: color-mix(in srgb, var(--color-on-seal) 35%, transparent);
+    border-top-color: var(--color-on-seal);
   }
 
   .btn-ghost:disabled {
@@ -404,7 +605,7 @@
   }
 
   .btn-ghost:disabled:hover {
-    border-color: var(--color-line);
+    border-color: var(--color-line-strong);
     transform: none;
   }
 
@@ -418,5 +619,70 @@
     .spinner {
       animation: none;
     }
+  }
+
+  /* The header's two switches: a 44px target with the icon centred. */
+  .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-button);
+    color: var(--color-muted);
+    transition:
+      color 180ms ease-out,
+      background-color 180ms ease-out;
+  }
+
+  .icon-button:hover {
+    color: var(--color-fg);
+    background-color: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  }
+
+  /* The theme icons follow the html class, so the right one shows before any script runs. */
+  .theme-icon-sun {
+    display: none;
+  }
+
+  html.dark .theme-icon-sun {
+    display: block;
+  }
+
+  html.dark .theme-icon-moon {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html:not(.light) .theme-icon-sun {
+      display: block;
+    }
+
+    html:not(.light) .theme-icon-moon {
+      display: none;
+    }
+  }
+
+  /* The language select looks like a text link until it is opened. */
+  .locale-select {
+    appearance: none;
+    height: 44px;
+    padding: 0 1.4rem 0 0.5rem;
+    border-radius: var(--radius-button);
+    background: transparent;
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: color 180ms ease-out;
+  }
+
+  .locale-select:hover {
+    color: var(--color-fg);
+  }
+
+  .locale-select option {
+    color: var(--color-fg);
+    background: var(--color-raised);
   }
 }

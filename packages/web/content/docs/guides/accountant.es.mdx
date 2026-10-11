@@ -1,0 +1,37 @@
+---
+title: Contador
+description: "Registra tu clave de contador, entrega al empleador tu id, tu dirección y tu código, y luego abre y exporta los libros de una empresa en /accountant."
+---
+
+La vista del contador en [/accountant](/accountant) funciona con Freighter configurado en Testnet. Tu clave se crea en este navegador a partir de dos firmas de tu billetera, así que nunca sale del navegador y la misma billetera siempre la reconstruye. Pagas una pequeña comisión en XLM de prueba, cerca de 0.07, una sola vez, para registrarla, así que primero carga la cuenta con friendbot.
+
+## Registra tu clave
+
+1. Abre la página y elige **Conectar Freighter**.
+2. Bajo **Tu clave**, elige **Derivar mi clave**. Freighter te pide firmar dos veces el mismo mensaje, lo que demuestra que tu billetera reconstruye la misma clave cada vez. Aparece tu **Código de confirmación**: 16 caracteres en cuatro grupos. No se envía nada.
+3. Elige **Registrar mi clave** y aprueba una transacción. El registro de auditoría de Kalypso guarda tu clave y te devuelve un id nuevo. Solo tú, como su dueño, puedes cambiar la clave bajo ese id.
+4. El recuadro con el título **Entrega esto al empleador** muestra tu **Id de contador** y tu **Dirección**, cada uno con un botón para copiar. Envía ambos al empleador.
+5. Cuando el empleador los comprueba, su pantalla muestra un código de confirmación. Léele el tuyo y asegúrate de que cada carácter coincida. Un código distinto significa que el id que escribió tiene la clave de otra persona, y debe detenerse.
+
+## Abre los libros
+
+6. Bajo **Abrir los libros de una empresa**, escribe el **Id de la empresa** que te da el empleador y elige **Abrir los libros**. Freighter pide las dos firmas de la clave si aún no las diste en esta página. Kalypso primero comprueba con el registro que tu clave tiene el id al que está sellado el pago de esta empresa.
+7. La tarjeta se va llenando a medida que tu navegador lee el historial de nómina y abre cada pago con tu clave. Cada fila muestra el ciclo, el trabajador, la transacción y el monto, con un subtotal por ciclo y un total cuando hay dos o más ciclos. La etiqueta dice "Verificado y completo" solo cuando se encontró y comprobó cada ciclo y cada pago que cuenta la cadena. Si no, dice "Historial incompleto".
+8. Elige **Exportar CSV**. Se guarda en tu computador un archivo con el nombre del id de la empresa y la fecha de hoy, con una fila por pago: id del ciclo, período, trabajador, monto en USDC y hash de la transacción. Kalypso se niega a exportar libros que no están completos, así que un archivo nunca parece la nómina entera cuando no lo es. Una celda que una planilla ejecutaría como fórmula se vuelve inofensiva antes.
+
+¿Quieres probarlo antes de que una empresa real te nombre? La clave de la empresa de demostración es pública en la [página de inicio](/#lens), donde la lente de claves abre sus libros.
+
+## Cuando algo sale mal
+
+- "Los libros de esta empresa están sellados para un id de contador que la clave de esta billetera no tiene, así que no se pueden abrir con ella." Conecta la billetera con la que te registraste. Si ya es esa billetera, la empresa se creó bajo el id de otro contador.
+- "No existe ninguna empresa con este id en el contrato de nómina." Revisa el id con el empleador.
+- "La cuenta de esta billetera aún no existe en testnet." Cárgala con friendbot y luego regístrate.
+- "Los libros están incompletos, así que no se exportó nada" y el motivo a continuación. Inténtalo de nuevo en un minuto, porque puede que los ledgers más recientes aún no se hayan leído.
+- "Freighter no firmó, así que no se envió nada." Rechazaste un aviso. Elige el botón otra vez.
+- "Cambia Freighter a Testnet y vuelve a intentarlo." Kalypso corre solo en Stellar testnet.
+
+## Qué ves y qué no
+
+Ves cada monto pagado por cada empresa cuyo pago está sellado a tu id. Por diseño, tu clave también abre el saldo de la tesorería después de cada pago, aunque esta pantalla lista solo los pagos. Tu clave solo lee: no puede mover dinero. No puedes leer el saldo propio de un trabajador, porque cada trabajador registra una clave de auditoría propia. Quién puede leer el pago de una empresa se lee del dueño actual de su id en el registro, nunca del contador anotado cuando se creó la empresa.
+
+Si tu clave se filtra, quien la tenga puede leer todo lo que alguna vez se selló para ella. El registro deja que solo tú la reemplaces, con su llamada `rotate_key`, y esta pantalla no la ofrece. Una clave nueva protege solo los pagos posteriores.

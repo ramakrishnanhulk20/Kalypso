@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
+import { tokenValue } from "@/lib/theme/palette";
+import { useThemeClass } from "@/lib/theme/use-theme-class";
 import { showsRightFade } from "./diagram-fade";
 
 type MermaidProps = { chart: string };
@@ -10,39 +13,46 @@ type DrawState =
   | { kind: "done"; svg: string; width: number }
   | { kind: "failed" };
 
-let initialised = false;
 // Mermaid keeps one scratch element per render call, and overlapping calls on a
 // page with three diagrams corrupt each other. Draw one at a time.
 let queue: Promise<unknown> = Promise.resolve();
 
+// The diagram colours are the page's own tokens, read at draw time so a theme change redraws
+// the diagram in the new theme.
+function themeVariables(fontFamily: string) {
+  const raised = tokenValue("--raised");
+  const raised2 = tokenValue("--raised-2");
+  const fg = tokenValue("--fg");
+  const muted = tokenValue("--muted");
+  const line = tokenValue("--line-strong");
+  return {
+    background: raised,
+    primaryColor: raised2,
+    primaryTextColor: fg,
+    primaryBorderColor: line,
+    lineColor: muted,
+    secondaryColor: raised,
+    tertiaryColor: tokenValue("--canvas"),
+    fontFamily,
+    fontSize: "14px",
+    noteBkgColor: raised2,
+    noteTextColor: fg,
+    actorBkg: raised2,
+    actorBorder: line,
+    actorTextColor: fg,
+    signalColor: muted,
+    signalTextColor: fg,
+  };
+}
+
 async function draw(id: string, chart: string, fontFamily: string) {
   const { default: mermaid } = await import("mermaid");
-  if (!initialised) {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "strict",
-      theme: "base",
-      themeVariables: {
-        background: "#1d1716",
-        primaryColor: "#261e1c",
-        primaryTextColor: "#f2ece6",
-        primaryBorderColor: "rgba(242,236,230,0.25)",
-        lineColor: "#a79c94",
-        secondaryColor: "#1d1716",
-        tertiaryColor: "#15100f",
-        fontFamily,
-        fontSize: "14px",
-        noteBkgColor: "#261e1c",
-        noteTextColor: "#f2ece6",
-        actorBkg: "#261e1c",
-        actorBorder: "rgba(242,236,230,0.25)",
-        actorTextColor: "#f2ece6",
-        signalColor: "#a79c94",
-        signalTextColor: "#f2ece6",
-      },
-    });
-    initialised = true;
-  }
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: "base",
+    themeVariables: themeVariables(fontFamily),
+  });
   return mermaid.render(id, chart);
 }
 
@@ -70,7 +80,9 @@ function ExpandIcon() {
 }
 
 export function Mermaid({ chart }: MermaidProps) {
-  const id = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const t = useTranslations("docs.diagram");
+  const baseId = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const themeClass = useThemeClass();
   const [state, setState] = useState<DrawState>({ kind: "drawing" });
   const [fade, setFade] = useState(false);
   const [fullSize, setFullSize] = useState(false);
@@ -78,9 +90,13 @@ export function Mermaid({ chart }: MermaidProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const renders = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    // Each draw gets its own id: Mermaid refuses to draw twice into one.
+    renders.current += 1;
+    const id = `${baseId}-${renders.current}`;
     const fontFamily = getComputedStyle(document.body).fontFamily;
     const run = queue.then(() => draw(id, chart, fontFamily));
     queue = run.catch(() => undefined);
@@ -97,7 +113,9 @@ export function Mermaid({ chart }: MermaidProps) {
     return () => {
       cancelled = true;
     };
-  }, [id, chart]);
+    // themeClass is here so the diagram is drawn again in the new theme's colours. It is the
+    // class on <html>, not the provider's state, so the tokens the draw reads are the new ones.
+  }, [baseId, chart, themeClass]);
 
   const drawn = state.kind === "done";
   useEffect(() => {
@@ -129,7 +147,7 @@ export function Mermaid({ chart }: MermaidProps) {
   if (state.kind === "failed") {
     return (
       <div className="kalypso-diagram not-prose">
-        <div className="kalypso-mermaid" tabIndex={0} role="region" aria-label="Diagram source">
+        <div className="kalypso-mermaid" tabIndex={0} role="region" aria-label={t("source")}>
           <pre className="kalypso-mermaid-source">{chart}</pre>
         </div>
       </div>
@@ -145,7 +163,7 @@ export function Mermaid({ chart }: MermaidProps) {
         className="kalypso-mermaid"
         tabIndex={0}
         role="region"
-        aria-label="Diagram"
+        aria-label={t("label")}
         aria-busy={state.kind === "drawing"}
         data-state={state.kind}
         style={state.kind === "done" ? natural : undefined}
@@ -156,14 +174,14 @@ export function Mermaid({ chart }: MermaidProps) {
         <>
           <button ref={openerRef} type="button" className="btn-ghost kalypso-diagram-button" onClick={() => setFullSize(true)}>
             <ExpandIcon />
-            Full size
+            {t("fullSize")}
           </button>
           {/* The drawn markup is reused as it is, never rendered again. Its ids repeat while this is open,
               and every reference inside it resolves to the identical element on the page. */}
           <dialog
             ref={dialogRef}
             className="kalypso-diagram-full"
-            aria-label="Diagram, full size"
+            aria-label={t("fullSizeLabel")}
             data-lenis-prevent
             onClose={() => {
               setFullSize(false);
@@ -173,7 +191,7 @@ export function Mermaid({ chart }: MermaidProps) {
             {fullSize ? (
               <>
                 <button type="button" className="btn-ghost kalypso-diagram-close" onClick={() => dialogRef.current?.close()}>
-                  Close
+                  {t("close")}
                 </button>
                 <div className="kalypso-diagram-full-stage" style={natural} dangerouslySetInnerHTML={{ __html: state.svg }} />
               </>

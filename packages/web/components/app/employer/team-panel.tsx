@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { CopyButton } from "@/components/app/copy-button";
 import { ErrorNote } from "@/components/app/error-note";
 import { describeError } from "@/components/app/errors";
@@ -13,6 +14,7 @@ import { StepButton } from "@/components/app/step-button";
 import { TxLink } from "@/components/app/tx-link";
 import { useAction } from "@/components/app/use-action";
 import { useWallet } from "@/components/app/wallet-session";
+import { useErrorText } from "@/lib/i18n/errors";
 import { shortId } from "@/lib/ledger";
 
 type InviteRow = {
@@ -22,12 +24,12 @@ type InviteRow = {
   reason?: string;
 };
 
-const CHIP: Record<InviteRow["status"], { tone: ChipTone; text: string }> = {
-  invited: { tone: "wait", text: "invited" },
-  "already-invited": { tone: "muted", text: "already invited" },
-  joined: { tone: "muted", text: "already joined" },
-  refused: { tone: "fail", text: "refused" },
-  "not-sent": { tone: "muted", text: "not sent" },
+const TONE: Record<InviteRow["status"], ChipTone> = {
+  invited: "wait",
+  "already-invited": "muted",
+  joined: "muted",
+  refused: "fail",
+  "not-sent": "muted",
 };
 
 // Each address goes in its own call, so a refusal belongs to one row and the rows before it keep
@@ -36,14 +38,25 @@ function renumber(sentence: string, index: number, total: number): string {
   return sentence.replace(/(worker )1 of 1/i, `$1${index + 1} of ${total}`);
 }
 
+// The lib's English reason names "Worker 1"; on a list the row already says which address.
 function reasonOf(message: string): string {
   return message.replace(/^Worker 1: /, "").replace(/^Worker 1 is /, "This address is ");
 }
 
 export function TeamPanel({ companyId }: { companyId: bigint }) {
+  const t = useTranslations("employer.team");
+  const locale = useLocale();
+  const errorText = useErrorText();
   const wallet = useWallet();
   const [text, setText] = useState("");
   const [rows, setRows] = useState<InviteRow[]>([]);
+  const chipText = {
+    invited: t("invited"),
+    "already-invited": t("alreadyInvited"),
+    joined: t("alreadyJoined"),
+    refused: t("refused"),
+    "not-sent": t("notSent"),
+  };
 
   const invite = useAction(async (onProgress) => {
     const lib = await loadEmployer();
@@ -52,7 +65,7 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
       .map((line) => line.trim())
       .filter((line) => line !== "");
     if (addresses.length === 0 || addresses.length > lib.MAX_INVITES) {
-      throw new lib.ConsoleError("WORKERS_INVALID", { message: `List 1 to ${lib.MAX_INVITES} worker addresses.` });
+      throw new lib.ConsoleError("WORKERS_INVALID", { message: t("listSize", { max: lib.MAX_INVITES }) });
     }
     const done: InviteRow[] = [];
     setRows([]);
@@ -67,7 +80,7 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
         done.push(row);
       } catch (err) {
         const shown = describeError(err);
-        done.push({ address, status: "refused", reason: reasonOf(shown.message) });
+        done.push({ address, status: "refused", reason: locale === "en" ? reasonOf(shown.message) : errorText(shown) });
         // A line the lib refused to read sent nothing, so the rest can go on. Anything else (a
         // declined signature, the network) would only repeat for every line after it.
         if (shown.code !== "WORKERS_INVALID") {
@@ -84,10 +97,10 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
   const link = `${window.location.origin}/worker?company=${companyId}`;
 
   return (
-    <Panel eyebrow="02" title="Team">
+    <Panel eyebrow={t("eyebrow")} title={t("title")}>
       <Block>
         <TextAreaField
-          label="Worker addresses, one per line"
+          label={t("addresses")}
           rows={5}
           value={text}
           disabled={invite.running}
@@ -95,19 +108,19 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
         />
         <div className="mt-4">
           <StepButton action={invite} disabled={text.trim() === ""} onClick={() => void invite.start()}>
-            Invite
+            {t("invite")}
           </StepButton>
         </div>
         {invite.error ? <ErrorNote error={invite.error} /> : null}
         {rows.length > 0 ? (
-          <ul className="mt-6 border-t border-line" aria-label="Invites">
+          <ul className="mt-6 border-t border-line" aria-label={t("invitesLabel")}>
             {rows.map((row, index) => (
               <li key={`${row.address}/${index}`} className="border-b border-line py-3">
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                  <span className="font-mono text-[0.9375rem] text-paper">{shortId(row.address)}</span>
+                  <span className="font-mono text-[0.9375rem] text-fg">{shortId(row.address)}</span>
                   <span className="flex items-center gap-4">
                     {row.txHash ? <TxLink hash={row.txHash} /> : null}
-                    <RowChip tone={CHIP[row.status].tone}>{CHIP[row.status].text}</RowChip>
+                    <RowChip tone={TONE[row.status]}>{chipText[row.status]}</RowChip>
                   </span>
                 </div>
                 {row.reason ? <p className="mt-2 font-sans text-[0.875rem] text-fail">{row.reason}</p> : null}
@@ -117,20 +130,18 @@ export function TeamPanel({ companyId }: { companyId: bigint }) {
         ) : null}
       </Block>
 
-      <Block label="Invite link" className="mt-12">
+      <Block label={t("linkLabel")} className="mt-12">
         <div className="flex flex-wrap items-center gap-3">
           <input
             readOnly
-            aria-label="Invite link to share"
+            aria-label={t("linkAria")}
             value={link}
             onFocus={(event) => event.currentTarget.select()}
             className={`${FIELD} min-w-0 flex-1 font-mono text-[0.9375rem]`}
           />
-          <CopyButton text={link} what="invite link" />
+          <CopyButton text={link} what={t("linkWhat")} />
         </div>
-        <p className="mt-4 max-w-[36rem] font-sans text-[0.9375rem] text-muted">
-          Send this link to each worker. They join with Face ID or a wallet, and you never see their keys.
-        </p>
+        <p className="mt-4 max-w-[36rem] font-sans text-[0.9375rem] text-muted">{t("linkText")}</p>
       </Block>
     </Panel>
   );

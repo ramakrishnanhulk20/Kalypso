@@ -1,0 +1,51 @@
+---
+title: Visão geral
+description: "O que a Kalypso é, para quem ela serve e o que fica privado e o que não fica."
+---
+
+A Kalypso leva o nome de Calipso (Kalypso, Καλυψώ, em grego), "aquela que oculta".
+
+A Kalypso é folha de pagamento na Stellar em que ninguém lê os salários, exceto quem deve. Uma empresa paga a equipe em USDC. O ledger público mostra que cada pagamento aconteceu, nunca quanto foi. Cada funcionário lê apenas o próprio pagamento, e o contador da empresa tem uma chave que lê todos os valores que a empresa pagou.
+
+Ela é construída sobre o token confidencial da OpenZeppelin para a Stellar, que a Stellar Development Foundation indica para folha de pagamento. A Kalypso acrescenta um contrato de folha de pagamento, um registro de chaves de auditoria e uma biblioteca de cliente que prova cada pagamento no navegador. Três telas a colocam em uso: o empregador paga a partir de uma planilha, cada funcionário entra com Face ID ou uma carteira e saca em uma âncora, e o contador abre e exporta os livros. Hoje ela roda na testnet da Stellar.
+
+## Para quem é
+
+Qualquer empresa que paga uma equipe remota em USDC. Um pagamento comum em USDC numa cadeia pública mostra o valor a qualquer pessoa com um explorador de blocos, então todo salário pago assim é público. A Kalypso mantém o pagamento na cadeia e o valor selado, e o contador ainda consegue ler os livros.
+
+## As três chaves
+
+| Chave | Quem a tem | O que ela abre |
+|---|---|---|
+| Chave da tesouraria | O empregador | Move o dinheiro da empresa e lê o saldo da própria tesouraria. O contrato de folha de pagamento paga cada funcionário no máximo uma vez por ciclo, e só com a assinatura desta chave. |
+| Chave do funcionário | Cada funcionário, sozinho | Os holerites e o saldo desse funcionário. Mais nada na folha. |
+| Chave do contador | O contador da empresa | Todos os valores que a empresa pagou e o saldo da tesouraria depois de cada pagamento. Não consegue mover dinheiro. |
+
+O contador registra a própria chave no registro de auditores da Kalypso, e só ele pode alterá-la. Nenhuma chave em poder da Kalypso consegue ler os salários de uma empresa real nem mover o dinheiro dela.
+
+## O que fica privado e o que não fica
+
+Privado: cada valor de salário e cada saldo.
+
+Público, por projeto:
+
+- Quem paga a quem, e quando. A lista de funcionários de cada empresa está na cadeia, então o número de funcionários também é público.
+- Os valores de depósito e de retirada. O depósito que financia a tesouraria mostra mais ou menos quanto a folha custa, e um funcionário que retira exatamente o seu pagamento o revela.
+- O contador vê todos os valores que a empresa paga. É para isso que serve a chave dele.
+
+O que não é defendido:
+
+- Uma chave vazada abre tudo o que já foi criptografado para ela. Trocar a chave protege apenas os pagamentos futuros.
+- O contrato não tem como saber se um valor oculto é o salário certo. Depois de cada pagamento, o motor de ciclo da Kalypso confere se saíram da tesouraria exatamente os valores aprovados, então um valor errado é detectado depois, não impedido.
+- Uma extensão de carteira ou um computador comprometido, um usuário que assina a mensagem de chave da Kalypso em um site de phishing e a emissora do USDC congelando os fundos reunidos.
+- Falhas no token confidencial da OpenZeppelin, nos circuitos dele ou no verificador, que são novos e não foram auditados.
+
+A Kalypso funciona só na testnet e não foi auditada por uma empresa de segurança. As [páginas de segurança](/docs/security/overview) dizem como ela foi verificada e como você mesmo pode verificar.
+
+## Para onde ir agora
+
+- [Primeiros passos](/docs/getting-started): rode uma folha de pagamento no navegador, sem carteira.
+- Guias para o [empregador](/docs/guides/employer), o [funcionário](/docs/guides/worker) e o [contador](/docs/guides/accountant): cada tela, passo a passo.
+- [Como funciona](/docs/how-it-works)
+- [Contratos e endereços](/docs/contracts)
+- [Perguntas frequentes](/docs/faq)

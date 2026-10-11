@@ -1,0 +1,48 @@
+---
+title: Empregador
+description: "Crie uma empresa, financie a tesouraria selada, convide a equipe e pague um mês a partir de uma planilha em /employer."
+---
+
+O console do empregador em [/employer](/employer) funciona com o Freighter configurado na Testnet. A conta da sua carteira vira a tesouraria da empresa e paga todas as taxas desta tela, então financie-a primeiro com XLM de teste: o botão Fund do Freighter pede ao friendbot. Pegue antes o id e o endereço do seu contador: o [guia do contador](/docs/guides/accountant) mostra onde ele os encontra.
+
+## Crie a empresa
+
+1. Escolha **Conectar Freighter**.
+2. Em **Seu contador**, digite o **Id do contador** e o **Endereço do contador**, depois escolha **Verificar**. A Kalypso lê o registro de auditores e mostra um **Código de confirmação**: 16 caracteres em quatro grupos.
+3. Peça ao seu contador para ler o código que aparece na tela dele. Marque **O código confere** só se todos os caracteres forem iguais. Um código diferente significa que a chave de outra pessoa está sob esse id.
+4. Digite o **Nome mostrado nos holerites**, de 1 a 64 bytes. Qualquer pessoa pode lê-lo na cadeia.
+5. Escolha **Criar a empresa**. O Freighter pede que você assine a mensagem de chave da Kalypso duas vezes, o que gera a chave privada da tesouraria, e depois que aprove duas transações: o registro da tesouraria no token confidencial, provado no seu navegador, e a própria empresa. O painel abre com o id da empresa no topo.
+
+## Financie a tesouraria
+
+6. Em **Tesouraria**, em **Adicionar fundos**, digite um **Valor (USDC)** e escolha **Adicionar à tesouraria**. O Freighter aprova uma trustline de USDC na primeira vez, depois um depósito e uma mesclagem. O saldo selado então aparece, aberto no seu navegador com a sua chave. O valor do depósito é público, então ele mostra mais ou menos quanto a folha custa.
+
+## Convide a equipe
+
+7. Em **Equipe**, cole os **Endereços dos funcionários, um por linha**, até 50, e escolha **Convidar**. Cada endereço é uma transação própria, e cada linha termina como convidado, já convidado, já entrou, recusado ou não enviado.
+8. Envie a cada funcionário o **Link do convite**. Um funcionário que se cadastra com Face ID recebe um endereço novo na tela dele: convide esse endereço, e ele entra pelo mesmo link. Só funcionários que já entraram podem ser pagos.
+
+## Pague um mês
+
+9. Em **Rodar a folha**, escolha o **Mês** e o **Ano**.
+10. Solte o CSV na caixa ou escolha **Colar em vez disso**. Cada linha tem um endereço, um valor e um nome opcional, até 500 linhas mais uma linha de cabeçalho. Os valores no arquivo sempre usam ponto como separador decimal e nenhum separador de milhar (1250.50, nunca 1.250,50), seja qual for o idioma da página. Os problemas são listados por linha, e a prévia mostra cada valor e o total.
+11. Escolha **Aprovar e pagar**. O Freighter aprova uma transação para abrir o ciclo, uma a cada dois funcionários e uma para encerrá-lo. Seu navegador prova cada pagamento antes. Cada linha termina como pago, já pago ou falhou, e "Ciclo encerrado" aparece quando todas estão pagas.
+
+## Em outro navegador
+
+Sua lista de empresas fica neste navegador. Em um novo, digite o id em **Abrir uma empresa pelo id** e escolha **Abrir**. A tesouraria então pede que você escolha **Reconstruir a partir da cadeia**, que também fica em **Ferramentas da tesouraria**. A Kalypso reconstrói o saldo a partir do histórico da tesouraria e mostra ao lado o que este dispositivo esperava. Se forem diferentes, a tesouraria se moveu de um jeito que este navegador não registrou: descubra por quê antes de pagar.
+
+## Quando algo dá errado
+
+As mensagens que você mais provavelmente vai encontrar:
+
+- "A conta desta carteira ainda não existe na testnet." Financie-a com o friendbot.
+- "Este id de contador pertence a um endereço diferente do informado." Confira os dois com o seu contador.
+- "Esta carteira já está registrada no token confidencial com outro id de contador, e isso nunca pode mudar." Use uma carteira nova.
+- "O arquivo lista mais funcionários do que os que entraram na empresa." Espere até que cada um tenha entrado.
+- "Os registros de tesouraria deste dispositivo não batem com a cadeia." Escolha **Reconstruir a partir da cadeia** na nota, confira o resultado e pague de novo.
+- Um ciclo que para no meio: escolha **Aprovar e pagar** de novo com o mesmo arquivo. Ele retoma a partir das marcas de pagamento da cadeia, e ninguém é pago duas vezes.
+
+## O que você vê e o que não vê
+
+Você vê o saldo selado da tesouraria e os valores do seu próprio arquivo, nunca o saldo de um funcionário. A chave do seu contador abre todos os valores que você paga e o saldo da tesouraria depois de cada pagamento, e não consegue mover dinheiro. Desconhecidos veem que a sua tesouraria pagou cada funcionário e quando, nunca quanto. A Kalypso nunca guarda as suas chaves.

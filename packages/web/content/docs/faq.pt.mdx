@@ -1,0 +1,52 @@
+---
+title: Perguntas frequentes
+description: "Respostas diretas às perguntas que empresas e jurados fazem primeiro sobre a Kalypso."
+---
+
+## Quem pode ver os salários?
+
+Três partes. O empregador, cujo navegador guarda a planilha; cada funcionário, apenas para o próprio pagamento; e o contador da empresa, cuja chave abre todos os valores que a empresa pagou e o saldo da tesouraria depois de cada pagamento. O contador abre os livros de uma empresa em /accountant e pode exportá-los como CSV, mas só quando estiverem completos. Mais ninguém pode, nem o servidor da Kalypso, que só vê valores criptografados. Na testnet, um desconhecido que procure os 12 salários nas 72 transações da demonstração, em 15 codificações cada, não encontra nenhum (ataque P1).
+
+## O que é público?
+
+Quem paga a quem, quando, quantos funcionários a empresa tem e quem está na lista dela. Os valores de depósito e de retirada também são públicos, então o depósito que financia uma tesouraria mostra mais ou menos quanto a folha custa, e um funcionário que retira exatamente o seu pagamento o revela. Só os valores dos pagamentos e dos saldos são privados.
+
+## E se a chave do contador vazar?
+
+Quem a tiver pode ler para sempre todos os valores já criptografados para ela, junto com o saldo da tesouraria depois de cada um desses pagamentos. Ainda assim, não consegue mover dinheiro. O contador pode trocar a chave, e só ele pode, então os pagamentos feitos dali em diante são criptografados para a nova chave, enquanto os anteriores continuam legíveis com a que vazou. A troca é uma chamada `rotate_key` no registro de auditores da Kalypso, assinada pelo contador; a visão do contador não a oferece. Uma troca no meio de um ciclo faz as provas montadas com a chave antiga falharem, então o motor de ciclo relê as chaves da cadeia e as monta de novo.
+
+## E se um funcionário perder a chave?
+
+A chave de um funcionário não é um arquivo que ele possa perder. Com o Freighter, ela é derivada da assinatura da mensagem de chave da Kalypso pela carteira, então a mesma carteira reconstrói a mesma chave em qualquer dispositivo. Com Face ID, ela é derivada da chave de acesso, então qualquer dispositivo que tenha a mesma chave de acesso a reconstrói. Se o funcionário perder a carteira ou a própria chave de acesso, ninguém consegue recuperar o dinheiro, porque a Kalypso não tem administrador que possa movê-lo ou reemiti-lo. O pagamento fica na cadeia, preso àquela conta.
+
+## A Kalypso pode congelar ou mover dinheiro?
+
+Não. Nem o contrato de folha de pagamento nem o registro de auditores têm administrador ou caminho de atualização, os papéis de administrador e gerente do verificador foram renunciados, e o dinheiro de uma empresa só se move com a assinatura da própria tesouraria (ataque P5). A Kalypso poderia parar de patrocinar taxas. Nada se moveria nem congelaria, mas o portal do funcionário, que envia as transações dos funcionários só pelo patrocinador, deixaria de enviá-las até ele voltar. O console do empregador e a visão do contador pagam as próprias taxas e continuariam funcionando. A Circle, como emissora do USDC, pode congelar ou recolher de volta o USDC reunido no contrato do token, e a Kalypso não tem como se defender disso.
+
+## Por que a Stellar?
+
+O token confidencial da OpenZeppelin, que esconde saldos e valores atrás de provas de conhecimento zero e ainda deixa um auditor lê-los, foi feito para a Stellar, e a Stellar Development Foundation lista a folha de pagamento como um uso dele. O USDC é emitido nativamente na Stellar, um pagamento custa uma fração de um XLM, e as âncoras permitem sacar USDC para a moeda local. O contrato de folha de pagamento da Kalypso é construído em torno desse token: sem ele, a chamada de pagamento não tem nada a manter privado.
+
+## Por que só na testnet?
+
+O token confidencial, seus circuitos e seu verificador vêm de uma revisão nova da OpenZeppelin que não foi auditada, e a própria Kalypso foi autoauditada, não auditada por uma empresa de segurança. Salários reais devem esperar pelas duas coisas. De resto, tudo na testnet é real: contratos reais, provas reais e pagamentos criptografados reais, em USDC de teste.
+
+## Quanto custa um ciclo?
+
+Medido na testnet, com a taxa de rede incluída: uma transação de pagamento paga dois funcionários por uma mediana de 0.51 XLM, e abrir o ciclo custa 0.40 XLM. Um ciclo para 10 pessoas é, portanto, de 5 transações de pagamento e uma de abertura, cerca de 2.95 XLM. A configuração é única: 0.68 XLM para criar uma empresa, e 0.30 XLM para convidar mais 0.42 XLM para aceitar, por funcionário, em grande parte aluguel de armazenamento pago adiantado por cerca de 180 dias. O empregador paga o lado da empresa. O patrocinador de taxas da Kalypso paga o lado do funcionário na entrada, incluindo cerca de 1.79 XLM para criar uma carteira com Face ID. Todos os valores estão em [Contratos e endereços](/docs/contracts#what-each-action-costs).
+
+## O que acontece se um pagamento falhar no meio?
+
+Ninguém é pago duas vezes e nada se perde. O contrato guarda uma marca de pagamento por funcionário por ciclo, então um ciclo que para é retomado a partir dessas marcas, e um segundo pagamento ao mesmo funcionário é recusado. Um lote que não pode ser montado, por exemplo depois que um funcionário trocou a chave, falha só nas próprias linhas, e o resto do ciclo segue. Se a rede recusar uma transação, o ciclo para, e rodá-lo de novo retoma a partir da cadeia. Um pagamento que o dispositivo enviou mas não viu concluído nunca é esquecido: o motor espera a cadeia resolvê-lo antes de montar qualquer coisa nova.
+
+## Como os funcionários sacam?
+
+Em dois passos no portal do funcionário. Primeiro o funcionário move o pagamento do saldo selado para a conta de saque, como USDC comum. Depois saca na âncora de teste da SDF, na própria página dela, aberta em um popup. A Kalypso monta o pagamento em USDC para a âncora apenas a partir do registro da própria âncora, e mostra o valor, o destino e o memo antes de o funcionário aprovar. O valor da retirada é público, então um funcionário que retira exatamente um holerite revela esse holerite, e a âncora vê o que é sacado. Na testnet, nenhum dinheiro de verdade se move. Sacar para um banco de verdade exigiria uma âncora na mainnet, e a Kalypso roda só na testnet.
+
+## Os funcionários precisam de uma carteira cripto?
+
+Não. Um funcionário pode entrar com Face ID, impressão digital ou o PIN do dispositivo. A Kalypso cria uma carteira inteligente com chave de acesso para ele, e o patrocinador de taxas paga a criação e todas as taxas da entrada, então a carteira nunca precisa de XLM. A chave do funcionário vem da saída PRF da chave de acesso, e uma chave de acesso que não consegue fornecer uma é recusada, nunca enfraquecida. O suporte a PRF muda entre celulares, notebooks e provedores de chave de acesso. A Kalypso rodou o caminho da chave de acesso de ponta a ponta no Chrome com um autenticador virtual que tem suporte a PRF, e não foi testada em todas as marcas de dispositivo. Um funcionário pode usar o Freighter no lugar.
+
+## Posso conferir isso por conta própria?
+
+Sim, com três comandos e nenhuma chave da Kalypso: um mostra qual versão compilou o código na cadeia, um lê o estado da cadeia para confirmar que ninguém pode mudar as regras, e um ataca a demonstração ao vivo e imprime o que barrou cada ataque. Eles estão em [Primeiros passos](/docs/getting-started#developer-path), e a [visão geral de segurança](/docs/security/overview) liga cada afirmação à verificação que a comprova.

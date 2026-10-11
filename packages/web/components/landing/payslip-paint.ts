@@ -186,8 +186,9 @@ export function paintPose(card: HTMLElement, pose: Pose) {
   }
 
   if (found.speech) {
+    // The card carries both sentences in its own language (data-speech-*), so this file says nothing itself.
     const opened = pose.scramble < 0.5 || pose.grow >= 1;
-    const text = opened ? `${amount} USDC, opened` : "Sealed";
+    const text = (opened ? card.dataset.speechOpened : card.dataset.speechSealed) ?? "";
     if (found.speech.textContent !== text) found.speech.textContent = text;
   }
 

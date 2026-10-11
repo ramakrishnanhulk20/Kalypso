@@ -1,20 +1,42 @@
 import { formatUsdc, parseUsdc } from "@kalypso/core";
+import { INTL_TAG } from "./i18n/locales";
+import type { Locale } from "./i18n/locales";
 
-// Whole part grouped with commas, fraction padded to at least two digits and
-// never cut: 1n is "0.0000001", 42500000000n is "4,250.00".
-export function displayUsdc(stroops: bigint): string {
+type Separators = { decimal: string; group: string };
+
+const separators = new Map<Locale, Separators>();
+
+// What Intl uses for this locale, read once: a dot and a comma in English and Chinese, a comma
+// and a dot in Spanish and Portuguese, a comma and a narrow space in French.
+function separatorsOf(locale: Locale): Separators {
+  let found = separators.get(locale);
+  if (!found) {
+    const parts = new Intl.NumberFormat(INTL_TAG[locale]).formatToParts(1234567.5);
+    found = {
+      decimal: parts.find((part) => part.type === "decimal")?.value ?? ".",
+      group: parts.find((part) => part.type === "group")?.value ?? ",",
+    };
+    separators.set(locale, found);
+  }
+  return found;
+}
+
+// Whole part grouped the locale's way, fraction padded to at least two digits and never cut:
+// 1n is "0.0000001", 42500000000n is "4,250.00" in English and "4.250,00" in Spanish.
+export function displayUsdc(stroops: bigint, locale: Locale = "en"): string {
   const [whole = "0", fraction = ""] = formatUsdc(stroops).split(".");
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${grouped}.${fraction.padEnd(2, "0")}`;
+  const { decimal, group } = separatorsOf(locale);
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, group)}${decimal}${fraction.padEnd(2, "0")}`;
 }
 
 const PLAIN = /^\d+(\.\d+)?$/;
 const GROUPED = /^\d{1,3}(,\d{3})+(\.\d+)?$/;
 
-// The one parser for every amount a person types. A comma is accepted only as a
+// The one parser for every amount a person types in English. A comma is accepted only as a
 // thousands separator, so "1,5" is refused instead of read as 15; core's parseUsdc then
 // applies its own rules (at most 7 decimals, above zero, within range). Returns null for
 // anything it refuses, and the screen shows displayUsdc(value) before anything is sent.
+// lib/i18n/amount.ts wraps this with the comma-decimal rules of the other languages.
 export function parseTypedUsdc(text: string): bigint | null {
   const trimmed = text.trim();
   if (!PLAIN.test(trimmed) && !GROUPED.test(trimmed)) return null;

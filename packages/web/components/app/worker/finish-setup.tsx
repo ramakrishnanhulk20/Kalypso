@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import type { WorkerSession } from "@/lib/worker";
 import { ErrorNote } from "@/components/app/error-note";
 import type { ShownError } from "@/components/app/errors";
@@ -10,8 +11,6 @@ import { NewPayKey } from "./new-pay-key";
 import { finishSetupCopy } from "./setup-gate";
 import { needsNewPayKey, shownErrors } from "./shown";
 import type { WorkerKit } from "./worker-lib";
-
-const SETTING_UP = { sentence: "Setting up your wallet", done: 0, total: 1 } as const;
 
 // The signed-in screen for a passkey worker whose address is not proven, with no invite to join:
 // the reason, and a way to run the same deploy and chain checks again. A wallet not on chain yet
@@ -31,19 +30,20 @@ export function FinishSetup({
   onDone: () => void;
   onNewWorker: (worker: WorkerSession, setupFailure?: unknown) => void;
 }) {
+  const t = useTranslations("worker.finish");
   const [newKeyOpen, setNewKeyOpen] = useState(false);
   const finish = useAction(async (onProgress) => {
-    onProgress(SETTING_UP);
+    onProgress({ sentence: t("settingUp"), done: 0, total: 1 });
     const done = await shownErrors(() => kit.lib.finishWalletSetup(worker, kit.lib.createHttpSponsor()));
     onDone();
     return done;
   });
   const error = finish.error ?? (finish.state.phase === "idle" ? reason : null);
-  const copy = finishSetupCopy({ onChain: kit.lib.walletOnChain(worker), reasonCode: reason?.code });
+  const copy = finishSetupCopy({ onChain: kit.lib.walletOnChain(worker), reasonCode: reason?.code }, t);
 
   return (
-    <section aria-label="Finish setting up" className="mt-8 rounded-card border border-line bg-ink-2 p-6">
-      <h2 className="font-display text-[1.5rem] font-medium leading-[1.15] text-paper">{copy.heading}</h2>
+    <section aria-label={t("label")} className="mt-8 rounded-card border border-line bg-raised p-6">
+      <h2 className="font-display text-[1.5rem] font-medium leading-[1.15] text-fg">{copy.heading}</h2>
       <p className="mt-3 font-sans text-base text-muted">{copy.text}</p>
       {error ? <ErrorNote error={error} /> : null}
       {needsNewPayKey(error) ? (
@@ -57,8 +57,8 @@ export function FinishSetup({
             newKeyOpen ? (
               <NewPayKey kit={kit} onCreated={onNewWorker} />
             ) : (
-              <button type="button" className="link-draw self-start text-[0.9375rem]" onClick={() => setNewKeyOpen(true)}>
-                Make a new pay key instead
+              <button type="button" className="link-draw self-start py-2 text-[0.9375rem]" onClick={() => setNewKeyOpen(true)}>
+                {t("newKeyInstead")}
               </button>
             )
           ) : null}
