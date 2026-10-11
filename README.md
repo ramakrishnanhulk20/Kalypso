@@ -35,6 +35,8 @@ It is built on OpenZeppelin's confidential token for Stellar, which the Stellar 
 
 It is for any company that pays a remote team in USDC, and for the accountant who keeps its books.
 
+The app and its user guides read in English, Spanish, Portuguese, French and Chinese, and follow the device's light or dark setting, with a switch for both in every header.
+
 On testnet, a stranger who searched all 72 showcase transactions for the 12 salaries, in 15 encodings each, found none. The published demo accountant key opened all 12 ([attack run](docs/security/attack-run.md)).
 
 | | Kalypso | Plain USDC payroll on Stellar | Bank payroll |
@@ -375,7 +377,7 @@ The registry has no constructor, no admin and no upgrade entry point, so the dep
 
 ## Test results
 
-Run on 9 and 10 October 2026. Every suite passed: 1,444 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
+Run on 9 and 10 October 2026, and the web app again on 11 October. Every suite passed: 1,516 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
 
 | Suite | Command, from the repo root | Tests |
 |---|---|---|
@@ -384,7 +386,7 @@ Run on 9 and 10 October 2026. Every suite passed: 1,444 tests in all. The server
 | Core library | `cd packages/core && npx vitest run` | 555 in 27 files |
 | Server | `cd packages/server && npx vitest run` | 316 in 14 files |
 | Server, production driver | `cd packages/server && npm run test:wire` | the same 316 |
-| Web app | `cd packages/web && npm test` | 404 in 41 files |
+| Web app | `cd packages/web && npm test` | 476 in 43 files |
 | Testnet scripts | `cd packages/contracts/scripts && npm test` | 11 |
 
 Line coverage: core 98.46%, server 97.99%.
@@ -436,10 +438,10 @@ Server, through the production Postgres driver (`npm run test:wire`):
 Web app:
 
 ```text
- Test Files  41 passed (41)
-      Tests  404 passed (404)
-   Start at  14:52:04
-   Duration  4.27s (import 57%, transform 21%, tests 21%)
+ Test Files  43 passed (43)
+      Tests  476 passed (476)
+   Start at  17:50:54
+   Duration  5.04s (import 59%, tests 21%, transform 19%)
 ```
 
 Testnet scripts:
