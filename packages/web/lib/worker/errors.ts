@@ -30,7 +30,7 @@ const MESSAGES = {
   PASSKEY_WRONG_SITE: "This page is not allowed to use passkeys for Kalypso. Open Kalypso from its own address.",
   PASSKEY_FAILED: "The passkey did not answer the way Kalypso needs. Try again.",
   NO_USER_VERIFICATION: "The passkey did not confirm it was you (Face ID, fingerprint or PIN). Kalypso needs that check every time.",
-  PRF_UNAVAILABLE: "This passkey cannot create a Kalypso private key. Use a passkey provider that supports PRF, or sign in with Freighter.",
+  PRF_UNAVAILABLE: "This passkey can't make a Kalypso key, so nothing was set up. Windows Hello and some security keys can't do this yet.",
   WALLET_SETUP_FAILED: "Kalypso could not prepare your new wallet. Check your connection and try again.",
   WALLET_RECORD_INVALID: "This browser's record of your new wallet is damaged, so it cannot be set up. Create a new account.",
   WALLET_CODE_UNKNOWN: "The wallet at this address runs code Kalypso does not trust, so it will not be used.",

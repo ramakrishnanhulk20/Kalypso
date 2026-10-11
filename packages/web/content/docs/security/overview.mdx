@@ -3,7 +3,7 @@ title: Security overview
 description: "What an attacker would want from Kalypso, what stops each attempt, and how to check each claim yourself."
 ---
 
-Kalypso holds other people's salaries and moves real money on their behalf, so its security story starts from the attacker. The [threat model](/docs/security/threat-model) was written before any contract code. It names the attackers (an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys), what each one wants, and 55 invariants the code must uphold. This page is the short version.
+Kalypso holds other people's salaries and moves real money on their behalf, so its security story starts from the attacker. The [threat model](/docs/security/threat-model) was written before any contract code. It names the attackers (an anonymous internet user, a malicious company admin, a malicious worker, a lying upstream service or package, and an insider holding our deploy keys), what each one wants, and 56 invariants the code must uphold. This page is the short version.
 
 ## What an attacker would want, and what stops them
 
@@ -34,7 +34,7 @@ You do not need to trust any of this. Three commands check the live system, and 
 - `npm run check:testnet` reads chain state and runs 18 checks: the verifier's locked keys, no admin or upgrade path on our contracts, the released code on chain, and storage life.
 - `npm run prove:testnet` attacks the showcase company's promises on testnet and prints what stopped each attack.
 
-The test suites back the rest: 115 payroll and 43 auditor tests, 555 core tests at 98.46% line coverage, 316 server tests at 97.99% (run again through the production Postgres driver), 404 web app tests and 11 for the testnet scripts, 1,444 in all as of 10 October. [Audits](/docs/security/audits) lists every review the code went through.
+The test suites back the rest: 115 payroll and 43 auditor tests, 560 core tests at 98.47% line coverage, 316 server tests at 97.99% (run again through the production Postgres driver), 505 web app tests and 11 for the testnet scripts, 1,550 in all as of 11 October. [Audits](/docs/security/audits) lists every review the code went through.
 
 ## What Kalypso does not defend
 

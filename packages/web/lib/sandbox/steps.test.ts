@@ -2,21 +2,22 @@
 // nothing, a transaction recorded before a reload is found by its hash instead of sent again, an
 // expired one is rebuilt, a step whose transaction failed on chain is built again, a landed step
 // that the chain does not show is refused, and friendbot is asked once per missing account, all at
-// once. Does NOT cover the live network, real proofs, the DEX, or executeRun (core's own tests and
-// the live headless run in scratchpad/sandbox cover those).
-import { ContractCallError } from "@kalypso/core";
+// once. The pay step's CSV text reads back through core's parser as exactly the typed salaries.
+// Does NOT cover the live network, real proofs, the DEX, or executeRun (core's own tests and the
+// live headless run in scratchpad/sandbox cover those).
+import { ContractCallError, formatUsdc, parsePayrollCsv } from "@kalypso/core";
 import type { ChainPort, EventsPort } from "@kalypso/core";
 import { describe, expect, it } from "vitest";
 import { Address, xdr as baseXdr } from "../../../core/node_modules/@stellar/stellar-sdk/lib/esm/base/index.js";
 import { pointToBytes } from "../../../core/node_modules/stellar-confidential-token-sdk/dist/index.js";
-import { ROLES, addressOf, auditorPublicKey, type FriendbotPort, type LedgerPort } from "./accounts";
+import { ROLES, addressOf, auditorPublicKey, workerRole, type FriendbotPort, type LedgerPort } from "./accounts";
 import { sandboxConfig } from "./config";
 import type { HorizonPort } from "./dex";
 import { periodId } from "./engine";
 import { SandboxError } from "./errors";
 import { depositFor, totalOf } from "./salaries";
 import { Keypair } from "./sdk";
-import { accountantStep, fundStep, runStep, type SandboxProgress, type StepContext } from "./steps";
+import { accountantStep, csvAmount, fundStep, payrollCsvText, runStep, type SandboxProgress, type StepContext } from "./steps";
 import type { SandboxState } from "./storage";
 import { invoke, journalOf } from "./transactions";
 
@@ -272,6 +273,28 @@ describe("fund step", () => {
     expect(said).toContain("Friendbot funded worker 1's account");
     expect(said).toContain("Friendbot funded worker 3's account");
     expect(said.some((line) => /the worker/i.test(line))).toBe(false);
+  });
+});
+
+describe("the pay step's CSV", () => {
+  it.each([
+    [123_450_000n, "12.3450"],
+    [42_000_000n, "4.2"],
+    [42_000_000_000n, "4200"],
+    [10_005_000_000n, "1000.5"],
+    [10_000n, "0.0010"],
+  ])("writes %s stroops as %j", (stroops, text) => {
+    expect(csvAmount(stroops)).toBe(text);
+  });
+
+  it("reads back through core's parser as exactly the typed salaries, where plain formatUsdc would be refused", () => {
+    const state = sample();
+    const workers = [0, 1, 2].map((i) => addressOf(state, workerRole(i)));
+    const salaries = [123_450_000n, 9_999_990_000n, 42_000_000n];
+    const { rows, errors } = parsePayrollCsv(payrollCsvText(workers, salaries));
+    expect(errors).toEqual([]);
+    expect(rows.map((row) => [row.address, row.amount])).toEqual(workers.map((g, i) => [g, salaries[i]]));
+    expect(parsePayrollCsv(`${workers[0]},${formatUsdc(123_450_000n)}`).errors.map((e) => e.code)).toEqual(["AMOUNT_AMBIGUOUS"]);
   });
 });
 

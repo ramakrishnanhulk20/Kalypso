@@ -142,7 +142,7 @@ describe("createPasskey", () => {
     const err = await createPasskey(rt, sponsor).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(WorkerError);
     expect(err).toMatchObject({ code: "PRF_UNAVAILABLE" });
-    expect((err as Error).message).toContain("sign in with Freighter");
+    expect((err as Error).message).toContain("nothing was set up");
     expect(auth.seen.got).toHaveLength(1);
     expect(auth.seen.got[0]!.publicKey!.extensions?.prf?.eval?.first).toBeDefined();
     expect(auth.seen.forgotten).toEqual([b64url(new Uint8Array(auth.seen.got[0]!.publicKey!.allowCredentials![0]!.id as ArrayBuffer))]);

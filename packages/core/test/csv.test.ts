@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { StrKey } from '@stellar/stellar-sdk/base';
 import { describe, expect, it, vi } from 'vitest';
 import { parseAccount } from '../src/addresses.js';
-import { MAX_STROOPS } from '../src/amounts.js';
+import { MAX_STROOPS, parseUsdc } from '../src/amounts.js';
 import { CSV_DEFAULT_MAX_BYTES, CSV_DEFAULT_MAX_ROWS, parsePayrollCsv, toSafeCsvCell, type CsvError } from '../src/csv.js';
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
@@ -259,6 +259,40 @@ describe('row shape and amounts', () => {
       { line: 4, code: 'DUPLICATE' },
     ]);
     expect(rows.map((row) => row.line)).toEqual([3]);
+  });
+
+  it.each(['4.200', '1.000', '999.999'])('refuses %j as ambiguous and names the cell only in its own field', (cell) => {
+    const { rows, errors } = parsePayrollCsv(`${A},${cell},Ana`);
+    expect(rows).toEqual([]);
+    expect(errors).toEqual([{ line: 1, code: 'AMOUNT_AMBIGUOUS', message: expect.any(String), cell }]);
+    expect(errors[0]?.message).not.toContain(cell);
+  });
+
+  it('refuses the ambiguous shape however the cell is wrapped, and keeps the line numbers', () => {
+    const wrapped = [`"4.200"`, `  4.200  `, ` 4.200 `, ` " 4.200 " `, `﻿4.200`];
+    for (const cell of wrapped) {
+      expect(parsePayrollCsv(`${A},${cell}`).errors, cell).toEqual([{ line: 1, code: 'AMOUNT_AMBIGUOUS', message: expect.any(String), cell: '4.200' }]);
+    }
+    expect(codes(parsePayrollCsv(`﻿${A},4.200`).errors)).toEqual([{ line: 1, code: 'AMOUNT_AMBIGUOUS' }]);
+    const crlf = parsePayrollCsv(`address,amount\r\n${A},4.200\r\n${B},4.2\r\n`);
+    expect(codes(crlf.errors)).toEqual([{ line: 2, code: 'AMOUNT_AMBIGUOUS' }]);
+    expect(crlf.rows.map((row) => [row.line, row.amount])).toEqual([[3, 42_000_000n]]);
+  });
+
+  it('accepts every amount that cannot be a grouped thousand, with its exact value', () => {
+    const cases: [string, bigint][] = [
+      ['4.2', 42_000_000n],
+      ['4.20', 42_000_000n],
+      ['4.2000', 42_000_000n],
+      ['4200', 42_000_000_000n],
+      ['1000.5', 10_005_000_000n],
+      ['0.125', 1_250_000n],
+      ['1234.567', 12_345_670_000n],
+    ];
+    const { rows, errors } = parsePayrollCsv(cases.map(([cell], i) => `${indexedAddress(i)},${cell}`).join('\n'));
+    expect(errors).toEqual([]);
+    expect(rows.map((row) => row.amount)).toEqual(cases.map(([, stroops]) => stroops));
+    for (const [cell, stroops] of cases) expect(parseUsdc(cell)).toBe(stroops);
   });
 
   it('never puts cell content in an error message', () => {

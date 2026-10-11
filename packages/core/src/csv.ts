@@ -21,6 +21,12 @@ export interface CsvError {
   line: number;
   code: string;
   message: string;
+  /**
+   * Set only for AMOUNT_AMBIGUOUS: the trimmed amount cell, so the screen can show which figure it
+   * refused. The check that sets it admits only one to three digits, a dot and three digits, so it
+   * can never carry an address, a key or a name.
+   */
+  cell?: string;
 }
 
 export type CsvErrorCode =
@@ -34,6 +40,7 @@ export type CsvErrorCode =
   | 'MISSING_COLUMN'
   | 'DUPLICATE'
   | 'AMOUNT_SPLIT'
+  | 'AMOUNT_AMBIGUOUS'
   | 'NAME_TOO_LONG'
   | 'NAME_INVALID'
   | `ADDRESS_${AddressError['code']}`
@@ -49,6 +56,8 @@ const CSV_MESSAGES = {
   MISSING_COLUMN: 'This row needs an address and an amount, separated by a comma (not a semicolon).',
   AMOUNT_SPLIT:
     'The name cell holds only a number, which usually means a comma split the amount into two cells. Write the amount without commas, or give the name a letter.',
+  AMOUNT_AMBIGUOUS:
+    'The amount is one to three digits, a dot and exactly three more, so it could be a decimal or a thousands figure. Write it without a thousands separator, with a dot only for decimals: 4200 or 4.20.',
   NAME_TOO_LONG: `The name is longer than ${CSV_NAME_MAX_CHARACTERS} characters.`,
   NAME_INVALID: 'The name contains a control character such as a line break or a tab.',
 } satisfies Partial<Record<CsvErrorCode, string>>;
@@ -56,6 +65,10 @@ const CSV_MESSAGES = {
 const FORMULA_START = /^[=+\-@\t\r]/;
 const NEEDS_QUOTES = /[",\r\n]/;
 const NUMBER_ONLY = /^\d[\d.,]*$/;
+// "4.200" is 4.2 to parseUsdc but four thousand two hundred to anyone whose figures group thousands
+// with a dot, and a file says nothing about where it was written, so the shape is refused outright.
+// A leading zero ("0.125") or a fourth decimal ("4.2000") cannot be a grouped thousand.
+const AMBIGUOUS_AMOUNT = /^[1-9]\d{0,2}\.\d{3}$/;
 const CONTROL_CHARACTER = /\p{Cc}/u;
 const LETTER = /\p{L}/u;
 const DIGIT = /\d/;
@@ -190,11 +203,14 @@ function startsLikeFormula(value: string): boolean {
  * may start with a UTF-8 byte order mark and one header row, and may use LF or CRLF line breaks.
  *
  * Every address goes through parseAccount and every amount through parseUsdc, and the row
- * carries exactly the values those return. The file fails closed: over maxBytes, over maxRows,
- * an unclosed quote or a lone carriage return returns one error and no rows. Otherwise each
- * bad line is listed with its line number and reason, and rows holds only the lines that
- * passed every check. A repeated address is refused on the later line. Callers should not
- * start a payroll run while errors is non-empty.
+ * carries exactly the values those return. An amount of one to three digits, a dot and exactly
+ * three more ("4.200") is refused as AMOUNT_AMBIGUOUS before parseUsdc sees it, because a reader
+ * who groups thousands with a dot means 4200 by it; that is the one error that carries its cell.
+ *
+ * The file fails closed: over maxBytes, over maxRows, an unclosed quote or a lone carriage return
+ * returns one error and no rows. Otherwise each bad line is listed with its line number and
+ * reason, and rows holds only the lines that passed every check. A repeated address is refused on
+ * the later line. Callers should not start a payroll run while errors is non-empty.
  *
  * @param opts.maxBytes size cap in UTF-8 bytes, default 262144.
  * @param opts.maxRows cap on data rows, default 500. The header and blank lines do not count.
@@ -264,11 +280,17 @@ export function parsePayrollCsv(
     if (NUMBER_ONLY.test(name)) {
       refuse(line, 'AMOUNT_SPLIT', CSV_MESSAGES.AMOUNT_SPLIT);
     } else {
-      try {
-        amount = parseUsdc(amountCell);
-      } catch (err) {
-        if (!(err instanceof AmountError)) throw err;
-        refuse(line, `AMOUNT_${err.code}`, err.message);
+      // The same trim parseUsdc applies, so a cell padded with any whitespace is judged as parsed.
+      const amountText = amountCell.trim();
+      if (AMBIGUOUS_AMOUNT.test(amountText)) {
+        errors.push({ line, code: 'AMOUNT_AMBIGUOUS', message: CSV_MESSAGES.AMOUNT_AMBIGUOUS, cell: amountText });
+      } else {
+        try {
+          amount = parseUsdc(amountCell);
+        } catch (err) {
+          if (!(err instanceof AmountError)) throw err;
+          refuse(line, `AMOUNT_${err.code}`, err.message);
+        }
       }
       if ([...name].length > CSV_NAME_MAX_CHARACTERS) refuse(line, 'NAME_TOO_LONG', CSV_MESSAGES.NAME_TOO_LONG);
       else if (CONTROL_CHARACTER.test(name)) refuse(line, 'NAME_INVALID', CSV_MESSAGES.NAME_INVALID);

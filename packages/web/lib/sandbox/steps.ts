@@ -646,6 +646,22 @@ async function payTransactions(ctx: StepContext): Promise<string[] | null> {
 }
 
 /**
+ * An amount as the pay step writes it into its CSV. core's parser refuses one to three digits, a
+ * dot and exactly three more as ambiguous (threat model C26: "12.345" is twelve thousand to a reader
+ * who groups with a dot), so a judge's 12.345 salary would stop the sandbox at the pay step. A
+ * fourth decimal keeps the value and the parser's rule, as editableUsdc does for typed fields.
+ */
+export function csvAmount(stroops: bigint): string {
+  const text = formatUsdc(stroops);
+  return /\.\d{3}$/.test(text) ? `${text}0` : text;
+}
+
+/** The pay step's CSV: a header, then each worker's address and csvAmount of their salary. */
+export function payrollCsvText(workers: readonly string[], amounts: readonly bigint[]): string {
+  return ["address,amount", ...workers.map((g, i) => `${g},${csvAmount(amounts[i] as bigint)}`)].join("\n") + "\n";
+}
+
+/**
  * Pays the three workers through core's executeRun, with the browser prover and the treasury
  * openings kept in this browser. executeRun settles any pay left in flight first and skips rows
  * already paid on chain, so a reload in the middle never pays anyone twice (C13, C29).
@@ -665,8 +681,7 @@ export async function payStep(ctx: StepContext): Promise<void> {
     async () => {
       if (!(await runPaid(ctx))) {
         // Through core's CSV parser, so the amounts proved are the ones its one parser reads (C26).
-        const csv = ["address,amount", ...workers.map((g, i) => `${g},${formatUsdc(state.amounts[i] as bigint)}`)].join("\n") + "\n";
-        const { rows, errors } = parsePayrollCsv(csv);
+        const { rows, errors } = parsePayrollCsv(payrollCsvText(workers, state.amounts));
         if (errors.length > 0 || rows.length !== WORKER_COUNT) throw new SandboxError("INVALID_AMOUNTS", "The payroll rows were refused by the CSV parser, so nothing was paid.");
         const position = new Map(rows.map((row) => [row.line, workers.indexOf(row.address) + 1]));
         const report = await executeRun({

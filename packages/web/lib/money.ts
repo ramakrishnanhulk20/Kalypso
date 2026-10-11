@@ -30,7 +30,9 @@ export function displayUsdc(stroops: bigint, locale: Locale = "en"): string {
 }
 
 const PLAIN = /^\d+(\.\d+)?$/;
-const GROUPED = /^\d{1,3}(,\d{3})+(\.\d+)?$/;
+// A first group with a leading zero is no thousands figure: "0,125" is a decimal in Spanish,
+// Portuguese and French, so reading it as 125 here would let a language switch change its value.
+const GROUPED = /^[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/;
 
 // The one parser for every amount a person types in English. A comma is accepted only as a
 // thousands separator, so "1,5" is refused instead of read as 15; core's parseUsdc then

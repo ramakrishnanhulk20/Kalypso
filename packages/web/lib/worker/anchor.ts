@@ -25,7 +25,7 @@ export interface AnchorPayment {
 }
 
 // Every status SEP-24 v3.8.0 defines, each with the sentence the screen shows for it.
-const STATUS_SENTENCES = {
+export const STATUS_SENTENCES = {
   incomplete: "The anchor is waiting for you to finish its page.",
   pending_user_transfer_start: "The anchor is ready. Approve the USDC transfer.",
   pending_user_transfer_complete: "The anchor has your USDC, and the cash is ready to collect.",
@@ -45,6 +45,7 @@ const STATUS_SENTENCES = {
 } as const;
 
 export type CashOutStatus = keyof typeof STATUS_SENTENCES;
+export const CASH_OUT_STATUSES = Object.keys(STATUS_SENTENCES) as readonly CashOutStatus[];
 
 const FINAL_STATUSES: ReadonlySet<CashOutStatus> = new Set(["completed", "refunded", "expired", "no_market", "too_small", "too_large", "error"]);
 

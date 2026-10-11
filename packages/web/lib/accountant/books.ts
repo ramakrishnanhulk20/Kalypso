@@ -106,6 +106,7 @@ const GAP_WORDS: { [R in HistoryGap["reason"]]: (gap: Extract<HistoryGap, { reas
   ledger_mismatch: (g) => `a payslip in run ${g.runId} is dated at a different ledger from its transaction`,
   paid_count_mismatch: (g) => `the chain says run ${g.runId} paid ${g.expected} workers but ${g.found} payslips passed every check`,
 };
+export const HISTORY_GAP_REASONS = Object.keys(GAP_WORDS) as readonly HistoryGap["reason"][];
 
 const UNDECRYPTABLE_WORDS: Readonly<Record<string, string>> = {
   amount_out_of_range: "a payment does not open with this key into a valid amount",

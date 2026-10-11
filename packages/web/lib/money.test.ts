@@ -42,4 +42,14 @@ describe("parseTypedUsdc", () => {
   it.each(["1,5", "12,34", "1,5000", ",500", "4,20.00", "", "0", "-5", "1e3", "4 200", "4.", ".5", "0.00000001"])("refuses %j", (text) => {
     expect(parseTypedUsdc(text)).toBeNull();
   });
+
+  // "0,125" is 0.125 to a Spanish, Portuguese or French reader, so English must not read it as 125.
+  it.each(["0,125", "00,125", "000,125"])("refuses %j, a first group that starts with zero", (text) => {
+    expect(parseTypedUsdc(text)).toBeNull();
+  });
+
+  it("still reads a real thousands group and a plain decimal", () => {
+    expect(parseTypedUsdc("1,250")).toBe(12500000000n);
+    expect(parseTypedUsdc("0.125")).toBe(1250000n);
+  });
 });

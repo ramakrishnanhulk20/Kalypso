@@ -81,10 +81,15 @@ export function describeError(err: unknown): ShownError {
   };
 }
 
-/** The lib's CSV problems carried by a refused run, or an empty list. */
-export function problemsOf(err: unknown): { line: number; code: string; sentence: string }[] {
+type CsvProblemShown = { line: number; code: string; sentence: string; amount?: string };
+
+/** The lib's CSV problems carried by a refused run, or an empty list. amount, when present, must be text. */
+export function problemsOf(err: unknown): CsvProblemShown[] {
   const list = err instanceof Error && err.name === "ConsoleError" ? (err as { problems?: unknown }).problems : undefined;
   return Array.isArray(list)
-    ? list.filter((p): p is { line: number; code: string; sentence: string } => typeof p?.sentence === "string" && typeof p?.code === "string")
+    ? list.filter(
+        (p): p is CsvProblemShown =>
+          typeof p?.sentence === "string" && typeof p?.code === "string" && (p.amount === undefined || typeof p.amount === "string"),
+      )
     : [];
 }

@@ -1,9 +1,16 @@
 // Covers the four translations against the English file: every key exists with the same ICU
 // placeholders and plural branches, no value is left in English except the brand terms, and no
-// file carries the long dash (U+2014) or the doubled Chinese dash. Does NOT judge the wording.
+// file carries the long dash (U+2014) or the doubled Chinese dash. Also covers the English file
+// against the libs' own lists of anchor statuses, worker error codes, sandbox steps and history
+// gaps (C56), and each anchor status against the anchor lib's own English sentence. Does NOT judge
+// the wording, or cover codes from libs that publish no list.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { HISTORY_GAP_REASONS } from "../lib/accountant/books";
+import { SANDBOX_STEPS } from "../lib/sandbox/storage";
+import { CASH_OUT_STATUSES, STATUS_SENTENCES } from "../lib/worker/anchor";
+import { WORKER_ERROR_CODES } from "../lib/worker/errors";
 import en from "./en.json";
 
 const LOCALES = ["es", "pt", "fr", "zh"] as const;
@@ -82,5 +89,23 @@ describe.each(LOCALES)("messages/%s.json", (locale) => {
 describe("messages/en.json", () => {
   it("has no long dash", () => {
     expect(readFileSync(path.join(import.meta.dirname, "en.json"), "utf8").includes(LONG_DASH)).toBe(false);
+  });
+
+  // The other four files are held to these same keys above, so a key here is a sentence in all five.
+  it.each([
+    ["worker.anchor.status", CASH_OUT_STATUSES],
+    ["errors.worker", WORKER_ERROR_CODES],
+    ["sandbox.progress", SANDBOX_STEPS],
+    ["worker.gaps", HISTORY_GAP_REASONS],
+  ] as const)("has a sentence under %s for every entry in the lib's own list", (namespace, list) => {
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.filter((entry) => !english.has(`${namespace}.${entry}`))).toEqual([]);
+  });
+
+  // The English page shows the anchor lib's own sentence and the other languages translate this
+  // file, so the two English wordings must be one, or a status means different things by language.
+  it("says every anchor status in exactly the words of lib/worker/anchor.ts", () => {
+    const drift = CASH_OUT_STATUSES.filter((status) => english.get(`worker.anchor.status.${status}`) !== STATUS_SENTENCES[status]);
+    expect(drift).toEqual([]);
   });
 });

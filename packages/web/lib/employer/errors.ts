@@ -112,6 +112,8 @@ export interface CsvProblem {
   line: number;
   code: string;
   sentence: string;
+  /** For AMOUNT_AMBIGUOUS only: the refused figure as the file wrote it, digits and one dot. */
+  amount?: string;
 }
 
 /**

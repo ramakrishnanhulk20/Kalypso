@@ -3,8 +3,10 @@ import type { CsvError, CsvErrorCode, CsvRow } from "@kalypso/core";
 import type { CsvProblem } from "./errors";
 
 // What is wrong, as the rest of a sentence that starts with the line. None of them repeats a cell,
-// because a cell can be a salary or a pasted secret key.
-const REASONS: Record<Exclude<CsvErrorCode, "DUPLICATE">, string> = {
+// because a cell can be a salary or a pasted secret key. AMOUNT_AMBIGUOUS is the one exception: it
+// shows the figure it refused, which core's check limits to digits and one dot, on the employer's
+// own screen only, because "Line 4" alone does not say which reading of 4.200 was meant.
+const REASONS: Record<Exclude<CsvErrorCode, "DUPLICATE" | "AMOUNT_AMBIGUOUS">, string> = {
   FILE_TOO_LARGE: `is larger than ${Math.floor(CSV_DEFAULT_MAX_BYTES / 1024)} KB. Split it into smaller files.`,
   TOO_MANY_ROWS: `has more than ${CSV_DEFAULT_MAX_ROWS} payroll rows. Split it into smaller files.`,
   NO_ROWS: "has no payroll rows. Each row needs a worker's address and an amount.",
@@ -33,6 +35,11 @@ const REASONS: Record<Exclude<CsvErrorCode, "DUPLICATE">, string> = {
 // core's DUPLICATE message is its own fixed text with the earlier line's number in it, never a cell.
 const EARLIER_LINE = /on line (\d+)\./;
 
+/** The English for messages/en.json errors.csv.AMOUNT_AMBIGUOUS, kept word for word the same. */
+function ambiguousSentence(line: number, amount: string): string {
+  return `Line ${line}: ${amount} is ambiguous. It could be a decimal or a thousands figure. Write it without a thousands separator, with a dot only for decimals: 4200 or 4.20.`;
+}
+
 /**
  * One CSV error from core's parser as a plain sentence that names the line ("Line 4 has no
  * amount."), or the file when the error is about the whole file. An error code this table does not
@@ -44,6 +51,7 @@ export function csvSentence(error: CsvError): string {
     const first = EARLIER_LINE.exec(error.message)?.[1];
     return `${where} repeats the address on line ${first ?? "an earlier line"}. List each worker once, with their total for the run.`;
   }
+  if (error.code === "AMOUNT_AMBIGUOUS" && typeof error.cell === "string") return ambiguousSentence(error.line, error.cell);
   const reason = Object.hasOwn(REASONS, error.code) ? REASONS[error.code as keyof typeof REASONS] : undefined;
   return reason === undefined ? `${where}: ${error.message}` : `${where} ${reason}`;
 }
@@ -51,9 +59,17 @@ export function csvSentence(error: CsvError): string {
 /**
  * Reads a payroll spreadsheet saved as CSV through core's one parser, as is (threat model C26):
  * the rows are exactly what core's parser returned, and every refusal becomes a sentence naming
- * its line. A run must not start while problems is non-empty.
+ * its line. An AMOUNT_AMBIGUOUS problem also carries the refused figure as amount, for the
+ * sentence in other languages. A run must not start while problems is non-empty.
  */
 export function readPayrollCsv(text: string): { rows: CsvRow[]; problems: CsvProblem[] } {
   const { rows, errors } = parsePayrollCsv(text);
-  return { rows, problems: errors.map((error) => ({ line: error.line, code: error.code, sentence: csvSentence(error) })) };
+  return {
+    rows,
+    problems: errors.map((error) => {
+      const problem: CsvProblem = { line: error.line, code: error.code, sentence: csvSentence(error) };
+      if (error.code === "AMOUNT_AMBIGUOUS" && typeof error.cell === "string") problem.amount = error.cell;
+      return problem;
+    }),
+  };
 }

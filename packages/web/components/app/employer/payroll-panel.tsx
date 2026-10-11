@@ -21,7 +21,7 @@ import { displayUsdc } from "@/lib/money";
 import { CsvDrop } from "./csv-drop";
 import { RunResult } from "./run-result";
 
-type Problem = { line: number; code: string; sentence: string };
+type Problem = { line: number; code: string; sentence: string; amount?: string };
 
 // The importer's DUPLICATE sentence names the earlier line; the number is all another language needs from it.
 const EARLIER_LINE = /\b(\d+)\b(?!.*\b\d+\b)/;
@@ -56,6 +56,9 @@ export function PayrollPanel({ companyId, refresh }: { companyId: bigint; refres
     if (problem.code === "DUPLICATE") {
       const first = EARLIER_LINE.exec(problem.sentence)?.[1];
       return first === undefined ? csv("DUPLICATE_UNKNOWN", { where }) : csv("DUPLICATE", { where, first });
+    }
+    if (problem.code === "AMOUNT_AMBIGUOUS") {
+      return problem.amount === undefined ? csv("OTHER", { where }) : csv("AMOUNT_AMBIGUOUS", { line: problem.line, amount: problem.amount });
     }
     if (!csv.has(problem.code)) return csv("OTHER", { where });
     return csv(problem.code, { where, kb: Math.floor(CSV_DEFAULT_MAX_BYTES / 1024), rows: CSV_DEFAULT_MAX_ROWS, chars: CSV_NAME_MAX_CHARACTERS });
