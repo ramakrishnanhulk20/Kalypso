@@ -6,7 +6,7 @@ Payroll on Stellar where nobody can read the salaries except the people who shou
 
 The name is the Greek Kalypso (Καλυψώ), "she who conceals": the ledger shows every payment, and the amount stays sealed.
 
-[Live app](https://kalypso-payroll.vercel.app) · [Docs](https://kalypso-payroll.vercel.app/docs) · [Sandbox](https://kalypso-payroll.vercel.app/demo) · Video: link added at submission
+[Live app](https://kalypso-payroll.vercel.app) · [Docs](https://kalypso-payroll.vercel.app/docs) · [Sandbox](https://kalypso-payroll.vercel.app/demo) · [Video](https://youtu.be/dgfrmXYcuN4)
 
 Built for the Find Your Way hackathon. Testnet only. Not audited by a security firm. It is self-audited: a threat model written before the code, an attack test for every claim, and a three-pass review whose 20 findings are all fixed or named as limits ([Security](#security)).
 
