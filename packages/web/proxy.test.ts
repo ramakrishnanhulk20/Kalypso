@@ -3,7 +3,7 @@
 // no directive, so a script our own code inserts cannot load from another host; the request Next
 // reads the nonce from carries the same policy as the response; every call gets a new nonce; and
 // no site can frame the page.
-// Does NOT cover: what a browser does with the policy (scratchpad/csp/inject.mjs drives a real one),
+// Does NOT cover: what a browser does with the policy (a check outside this suite drives a real one),
 // the connect-src host list, or which paths the matcher lets through.
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";

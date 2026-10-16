@@ -1,5 +1,5 @@
-// Not covered here: a real enforce-mode simulation (RPC is faked; the
-// scratchpad/m5a and scratchpad/sponsor-s3 live checks run them against
+// Not covered here: a real enforce-mode simulation (RPC is faked; two
+// live checks outside this suite run them against
 // testnet), whether a passkey wallet's own signature or a new wallet's
 // Genesis binding proof is valid, which only the wallet's own code can
 // decide, a browser on a production origin writing the client data (the

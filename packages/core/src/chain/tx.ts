@@ -13,7 +13,7 @@ export const MAX_PAY_FEE_STROOPS = 20_000_000n;
 
 // For one-off setup calls (create_company, open_run, invites, deposit, merge, register,
 // register_key, admin handover). The costliest measured is register_key on a fresh registry,
-// 13.063 XLM (scratchpad/m5b2/e2e-run.log), most of it prepaid storage rent; 20 XLM leaves about
+// 13.063 XLM (measured in a testnet end-to-end run), most of it prepaid storage rent; 20 XLM leaves about
 // half again for rent prices rising. Every other one-off measured under 0.57 XLM.
 export const MAX_SETUP_FEE_STROOPS = 200_000_000n;
 

@@ -1,4 +1,4 @@
-// Does NOT cover: the live network (scratchpad/m5b3/e2e-views.mjs audits a testnet company),
+// Does NOT cover: the live network (a live testnet run outside this suite audits a company),
 // or the newest spend of a treasury, which no later balance checkpoint confirms (named as a
 // non-goal in accountant.ts). Every ciphertext here is real, from the SDK's witness builders.
 import { commit, FR_MODULUS } from 'stellar-confidential-token-sdk';
@@ -347,7 +347,7 @@ describe('auditCompany reads in parallel without reading more', () => {
     };
     const txSource = s.ledger.txSource();
     const result = await audit(s, { txSource });
-    // The counts scratchpad/wo-b/reads-p2.txt measured for company 7 with 4 runs, read one at a time.
+    // The counts measured outside this suite for company 7 with 4 runs, read one at a time.
     expect(Object.fromEntries(reads)).toEqual({ get_company: 1, get_run: 4, is_paid: 5 });
     expect([result.complete, result.runs.map((run) => run.runId), txSource.calls.length]).toEqual([true, [RUN, 501n, 502n, 503n], 4]);
     expect(most).toBeGreaterThan(1);

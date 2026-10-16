@@ -4,7 +4,7 @@
 // The docs pages are the real files in content/docs, read from disk with the page text cut into
 // headings and lines by a small reader below, because the MDX compiler that normally does this runs
 // only inside the Next build. Does NOT cover the compiler's own search text (code blocks, tables), or
-// the search box in the browser; the browser walk in scratchpad/web-lens/w9a-walk.mjs covers that.
+// the search box in the browser; a browser walk outside this suite covers that.
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/.source/server", async () => {

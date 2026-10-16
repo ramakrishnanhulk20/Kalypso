@@ -5,8 +5,8 @@
 // cannot be read or is partial, a registration of another account, a second event, a commitment
 // that says something is there, or a saved opening that does not open the chain all stay "needs a
 // rebuild", as before. Does NOT cover core's opening checks themselves
-// (loadTreasuryOpening and the history reader are replaced here) or the live chain (the live check
-// in scratchpad/w10/empty-check.mjs reads one never-funded and one funded treasury).
+// (loadTreasuryOpening and the history reader are replaced here) or the live chain (a live check
+// outside this suite reads one never-funded and one funded treasury).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as realCore from "@kalypso/core";
 import { sandboxConfig } from "../sandbox/config";

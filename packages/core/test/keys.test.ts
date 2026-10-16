@@ -1,6 +1,6 @@
 // Does NOT cover: real Freighter or a real passkey (no browser here), whether PRF output stays
 // the same across browser launches (M1b could not prove that with a virtual authenticator), or
-// registering the derived keys on chain. vectors.json was built by scratchpad/m5b/make-vectors.mjs,
+// registering the derived keys on chain. vectors.json was built once by a separate script,
 // which calls the SDK, node:crypto and stellar-sdk directly, without this package's code.
 import { createHash, hkdfSync } from 'node:crypto';
 import { Keypair, StrKey } from '@stellar/stellar-sdk/base';

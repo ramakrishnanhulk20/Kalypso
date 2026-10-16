@@ -18,7 +18,7 @@
 // reason, and finishing setup runs the same deploy and chain checks again.
 // Does NOT cover: a real platform authenticator or PRF determinism across devices (M1b's open
 // item), passkey-kit's own deploy simulation inside createPasskey (it needs RPC), the real sponsor,
-// index and chain (scratchpad/attacks/birth-squat runs the squat on testnet), or a creation whose
+// index and chain (a live repro outside this suite runs the squat on testnet), or a creation whose
 // relay timed out at the sponsor before Channels named an id (its record holds no id to follow).
 import "./sdk";
 import { describe, expect, it } from "vitest";

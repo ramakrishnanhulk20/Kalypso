@@ -1,5 +1,5 @@
 // Not covered here: the confidential SDK's own clients (they are not a
-// dependency of this package; scratchpad/m5a/parity.mjs runs IndexerV1Client,
+// dependency of this package; a parity check outside this suite runs IndexerV1Client,
 // IndexerClient and hybridFetchEvents against this handler with live testnet
 // data), and the production read-only role (db.test.ts proves the SQL).
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";

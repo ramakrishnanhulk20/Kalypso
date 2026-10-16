@@ -4,7 +4,7 @@
 /* The colour tokens, named by what they do. Light values sit on :root, dark values on html.dark
    (next-themes writes that class before first paint), and the media block below repeats the dark
    values for a visitor with scripts off. The two dark blocks must stay identical:
-   scratchpad/fable-ui/contrast.mjs reads the html.dark one. */
+   a contrast check reads the html.dark block. */
 :root {
   --canvas: #f2ece6;
   --raised: #f8f4ef;

@@ -1,5 +1,5 @@
 // Covers the decision to show the right-edge fade on a wide diagram. Does NOT cover the scroll and
-// resize listeners or how the gradient looks; the headless browser check in scratchpad/web-lens does.
+// resize listeners or how the gradient looks; a headless browser check outside this suite does.
 import { describe, expect, it } from "vitest";
 import { showsRightFade } from "./diagram-fade";
 

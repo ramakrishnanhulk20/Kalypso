@@ -220,7 +220,7 @@ const schemaFor = (production: boolean) => z
     DATABASE_URL_INGEST: postgresUrl,
     DATABASE_URL_API: postgresUrl,
     // Testnet defaults. A passkey wallet creation measured 1.79 XLM charged
-    // (2.06 XLM declared resource fee, scratchpad/worker/logs), so 2.5 XLM
+    // (2.06 XLM declared resource fee, measured on the live deploy), so 2.5 XLM
     // leaves it margin. Every other worker action is far cheaper (accept_invite
     // 0.53 XLM charged, 0.61 reserved), so 1 XLM, and a call cannot declare
     // inflated resources up to the creation's cap. Creations may use half of

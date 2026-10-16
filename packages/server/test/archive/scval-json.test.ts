@@ -1,4 +1,4 @@
-// Not covered here: decoding by the SDK itself. scratchpad/m5a/parity.mjs runs
+// Not covered here: decoding by the SDK itself. A parity check outside this suite runs
 // the SDK's IndexerClient over this encoding of real testnet events.
 import { describe, expect, it } from "vitest";
 import { Address, nativeToScVal, xdr } from "@stellar/stellar-sdk";

@@ -1,4 +1,4 @@
-// Does NOT cover: real proofs or the live network (scratchpad/m5b3/e2e-views.mjs runs these
+// Does NOT cover: real proofs or the live network (a live run outside this suite runs these
 // views on testnet), or an archive and an RPC that agree on a lie about which events exist.
 // Every ciphertext here is real, built by the SDK's witness builders on the fake ledger.
 import { Address, xdr } from '@stellar/stellar-sdk/base';
@@ -363,7 +363,7 @@ describe('loadWorkerView reads in parallel without reading more', () => {
     };
     const txSource = s.ledger.txSource();
     const result = await view(s, worker, { companyIds: ids, txSource });
-    // The counts scratchpad/wo-b/reads-p2.txt measured for 3 companies of 4 paid runs, read one at a time.
+    // The counts measured outside this suite for 3 companies of 4 paid runs, read one at a time.
     expect(Object.fromEntries(reads)).toEqual({ confidential_balance: 1, memberships_of: 1, get_company: 3, get_roster: 3, get_run: 12, is_paid: 12 });
     expect([result.complete, result.gaps, result.payslips.length, txSource.calls.length]).toEqual([true, [], 12, 12]);
     expect(result.payslips.map((p) => p.ledger)).toEqual(result.payslips.map((p) => p.ledger).sort((a, b) => a - b));

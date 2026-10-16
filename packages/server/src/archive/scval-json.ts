@@ -9,9 +9,9 @@ import { addressOfScVal } from "../stellar.ts";
  * keys as objects. Anything outside that set is passed as `{ xdr: base64 }`
  * so nothing is silently dropped.
  *
- * This is a second encoding of data the archive stores as XDR. The
- * scratchpad/m5a parity check decodes both forms of real testnet events with
- * the SDK and compares them.
+ * This is a second encoding of data the archive stores as XDR. A separate
+ * parity check decodes both forms of real testnet events with the SDK and
+ * compares them.
  */
 export function scValToPlainJson(value: xdr.ScVal): unknown {
   switch (value.switch().name) {

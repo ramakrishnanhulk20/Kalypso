@@ -1,4 +1,4 @@
-// Does NOT cover: whether the token accepts the withdraw proof (scratchpad/m5b3/e2e-views.mjs
+// Does NOT cover: whether the token accepts the withdraw proof (a live run outside this suite
 // proves and submits one on testnet with createNodeProver). The prover here is the SDK's real
 // witness builder and encoder with a stand-in proof, so openings and payloads are real.
 import { buildWithdrawWitness, commit, encodeWithdrawData, type WithdrawParams } from 'stellar-confidential-token-sdk';

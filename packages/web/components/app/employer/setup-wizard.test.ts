@@ -1,7 +1,7 @@
 // Covers the wizard's accountant choice: two cards in one radio group, "I'll keep my own books"
 // chosen by default with the seal border, and the wizard opening on the own-books step (its key
 // button, none of the id and address fields). Does NOT cover clicking between the cards or the
-// steps that follow (the live testnet run in scratchpad/w10 drives those), or keepOwnBooks itself
+// steps that follow (a live testnet run outside this suite drives those), or keepOwnBooks itself
 // (lib/accountant/own-books.test.ts).
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";

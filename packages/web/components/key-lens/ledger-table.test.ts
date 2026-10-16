@@ -2,8 +2,8 @@
 // history where every payment opened. An incomplete history or a run where some payments did not
 // open shows "Total withheld" in the wait colour with its title, and a key that opened nothing keeps
 // the sealed line ("Sealed. This key can't open it."). Does NOT cover the table's layout or how the
-// landing lens, /demo and the books pass the complete flag in; the live before and after check in
-// scratchpad/rd covers those.
+// landing lens, /demo and the books pass the complete flag in; a live before and after check
+// outside this suite covers those.
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SealedPayment } from "@kalypso/core";

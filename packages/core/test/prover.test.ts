@@ -1,5 +1,5 @@
 // Does NOT cover: real UltraHonk proving or verification. CircuitProver is replaced by a
-// recorder here; scratchpad/m5b3/e2e-views.mjs proves register, transfer and withdraw with
+// recorder here; a live run outside this suite proves register, transfer and withdraw with
 // createNodeProver and the live token verifies them. Witness building and encoding are the
 // real SDK functions.
 import { readFileSync } from 'node:fs';

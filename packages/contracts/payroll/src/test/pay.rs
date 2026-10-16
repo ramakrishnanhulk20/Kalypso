@@ -5,7 +5,7 @@
 //! Not covered here: real proofs and the real token (a real transfer can also
 //! fail on a stale or forged proof; M2c covers that against the real token
 //! wasm), transaction size and CPU limits (MAX_BATCH comes from testnet
-//! measurements in scratchpad/m1a/FINDINGS.md), and wrong-signer cases other
+//! measurements, noted where it is defined), and wrong-signer cases other
 //! than the nested transfer, which are in auth.rs.
 extern crate std;
 

@@ -3,8 +3,8 @@
 // expired one is rebuilt, a step whose transaction failed on chain is built again, a landed step
 // that the chain does not show is refused, and friendbot is asked once per missing account, all at
 // once. The pay step's CSV text reads back through core's parser as exactly the typed salaries.
-// Does NOT cover the live network, real proofs, the DEX, or executeRun (core's own tests and the
-// live headless run in scratchpad/sandbox cover those).
+// Does NOT cover the live network, real proofs, the DEX, or executeRun (core's own tests and a
+// live headless run outside this suite cover those).
 import { ContractCallError, formatUsdc, parsePayrollCsv } from "@kalypso/core";
 import type { ChainPort, EventsPort } from "@kalypso/core";
 import { describe, expect, it } from "vitest";

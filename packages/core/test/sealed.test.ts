@@ -1,5 +1,5 @@
 // Does NOT cover: the live network or how long opening takes in a browser (both measured once
-// by scratchpad/web-lens), or the archive changing between the two reads its path makes. The
+// by a browser check outside this suite), or the archive changing between the two reads its path makes. The
 // audit's own C18 and C19 refusals are proven in accountant.test.ts; here they only have to show
 // through as sealed rows. Every ciphertext is real, from the SDK's witness builders.
 import { Address, xdr } from '@stellar/stellar-sdk/base';

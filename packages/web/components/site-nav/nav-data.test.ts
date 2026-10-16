@@ -4,7 +4,7 @@
 // the order the bar gives up parts when it is too full, and that the CSS uses the same 1280px
 // breakpoint and the same drop names as the code.
 // Does NOT cover focus moving in a real browser, whether the bar really fits at a given width, or
-// the panel's look; the browser walk in scratchpad/web-lens/w8-walk.mjs does.
+// the panel's look; a browser walk outside this suite does.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createElement } from "react";

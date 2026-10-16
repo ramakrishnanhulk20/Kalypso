@@ -1,4 +1,4 @@
-// Does NOT cover: what the live contract returns (scratchpad/m5b2/e2e-run.mjs reads it on
+// Does NOT cover: what the live contract returns (a live run outside this suite reads it on
 // testnet), the contract's own checks (packages/contracts/payroll tests), or simulation and auth.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -10,7 +10,7 @@
 // `npm run test:wire` runs it through the production driver), two server instances contending for
 // the advisory lock (one PGlite is one session, so a held lock is played by a stand-in connection;
 // that pg_try_advisory_xact_lock refuses a second session is Postgres's own guarantee), and the
-// live payouts, which scratchpad/deploy/faucet-live.out records.
+// live payouts, which a testnet run outside this suite records.
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Asset, Keypair, StrKey, type Transaction } from "@stellar/stellar-sdk";
 import type { Db } from "../../src/archive/db.ts";

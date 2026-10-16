@@ -6,7 +6,7 @@
 // registration comes only from the confirmed return value; and the owner and key read that follows
 // (C43) refuses an id that changed hands or keys between the reads, and an id the network names but
 // the registry does not give this wallet. Does NOT cover the send pipeline (sendCall is replaced here),
-// setUpCompany, or the live registry (the live testnet run in scratchpad/w10 covers those).
+// setUpCompany, or the live registry (a live testnet run outside this suite covers those).
 import { decodeInvocation } from "@kalypso/core";
 import type { Point } from "../sandbox/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";

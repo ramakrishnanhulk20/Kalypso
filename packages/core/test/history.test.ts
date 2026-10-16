@@ -1,4 +1,4 @@
-// Does NOT cover: the live RPC or our deployed archive (scratchpad/m5b3/e2e-views.mjs reads
+// Does NOT cover: the live RPC or our deployed archive (a live run outside this suite reads
 // testnet through createRpcEventsPort), or whether an archive that is consistent with itself
 // is telling the truth about the chain. Balances rebuilt from history are checked against the
 // chain by the payslip views (C16), not here.

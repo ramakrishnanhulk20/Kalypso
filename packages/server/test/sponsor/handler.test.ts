@@ -586,7 +586,7 @@ describe("what the logs say about callers", () => {
 });
 
 describe("POST /api/sponsor and passkey wallet creation (C20)", () => {
-  // The live deploy's declared resource fee (scratchpad/worker/logs), the dearest worker action.
+  // The live deploy's declared resource fee (measured on testnet), the dearest worker action.
   const CREATION_CHARGE = 20_571_654n + INCLUSION_FEE_ALLOWANCE_STROOPS;
   const IP = "203.0.113.7";
   const DAY = "2026-10-07";

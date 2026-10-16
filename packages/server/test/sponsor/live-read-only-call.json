@@ -1,5 +1,5 @@
 {
-  "note": "Live testnet RPC replies captured by scratchpad/m5a/capture-read-only.mjs: token confidential_balance (read-only) carrying a signed auth entry it does not use.",
+  "note": "Live testnet RPC replies captured on 7 Oct 2026: token confidential_balance (read-only) carrying a signed auth entry it does not use.",
   "capturedAtLedger": 5071446,
   "token": "CCFD5X2XSCS6N6S67UQ3P3PMTNCN7O2NA5ZOET4LIHLMCEPFKXVFAEEN",
   "request": {

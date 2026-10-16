@@ -1,4 +1,4 @@
-// Does NOT cover: real testnet envelopes or a live RPC and Horizon (scratchpad/m5b3/e2e-views.mjs
+// Does NOT cover: real testnet envelopes or a live RPC and Horizon (a live run outside this suite
 // reads testnet), or whether the network verified the proof inside a transaction. Envelopes here
 // are real testnet transactions built with @stellar/stellar-sdk, carrying payloads from the SDK's
 // own encoder, and every hash is recomputed by the code under test.

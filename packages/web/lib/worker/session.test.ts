@@ -1,8 +1,8 @@
 // Covers readSignerVal, the strict decoder for the passkey signer a wallet holds, on the exact bytes
-// read from testnet for the fixture wallet (scratchpad/attacks/birth-squat/step2-shapes.out) and on
+// read from testnet for the fixture wallet (as RPC served them on 9 Oct 2026, below) and on
 // the shapes a wallet must not be trusted with.
-// Does NOT cover: the ledger read itself (rpcLedger needs RPC; the live repro in
-// scratchpad/attacks/birth-squat runs it), or which durability is in force when both exist.
+// Does NOT cover: the ledger read itself (rpcLedger needs RPC; a live repro outside this
+// suite runs it), or which durability is in force when both exist.
 import "./sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

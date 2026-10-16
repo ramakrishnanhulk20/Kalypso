@@ -1,5 +1,5 @@
 // Does NOT cover: whether the token accepts these envelopes (real proofs are only built in
-// scratchpad/m5b2/e2e-run.mjs on testnet), or whether a decoded point is the right person's key.
+// a live run outside this suite on testnet), or whether a decoded point is the right person's key.
 import { addressToField, buildRegisterWitness, buildTransferWitness, buildWithdrawWitness, commit, deriveKeys, FR_MODULUS, G, H, scalarMul } from 'stellar-confidential-token-sdk';
 import { describe, expect, it } from 'vitest';
 import { ContractCallError, type ChainPort } from '../src/chain/ports.js';

@@ -1,4 +1,4 @@
-// Does NOT cover: real proofs, fees or the live network (scratchpad/m5b2/e2e-run.mjs runs the
+// Does NOT cover: real proofs, fees or the live network (a live run outside this suite runs the
 // engine on testnet), a wallet that shows the hidden amount (none can), or several tabs paying
 // the same run at once from one store (engine-inflight-attacks.test.ts runs those; another
 // device is held off by the network's one-transaction-per-account queue and the contract's paid

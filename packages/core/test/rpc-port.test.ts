@@ -1,4 +1,4 @@
-// Does NOT cover: the live RPC (scratchpad/m5b2/e2e-run.mjs runs this port on testnet). Here
+// Does NOT cover: the live RPC (a live run outside this suite runs this port on testnet). Here
 // the rpc.Server methods are replaced, so only the mapping, error and timeout rules are tested.
 import { Account, SorobanDataBuilder, TransactionBuilder, xdr } from '@stellar/stellar-sdk/base';
 import { Api, Server } from '@stellar/stellar-sdk/rpc';
