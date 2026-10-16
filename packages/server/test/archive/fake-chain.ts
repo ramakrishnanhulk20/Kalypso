@@ -14,7 +14,10 @@ export class FakeChain implements RpcClient {
   events: RpcEvent[] = [];
   latestLedger: number;
   oldestLedger: number;
+  /** Ledgers one getEvents call scans; not the retention window below. */
   window = 10_000;
+  /** The ledgerRetentionWindow getHealth reports; undefined plays a node that leaves it out. */
+  retentionWindow: number | undefined = undefined;
   calls = 0;
   /** Lets a test move the floor between getHealth and getEvents. */
   beforeGetEvents: (() => void) | null = null;
@@ -38,7 +41,12 @@ export class FakeChain implements RpcClient {
 
   async getHealth(signal?: AbortSignal) {
     await this.wait(signal);
-    return { status: "healthy" as const, latestLedger: this.latestLedger, oldestLedger: this.oldestLedger };
+    return {
+      status: "healthy" as const,
+      latestLedger: this.latestLedger,
+      oldestLedger: this.oldestLedger,
+      ...(this.retentionWindow === undefined ? {} : { ledgerRetentionWindow: this.retentionWindow }),
+    };
   }
 
   async getEvents(query: GetEventsQuery, signal?: AbortSignal): Promise<RpcEventsPage> {

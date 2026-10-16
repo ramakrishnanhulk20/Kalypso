@@ -79,7 +79,7 @@ describe("POST /api/archive/ingest", () => {
     const res = await call(bearer(CRON_SECRET));
     expect(res).toEqual({
       status: 200,
-      body: { ingested_through: 500, events_stored: 2, pages: 1, caught_up: true, gaps: 0 },
+      body: { ingested_through: 500, events_stored: 2, pages: 1, caught_up: true, gaps: 0, healed: [] },
     });
     expect(await archivedThrough()).toBe(500);
     expect(INGEST_CRON_DEADLINE_MS).toBe(25_000);
@@ -95,6 +95,18 @@ describe("POST /api/archive/ingest", () => {
     const res = await call(bearer(CRON_SECRET), context({ deadlineMs: 50 }));
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(res).toMatchObject({ status: 200, body: { caught_up: false, ingested_through: 0 } });
+  });
+
+  it("answers 200 when a pass records a gap from a node's floor, and lists the gaps a later pass heals", async () => {
+    chain.latestLedger = 300;
+    await call(bearer(CRON_SECRET));
+    Object.assign(chain, { latestLedger: 500, oldestLedger: 401 });
+    expect(await call(bearer(CRON_SECRET))).toMatchObject({ status: 200, body: { ingested_through: 500, gaps: 1, healed: [] } });
+    chain.oldestLedger = 100;
+    expect(await call(bearer(CRON_SECRET))).toEqual({
+      status: 200,
+      body: { ingested_through: 500, events_stored: 0, pages: 1, caught_up: true, gaps: 0, healed: [{ from_ledger: 301, to_ledger: 400 }] },
+    });
   });
 
   it("answers 503 when the pass fails, so the scheduled run shows as failed", async () => {

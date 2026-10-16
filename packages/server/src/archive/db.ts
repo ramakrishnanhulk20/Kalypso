@@ -486,6 +486,15 @@ export async function recordGap(db: Db, fromLedger: number, toLedger: number, de
   );
 }
 
+/**
+ * Removes exactly the gap [fromLedger, toLedger]. Only a heal calls it, inside
+ * the transaction that stores the page proving the gap's last ledger was read
+ * in full, so the gap and its proof never part.
+ */
+export async function deleteGap(db: Db, fromLedger: number, toLedger: number): Promise<void> {
+  await db.query("delete from gaps where from_ledger = $1 and to_ledger = $2", [fromLedger, toLedger]);
+}
+
 export interface ArchiveState {
   startLedger: number | null;
   /** Proven by the start check, never assumed: see settleArchiveStart. */

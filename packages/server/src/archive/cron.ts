@@ -55,6 +55,7 @@ export async function ingestCronHandler(req: Request, ctx: IngestCronContext): P
       pages: result.pages,
       caught_up: result.caughtUp,
       gaps: result.gaps.length,
+      healed: result.healed.map((g) => ({ from_ledger: g.fromLedger, to_ledger: g.toLedger })),
     };
     ctx.log.info("archive_cron_ingested", summary);
     return json(summary);

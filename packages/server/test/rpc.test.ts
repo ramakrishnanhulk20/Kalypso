@@ -20,9 +20,21 @@ const ok = (result: unknown) => (req: any) => ({ body: { jsonrpc: "2.0", id: req
 describe("createRpcClient", () => {
   it("reads health from the configured RPC URL", async () => {
     const { rpc, fetchImpl } = rpcWith(ok({ status: "healthy", latestLedger: 50, oldestLedger: 10, ledgerRetentionWindow: 40 }));
-    expect(await rpc.getHealth()).toEqual({ status: "healthy", latestLedger: 50, oldestLedger: 10 });
+    expect(await rpc.getHealth()).toEqual({ status: "healthy", latestLedger: 50, oldestLedger: 10, ledgerRetentionWindow: 40 });
     expect(fetchImpl.mock.calls[0]![0]).toBe(cfg.RPC_URL);
     expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]!.body))).toMatchObject({ jsonrpc: "2.0", method: "getHealth" });
+  });
+
+  it("reads health from a node that leaves out its retention window", async () => {
+    const health = await rpcWith(ok({ status: "healthy", latestLedger: 50, oldestLedger: 10 })).rpc.getHealth();
+    expect(health).toEqual({ status: "healthy", latestLedger: 50, oldestLedger: 10 });
+    expect(health.ledgerRetentionWindow).toBeUndefined();
+  });
+
+  it.each([0, null, 1.5, -40, "40", 2 ** 33])("reads health when the retention window is unusable (%j)", async (window) => {
+    const health = await rpcWith(ok({ status: "healthy", latestLedger: 50, oldestLedger: 10, ledgerRetentionWindow: window })).rpc.getHealth();
+    expect(health.latestLedger).toBe(50);
+    expect(health.ledgerRetentionWindow).toBeUndefined();
   });
 
   it("sends startLedger without a cursor, and a cursor without startLedger", async () => {

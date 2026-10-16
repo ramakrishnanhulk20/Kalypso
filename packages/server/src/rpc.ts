@@ -30,7 +30,14 @@ export class RpcError extends Error {
 const ledgerNumber = z.number().int().min(1).max(0xffffffff);
 
 const healthSchema = z
-  .object({ status: z.literal("healthy"), latestLedger: ledgerNumber, oldestLedger: ledgerNumber })
+  .object({
+    status: z.literal("healthy"),
+    latestLedger: ledgerNumber,
+    oldestLedger: ledgerNumber,
+    // Only decides which gaps are past healing, so a value it cannot use is dropped rather than
+    // failing the reply and with it the whole ingest pass; the heal then assumes RPC's default.
+    ledgerRetentionWindow: ledgerNumber.optional().catch(undefined),
+  })
   .refine((h) => h.oldestLedger <= h.latestLedger);
 
 const eventSchema = z.object({

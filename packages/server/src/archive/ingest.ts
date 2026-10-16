@@ -7,6 +7,7 @@ import { addressOfScVal, canonicalContractId, decodeCanonicalBase64 } from "../s
 import { coverageOf, ingestedThrough } from "./coverage.ts";
 import {
   addIngestedRange,
+  deleteGap,
   insertEvents,
   readArchiveState,
   readCoverage,
@@ -46,6 +47,8 @@ export interface IngestResult {
   eventsStored: number;
   pages: number;
   caughtUp: boolean;
+  /** Gaps this pass read in full and removed, oldest first. */
+  healed: Array<{ fromLedger: number; toLedger: number }>;
 }
 
 /** RPC sent something that breaks the rules below. Nothing from that page was stored. */
@@ -58,6 +61,10 @@ export class UpstreamDataError extends Error {
 
 const DEFAULT_PAGE_LIMIT = 200;
 const DEFAULT_MAX_PAGES = 1_000;
+/** Each try may reach another node behind RPC's load balancer. */
+const HEAL_START_TRIES = 3;
+/** RPC's default retention, 7 days of 5 s ledgers, for a getHealth reply that does not state its window. */
+const DEFAULT_RETENTION_LEDGERS = 120_960;
 
 /**
  * One ingest pass: reads events for exactly our token and payroll contracts
@@ -67,8 +74,20 @@ const DEFAULT_MAX_PAGES = 1_000;
  * Each page is stored in one transaction together with the ledger range it
  * proves was read in full, so the archive never records a range without its
  * events. If the next ledger needed is older than RPC's oldest ledger, those
- * ledgers are recorded as a permanent gap (which raises the health alarm)
- * and reading continues from the oldest ledger.
+ * ledgers are recorded as a gap (which raises the health alarm) and reading
+ * continues from the oldest ledger. RPC's load balancer can route to a node
+ * that restarted and holds less than the network, so a gap may be false.
+ *
+ * Healing is what undoes a false gap. Before reading forward, the pass heals
+ * recorded gaps, oldest first, each from its first ledger not yet read in
+ * full, using at most half the page cap and half the deadline between them.
+ * A gap starting before the window RPC keeps is never tried. A heal reads
+ * through the same checks as the forward read, trusts a page only at or
+ * above the page's own oldestLedger, and removes the gap only in the
+ * transaction that stores the page proving its last ledger read in full,
+ * once recorded ranges cover the whole gap. A heal cut short by its share, a
+ * refusal or any error leaves the gap and keeps what it read in full; an
+ * error is logged as archive_heal_failed and the pass reads forward anyway.
  *
  * The start check, the same rule the prove script uses: an archive begun at
  * a configured start ledger vouches for the ledgers before it only if the
@@ -84,19 +103,27 @@ const DEFAULT_MAX_PAGES = 1_000;
  * does.
  *
  * Throws on RPC or database failure, or on an RPC reply that breaks the
- * rules, after keeping every page already stored. A deadline is not a
- * failure: the pass returns what it managed.
+ * rules, outside a heal, after keeping every page already stored. A deadline
+ * is not a failure: the pass returns what it managed.
  */
 export async function ingestOnce(db: Db, rpc: RpcClient, cfg: Config, opts: IngestOptions = {}): Promise<IngestResult> {
   const now = opts.now ?? (() => new Date());
   const limit = opts.pageLimit ?? DEFAULT_PAGE_LIMIT;
   if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) throw new RangeError("pageLimit must be 1 to 1000");
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
+  // A big gap could otherwise take every page of every pass and stall the archive at its old tip.
+  const healPageCap = Math.max(1, Math.floor(maxPages / 2));
   const deadline = opts.deadlineMs === undefined ? undefined : AbortSignal.timeout(opts.deadlineMs);
+  // Heals get at most half the pass's time as well, so a slow or refusing node cannot spend the forward read's.
+  const healDeadline =
+    opts.deadlineMs === undefined || deadline === undefined
+      ? undefined
+      : AbortSignal.any([deadline, AbortSignal.timeout(Math.floor(opts.deadlineMs / 2))]);
   const contractIds = [cfg.TOKEN_CONTRACT_ID, cfg.PAYROLL_CONTRACT_ID];
   let pages = 0;
   let eventsStored = 0;
   let caughtUp = false;
+  const healed: IngestResult["healed"] = [];
 
   const skipForgotten = async (next: number, health: RpcHealth): Promise<number> => {
     if (next >= health.oldestLedger) return next;
@@ -120,85 +147,184 @@ export async function ingestOnce(db: Db, rpc: RpcClient, cfg: Config, opts: Inge
       }
       state = await readArchiveState(db);
     }
+    const startLedger = state.startLedger!;
     let startCheckPending = state.startCheckPending;
+
+    /**
+     * The one reader of pages. From `first` it reads to RPC's tip; given a
+     * recorded `gap`, it heals that gap instead, from `first` inside it: it
+     * stores only events inside the gap, records ranges only inside it, stays
+     * within the heals' share of the page cap, and deletes the gap in the
+     * transaction of the page that proves the gap's last ledger read in full,
+     * once recorded ranges cover every ledger of the gap. Returns the last
+     * ledger read in full from `first`.
+     */
+    const readPages = async (first: number, gap?: GapRecord): Promise<number> => {
+      const last = gap?.toLedger;
+      const pageCap = gap === undefined ? maxPages : healPageCap;
+      const signal = gap === undefined ? deadline : healDeadline;
+      let next = first;
+      let readThrough = first - 1;
+      let cursor: string | undefined;
+      let lastCursor: RpcCursor | null = null;
+      let retried = false;
+      let startTries = 0;
+      while (pages < pageCap) {
+        if (signal?.aborted) return readThrough;
+        let page: RpcEventsPage;
+        try {
+          page = await rpc.getEvents(
+            cursor === undefined ? { startLedger: next, contractIds, limit } : { cursor, contractIds, limit },
+            signal,
+          );
+        } catch (err) {
+          const refused = err instanceof RpcError && err.code === RPC_INVALID_REQUEST;
+          // A node behind the load balancer keeps less than the network. Only
+          // the forward read may write ledgers off, so a heal refused on its
+          // start page HEAL_START_TRIES times, or on any cursor page, keeps
+          // what it read in full and leaves its gap for a later pass. Refused
+          // calls spend the heals' page share like served ones.
+          if (refused && gap !== undefined) {
+            pages++;
+            if (cursor === undefined && ++startTries < HEAL_START_TRIES) continue;
+            return readThrough;
+          }
+          // RPC's floor can move between getHealth and getEvents. Look once more.
+          if (refused && cursor === undefined && !retried) {
+            retried = true;
+            health = await rpc.getHealth(deadline);
+            const moved = await skipForgotten(next, health);
+            if (moved === next) throw err;
+            next = moved;
+            readThrough = next - 1;
+            continue;
+          }
+          throw err;
+        }
+        pages++;
+
+        const rows = rowsOf(page, cfg);
+        const pageCursor = page.cursor === undefined ? null : parseRpcCursor(page.cursor);
+        if (page.cursor !== undefined && pageCursor === null) throw new UpstreamDataError("cursor format");
+        if (pageCursor && lastCursor && compareCursors(pageCursor, lastCursor) <= 0) {
+          throw new UpstreamDataError("cursor did not advance");
+        }
+        const fullyRead = Math.min(fullyReadThrough(page, pageCursor, limit, readThrough), page.latestLedger, last ?? Infinity);
+        if (rows.some((r) => r.ledger < next || r.ledger > page.latestLedger)) {
+          throw new UpstreamDataError("event outside the requested ledgers");
+        }
+        // A node behind the load balancer that restarted holds only part of the
+        // window, and may answer below its floor with nothing rather than
+        // refuse. Its page vouches for nothing it does not hold. A heal needs
+        // the node to say where its history starts; the forward read takes a
+        // reply without that, as it always has.
+        if (page.oldestLedger === undefined ? gap !== undefined : page.oldestLedger > readThrough + 1) return readThrough;
+        // Past its gap a heal has no say: those ledgers are the forward read's to vouch for.
+        const kept = last === undefined ? rows : rows.filter((r) => r.ledger <= last);
+        const ending = gap !== undefined && fullyRead >= gap.toLedger ? gap : null;
+
+        const firstTokenEvent = startCheckPending ? kept.find((r) => r.contractId === cfg.TOKEN_CONTRACT_ID) : undefined;
+        const outcome = await db.transaction(async (tx) => {
+          eventsStored += await insertEvents(tx, kept);
+          if (fullyRead > readThrough) await addIngestedRange(tx, readThrough + 1, fullyRead);
+          let removed = false;
+          if (ending !== null && coversWhole(coverageOf(await readCoverage(tx)).ranges, ending)) {
+            await deleteGap(tx, ending.fromLedger, ending.toLedger);
+            removed = true;
+          }
+          await recordIngestProgress(tx, page.latestLedger, page.oldestLedger ?? health.oldestLedger, now());
+          const settled =
+            firstTokenEvent !== undefined && (await settleArchiveStart(tx, isDeployEvent(firstTokenEvent, startLedger, deployTx)));
+          return { settled, removed };
+        });
+        if (fullyRead > readThrough) readThrough = fullyRead;
+        if (firstTokenEvent !== undefined) {
+          startCheckPending = false;
+          if (outcome.settled) reportStartCheck(opts.log, startLedger, deployTx, firstTokenEvent);
+        }
+
+        if (ending !== null) {
+          if (outcome.removed) healed.push({ fromLedger: ending.fromLedger, toLedger: ending.toLedger });
+          return readThrough;
+        }
+        if (pageCursor === null) return readThrough;
+        if (page.events.length < limit && pageCursor.endOfLedger && pageCursor.ledger >= page.latestLedger) {
+          if (last === undefined) caughtUp = true;
+          return readThrough;
+        }
+        lastCursor = pageCursor;
+        cursor = page.cursor;
+      }
+      return readThrough;
+    };
+
+    // Gaps come oldest first, before the forward read, because a gap is what
+    // makes readers refuse a balance; healPageCap keeps the rest of the pass
+    // for the forward read. getHealth's floor is not consulted: it may come
+    // from another node than getEvents, and every heal page proves its own.
+    // A gap starting before the window RPC keeps can never be served again,
+    // so it stays recorded and alarmed and no call is spent on it.
+    const servedFrom = health.latestLedger - (health.ledgerRetentionWindow ?? DEFAULT_RETENTION_LEDGERS) + 1;
+    for (const gap of (await readCoverage(db)).gaps) {
+      // Resume where earlier passes stopped. A gap already covered in full
+      // still needs a page proving its last ledger, so that ledger is read.
+      const resume = Math.min(firstUnread(coverageOf(await readCoverage(db)).ranges, gap.fromLedger), gap.toLedger);
+      if (resume < servedFrom) continue;
+      try {
+        await readPages(resume, gap);
+      } catch (err) {
+        if (stoppedBy(deadline, err)) throw err;
+        // Out of heal time: this heal ends quietly. Any other failure ends it
+        // too, with its gap kept, and never stops the forward read.
+        if (stoppedBy(healDeadline, err)) continue;
+        opts.log?.warn("archive_heal_failed", {
+          fromLedger: gap.fromLedger,
+          toLedger: gap.toLedger,
+          error: err instanceof Error ? err.name + ": " + err.message : "unknown",
+        });
+      }
+    }
+
     const through = ingestedThrough(coverageOf(await readCoverage(db)));
-    let next = await skipForgotten(through > 0 ? through + 1 : state.startLedger!, health);
-    if (next > health.latestLedger) {
+    const from = await skipForgotten(through > 0 ? through + 1 : startLedger, health);
+    if (from > health.latestLedger) {
       caughtUp = true;
       await recordIngestProgress(db, health.latestLedger, health.oldestLedger, now());
       return;
     }
-
-    let readThrough = next - 1;
-    let cursor: string | undefined;
-    let lastCursor: RpcCursor | null = null;
-    let retried = false;
-    while (pages < maxPages) {
-      if (deadline?.aborted) return;
-      let page: RpcEventsPage;
-      try {
-        page = await rpc.getEvents(
-          cursor === undefined ? { startLedger: next, contractIds, limit } : { cursor, contractIds, limit },
-          deadline,
-        );
-      } catch (err) {
-        // RPC's floor can move between getHealth and getEvents. Look once more.
-        if (cursor === undefined && !retried && err instanceof RpcError && err.code === RPC_INVALID_REQUEST) {
-          retried = true;
-          health = await rpc.getHealth(deadline);
-          const moved = await skipForgotten(next, health);
-          if (moved === next) throw err;
-          next = moved;
-          readThrough = next - 1;
-          continue;
-        }
-        throw err;
-      }
-      pages++;
-
-      const rows = rowsOf(page, cfg);
-      const pageCursor = page.cursor === undefined ? null : parseRpcCursor(page.cursor);
-      if (page.cursor !== undefined && pageCursor === null) throw new UpstreamDataError("cursor format");
-      if (pageCursor && lastCursor && compareCursors(pageCursor, lastCursor) <= 0) {
-        throw new UpstreamDataError("cursor did not advance");
-      }
-      const fullyRead = Math.min(fullyReadThrough(page, pageCursor, limit, readThrough), page.latestLedger);
-      if (rows.some((r) => r.ledger < next || r.ledger > page.latestLedger)) {
-        throw new UpstreamDataError("event outside the requested ledgers");
-      }
-
-      const firstTokenEvent = startCheckPending ? rows.find((r) => r.contractId === cfg.TOKEN_CONTRACT_ID) : undefined;
-      const settled = await db.transaction(async (tx) => {
-        eventsStored += await insertEvents(tx, rows);
-        if (fullyRead > readThrough) await addIngestedRange(tx, readThrough + 1, fullyRead);
-        await recordIngestProgress(tx, page.latestLedger, page.oldestLedger ?? health.oldestLedger, now());
-        return firstTokenEvent !== undefined && (await settleArchiveStart(tx, isDeployEvent(firstTokenEvent, state.startLedger!, deployTx)));
-      });
-      if (fullyRead > readThrough) readThrough = fullyRead;
-      if (firstTokenEvent !== undefined) {
-        startCheckPending = false;
-        if (settled) reportStartCheck(opts.log, state.startLedger!, deployTx, firstTokenEvent);
-      }
-
-      if (pageCursor === null) return;
-      if (page.events.length < limit && pageCursor.endOfLedger && pageCursor.ledger >= page.latestLedger) {
-        caughtUp = true;
-        return;
-      }
-      lastCursor = pageCursor;
-      cursor = page.cursor;
-    }
+    await readPages(from);
   };
 
   try {
     await pass();
   } catch (err) {
-    const stoppedByDeadline = deadline?.aborted && err instanceof OutboundError && err.failure === "aborted";
-    if (!stoppedByDeadline) throw err;
+    if (!stoppedBy(deadline, err)) throw err;
   }
   const coverage = coverageOf(await readCoverage(db));
-  return { ingestedThrough: ingestedThrough(coverage), gaps: coverage.gaps, eventsStored, pages, caughtUp };
+  return {
+    ingestedThrough: ingestedThrough(coverage),
+    gaps: coverage.gaps,
+    eventsStored,
+    pages,
+    caughtUp,
+    healed,
+  };
 }
+
+/** True when `err` is the call that `signal` cut off, not some other failure. */
+const stoppedBy = (signal: AbortSignal | undefined, err: unknown): boolean =>
+  signal?.aborted === true && err instanceof OutboundError && err.failure === "aborted";
+
+/** The first ledger at or after `from` that no merged range read in full covers. */
+function firstUnread(ranges: ReadonlyArray<readonly [number, number]>, from: number): number {
+  let next = from;
+  for (const [rangeFrom, rangeTo] of ranges) if (rangeFrom <= next && rangeTo >= next) next = rangeTo + 1;
+  return next;
+}
+
+/** True when one merged range read in full spans every ledger of the gap. */
+const coversWhole = (ranges: ReadonlyArray<readonly [number, number]>, gap: GapRecord): boolean =>
+  ranges.some(([from, to]) => from <= gap.fromLedger && to >= gap.toLedger);
 
 /** Both sides are lower-case hex: RPC hashes are checked in toRow, TOKEN_DEPLOY_TX in config. */
 const isDeployEvent = (first: EventRow, startLedger: number, deployTx: string | undefined): boolean =>
