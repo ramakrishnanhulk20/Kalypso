@@ -381,19 +381,19 @@ The registry has no constructor, no admin and no upgrade entry point, so the dep
 
 ## Test results
 
-Run on 9 to 11 October 2026; the core library, the server (both ways) and the web app were run again on 11 October. Every suite passed: 1,755 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
+Run on 9 to 11 October 2026; the core library, the server (both ways) and the web app were run again on 11 October, and the server (both ways) again on 16 October. Every suite passed: 1,783 tests in all. The server's tests run twice, once on the in-process test database and once through the production Postgres driver, and the total counts them once.
 
 | Suite | Command, from the repo root | Tests |
 |---|---|---|
 | Payroll contract | `cd packages/contracts && cargo test -p kalypso-payroll --locked` | 115: 104 unit, 10 attack, 1 property test |
 | Auditor registry | `cd packages/contracts && cargo test -p kalypso-auditor --locked` | 43: 37 unit, 2 attack, 1 property, 3 against OpenZeppelin's token wasm |
 | Core library | `cd packages/core && npx vitest run` | 560 in 27 files |
-| Server | `cd packages/server && npx vitest run` | 352 in 16 files |
-| Server, production driver | `cd packages/server && npm run test:wire` | the same 352 |
+| Server | `cd packages/server && npx vitest run` | 380 in 17 files |
+| Server, production driver | `cd packages/server && npm run test:wire` | the same 380 |
 | Web app | `cd packages/web && npm test` | 674 in 55 files |
 | Testnet scripts | `cd packages/contracts/scripts && npm test` | 11 |
 
-Line coverage: core 98.47%, server 98.31%.
+Line coverage: core 98.47%, server 98.42% (16 October).
 
 Payroll, one line per test binary (unit tests, `tests/attacks.rs`, `tests/props.rs`):
 
@@ -424,19 +424,19 @@ Core library:
 Server:
 
 ```text
- Test Files  16 passed (16)
-      Tests  352 passed (352)
-   Start at  23:14:33
-   Duration  6.83s (tests 87%, import 10%, transform 3%)
+ Test Files  17 passed (17)
+      Tests  380 passed (380)
+   Start at  09:37:16
+   Duration  7.20s (tests 87%, import 10%, transform 3%)
 ```
 
 Server, through the production Postgres driver (`npm run test:wire`):
 
 ```text
- Test Files  16 passed (16)
-      Tests  352 passed (352)
-   Start at  23:14:40
-   Duration  7.44s (tests 88%, import 9%, transform 3%)
+ Test Files  17 passed (17)
+      Tests  380 passed (380)
+   Start at  09:37:24
+   Duration  7.52s (tests 88%, import 9%, transform 3%)
 ```
 
 Web app:
