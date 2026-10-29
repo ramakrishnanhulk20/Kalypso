@@ -397,8 +397,9 @@ function fullyReadThrough(page: RpcEventsPage, cursor: RpcCursor | null, limit: 
 function rowsOf(page: RpcEventsPage, cfg: Config): EventRow[] {
   const rows: EventRow[] = [];
   for (const raw of page.events) {
-    // An event from a call that failed changed no balance; replaying it would.
-    if (!raw.inSuccessfulContractCall) continue;
+    // An event from a call that failed changed no balance; replaying it would. Only an explicit
+    // false marks one, because RPC v30 leaves the flag out (see eventSchema in rpc.ts).
+    if (raw.inSuccessfulContractCall === false) continue;
     rows.push(toRow(raw, cfg));
   }
   return rows;

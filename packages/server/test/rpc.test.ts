@@ -2,6 +2,7 @@
 // testnet events through this client.
 import { describe, expect, it, vi } from "vitest";
 import { RPC_INVALID_REQUEST, RpcError, createRpcClient } from "../src/rpc.ts";
+import { endOfLedgerCursor, rpcEvent, sym, v30 } from "./archive/fake-chain.ts";
 import { TOKEN, testConfig } from "./helpers.ts";
 
 const cfg = testConfig();
@@ -114,5 +115,18 @@ describe("createRpcClient", () => {
     await expect(rpcWith(ok(bad)).rpc.getEvents({ startLedger: 1, contractIds: [TOKEN], limit: 1 })).rejects.toMatchObject({
       code: "bad_reply",
     });
+  });
+
+  it("reads events without inSuccessfulContractCall, as RPC v30 sends them, keeps a false flag for ingest to skip, and checks every other field as before", async () => {
+    const sent = rpcEvent({ ledger: 40, contract: TOKEN, topics: [sym("merge")] });
+    const page = { events: [v30(sent), { ...sent, inSuccessfulContractCall: false }], cursor: endOfLedgerCursor(40), latestLedger: 50, oldestLedger: 10 };
+    const query = { startLedger: 40, contractIds: [TOKEN], limit: 10 };
+    const read = await rpcWith(ok(page)).rpc.getEvents(query);
+    expect(read.events.map((e) => e.inSuccessfulContractCall)).toEqual([undefined, false]);
+    expect(read.events[0]).toEqual(v30(sent));
+    const refused = [{ ...sent, inSuccessfulContractCall: null }, { ...sent, inSuccessfulContractCall: "false" }, { ...v30(sent), txHash: undefined }, { ...v30(sent), ledger: 0 }];
+    for (const bad of refused) {
+      await expect(rpcWith(ok({ ...page, events: [bad] })).rpc.getEvents(query)).rejects.toMatchObject({ code: "bad_reply" });
+    }
   });
 });

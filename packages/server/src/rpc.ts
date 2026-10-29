@@ -49,7 +49,8 @@ const eventSchema = z.object({
   operationIndex: z.number().int().min(0).optional(),
   transactionIndex: z.number().int().min(0).optional(),
   txHash: z.string().max(64),
-  inSuccessfulContractCall: z.boolean(),
+  // RPC v30 stopped sending this flag and v23 stopped serving events from failed calls, so a missing flag means success.
+  inSuccessfulContractCall: z.boolean().optional(),
   topic: z.array(z.string().max(4096)).max(MAX_EVENT_TOPICS),
   value: z.string().max(65536),
 });

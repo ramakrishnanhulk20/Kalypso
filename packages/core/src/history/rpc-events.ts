@@ -109,7 +109,9 @@ export function createRpcEventsPort(config: { rpcUrl: string }): EventsPort {
           contractId: event.contractId?.contractId() ?? '',
           topicsXdr: event.topic.map((topic) => topic.toXDR('base64')),
           dataXdr: event.value.toXDR('base64'),
-          successful: event.inSuccessfulContractCall,
+          // RPC v30 stopped sending this flag and v23 stopped serving events from failed calls, so a missing
+          // flag means success. Anything other than missing or true fails closed.
+          successful: (event.inSuccessfulContractCall as unknown) === undefined || event.inSuccessfulContractCall === true,
         };
       });
       return { events, cursor: page.cursor || null, latestLedger: page.latestLedger };

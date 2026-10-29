@@ -288,4 +288,27 @@ describe('createRpcEventsPort', () => {
     await expect(port.contractEvents({ contractId: CONTRACTS.token, cursor: 'c-1', limit: 200 })).rejects.toThrow(DecodeError);
     expect(() => createRpcEventsPort({ rpcUrl: 'http://soroban-testnet.example.org' })).toThrow(TypeError);
   });
+
+  it('keeps an event an RPC v30 node sends without inSuccessfulContractCall, and drops one marked as from a failed call', async () => {
+    const [paid, refused] = scenario().workers as [string, string];
+    const payslip = (txIndex: number, worker: string) => {
+      const position = { ledger: 5_452_800, txIndex, opIndex: 0, eventIndex: 0 };
+      const topics = [sym('payslip_issued'), raw.u64(COMPANY), raw.u64(RUN), raw.address(worker)];
+      return { id: rpcId(position), type: 'contract', ledger: position.ledger, ledgerClosedAt: '', transactionIndex: txIndex, operationIndex: 0, txHash: String(txIndex).repeat(64), contractId: { contractId: () => CONTRACTS.payroll }, topic: topics, value: raw.struct({}) };
+    };
+    const events = [
+      payslip(3, paid),
+      { ...payslip(4, refused), inSuccessfulContractCall: false },
+      { ...payslip(5, refused), inSuccessfulContractCall: null },
+      { ...payslip(6, refused), inSuccessfulContractCall: 0 },
+      { ...payslip(7, refused), inSuccessfulContractCall: 'true' },
+    ];
+    vi.spyOn(Server.prototype, 'getEvents').mockResolvedValue({ events, cursor: '', latestLedger: 5_452_900 } as unknown as Api.GetEventsResponse);
+    vi.spyOn(Server.prototype, 'getHealth').mockResolvedValue({ oldestLedger: 5_400_000, latestLedger: 5_452_900, ledgerRetentionWindow: 120_960, status: 'healthy' });
+    const port = createRpcEventsPort({ rpcUrl: 'https://soroban-testnet.example.org' });
+    const page = await port.contractEvents({ contractId: CONTRACTS.payroll, startLedger: 5_452_700, limit: 200 });
+    expect(page.events.map((e) => e.successful)).toEqual([true, false, false, false, false]);
+    const history = await fetchCompanyHistory({ port, contracts: CONTRACTS, companyId: COMPANY, fromLedger: 5_452_700 });
+    expect(history.events.map((e) => (e.kind === 'payroll' ? e.event : e.kind))).toEqual([{ type: 'payslip_issued', companyId: COMPANY, runId: RUN, worker: paid }]);
+  });
 });

@@ -8,7 +8,7 @@ import { coverageOf, ingestedFrom, ingestedThrough, isComplete, mergeRanges } fr
 import { readArchiveState, readCoverage, settleArchiveStart, type Db } from "../../src/archive/db.ts";
 import { UpstreamDataError, ingestOnce, parseRpcCursor } from "../../src/archive/ingest.ts";
 import { createLogger } from "../../src/log.ts";
-import type { RpcClient } from "../../src/rpc.ts";
+import { createRpcClient, type RpcClient } from "../../src/rpc.ts";
 import { PAYROLL, STRANGER, TOKEN, contractFor, keypairFor, testConfig } from "../helpers.ts";
 import { freshDb, resetArchive } from "../db.ts";
 import {
@@ -25,6 +25,7 @@ import {
   transferEvent,
   txHashOf,
   u64,
+  v30,
 } from "./fake-chain.ts";
 
 const cfg = testConfig();
@@ -44,6 +45,24 @@ beforeEach(async () => {
 
 const count = async () => Number((await db.query<{ n: number }>("select count(*)::int as n from events"))[0]!.n);
 const coverage = async () => coverageOf(await readCoverage(db));
+
+/** The production RPC client over `chain` served as JSON, so every page meets the real reply schema. */
+function overTheWire(chain: FakeChain): RpcClient {
+  const serve = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const req = JSON.parse(String(init?.body));
+    const pagination = req.params?.pagination;
+    const result =
+      req.method === "getHealth"
+        ? await chain.getHealth()
+        : await chain.getEvents({
+            contractIds: req.params.filters[0].contractIds,
+            limit: pagination.limit,
+            ...(pagination.cursor === undefined ? { startLedger: req.params.startLedger } : { cursor: pagination.cursor }),
+          });
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: req.id, result }));
+  };
+  return createRpcClient(cfg, serve as typeof fetch);
+}
 
 function busyChain(): FakeChain {
   const chain = new FakeChain(100, 400);
@@ -173,6 +192,20 @@ describe("ingestOnce", () => {
     ]);
     const stored = await db.query<{ topics_xdr: string[] }>("select topics_xdr from events where ledger = 120");
     expect(stored[0]!.topics_xdr).toEqual(chain.events[0]!.topic);
+  });
+
+  it("stores the events of an RPC v30 reply, which leaves out inSuccessfulContractCall, and moves past them, still skipping a call marked failed", async () => {
+    const chain = new FakeChain(100, 200).add(
+      v30(transferEvent(TOKEN, 120, alice, wallet)),
+      v30(payslipIssued(PAYROLL, 130, 7n, 3n, bob)),
+      rpcEvent({ ledger: 140, contract: TOKEN, topics: [sym("merge"), addrVal(bob)], ok: false }),
+    );
+    const result = await ingestOnce(db, overTheWire(chain), cfg, { startLedger: 100 });
+    expect(result).toMatchObject({ ingestedThrough: 200, eventsStored: 2, caughtUp: true, gaps: [] });
+    expect(await db.query("select ledger, event_name from events order by ledger")).toEqual([
+      { ledger: 120, event_name: "transfer" },
+      { ledger: 130, event_name: "payslip_issued" },
+    ]);
   });
 
   it("refuses a page that breaks the rules and stores nothing from it", async () => {

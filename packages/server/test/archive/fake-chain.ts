@@ -136,6 +136,13 @@ export function rpcEvent(spec: EventSpec): RpcEvent {
   };
 }
 
+/** The event as stellar-rpc v30.0.0 and later serve it, without inSuccessfulContractCall. */
+export function v30(event: RpcEvent): RpcEvent {
+  const served = { ...event };
+  delete served.inSuccessfulContractCall;
+  return served;
+}
+
 /** The hash every fake event in that ledger and transaction carries. */
 export const txHashOf = (ledger: number, tx = 1): string => hash(Buffer.from("tx " + ledger + " " + tx)).toString("hex");
 
